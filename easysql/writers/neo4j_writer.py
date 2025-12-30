@@ -169,7 +169,7 @@ class Neo4jSchemaWriter:
 
         # Create column nodes
         for col in table.columns:
-            col_id = col.get_id(db_name, table.name)
+            col_id = col.get_id(db_name, table.schema_name, table.name)
             tx.run(
                 """
                 MATCH (t:Table {id: $table_id})

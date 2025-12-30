@@ -208,3 +208,17 @@ class ExtractorFactory:
     def get_supported_types(cls) -> list[str]:
         """Get list of supported database types."""
         return list(cls._extractors.keys())
+
+# Register extractors
+# Legacy implementations
+# ExtractorFactory.register("mysql-legacy", MySQLSchemaExtractor) 
+# ExtractorFactory.register("postgresql-legacy", PostgreSQLSchemaExtractor)
+
+# New unified implementation triggers can be explicit or we can register for basic types
+# For now, let's keep legacy as default for 'mysql'/'postgresql' to be safe
+# and add 'sqlalchemy' or specific overrides if user wants.
+# Or, if the goal is to REPLACE, we should overwrite.
+# The user request was "help me implement... to replace".
+# I will register them as "sqlalchemy-mysql", etc. OR allow "sqlalchemy" generic type.
+# But DatabaseConfig.db_type is usually 'mysql', 'postgresql'.
+# Let's register SQLAlchemySchemaExtractor for testing first.

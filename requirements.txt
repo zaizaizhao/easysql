@@ -1,10 +1,18 @@
 # Core dependencies
 pydantic>=2.0.0
+pydantic-settings>=2.0.0
 python-dotenv>=1.0.0
 
 # Database drivers
 pymysql>=1.1.0
 psycopg2-binary>=2.9.0
+
+# SQLAlchemy ORM (for unified schema extraction)
+sqlalchemy>=2.0.0
+
+# Optional: Oracle/SQLServer drivers
+# oracledb>=2.0.0
+# pyodbc>=5.0.0
 
 # Neo4j
 neo4j>=5.0.0

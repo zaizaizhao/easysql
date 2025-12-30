@@ -8,6 +8,7 @@ to Neo4j graph storage and Milvus vector embedding.
 from dataclasses import dataclass, field
 from typing import List
 
+import easysql.extractors  # Register built-in extractors
 from easysql.config import DatabaseConfig, Settings
 from easysql.embeddings.embedding_service import EmbeddingService
 from easysql.extractors.base import ExtractorFactory
@@ -114,6 +115,7 @@ class SchemaPipeline:
             )
         return self._milvus_writer
 
+    # Main pipeline execution
     def run(
         self,
         databases: List[DatabaseConfig] | None = None,
@@ -150,7 +152,7 @@ class SchemaPipeline:
 
         # Extract all database schemas
         db_metas: List[DatabaseMeta] = []
-
+        # 流程正式开始 action
         if extract and self.settings.enable_schema_extraction:
             for db_config in databases:
                 try:

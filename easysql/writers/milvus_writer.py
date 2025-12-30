@@ -269,7 +269,7 @@ class MilvusVectorWriter:
 
         for table in db_meta.tables:
             for col in table.columns:
-                col_id = col.get_id(db_meta.name, table.name)
+                col_id = col.get_id(db_meta.name, table.schema_name, table.name)
                 embed_text = col.get_embedding_text()
                 texts_batch.append(embed_text)
 

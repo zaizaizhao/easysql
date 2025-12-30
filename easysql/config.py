@@ -14,6 +14,10 @@ from typing import Any
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from easysql.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class DatabaseConfig:
     """Configuration for a single source database."""
@@ -27,6 +31,7 @@ class DatabaseConfig:
         user: str,
         password: str,
         database: str,
+        schema: str | None = None,
         system_type: str = "UNKNOWN",
         description: str = "",
     ):
@@ -37,20 +42,43 @@ class DatabaseConfig:
         self.user = user
         self.password = password
         self.database = database
+        self.schema = schema
         self.system_type = system_type
         self.description = description
 
+    def get_default_schema(self) -> str:
+        """Get default schema based on database type."""
+        if self.schema:
+            return self.schema
+        if self.db_type == "mysql":
+            return self.database  # MySQL uses database as schema
+        elif self.db_type == "postgresql":
+            return "public"
+        elif self.db_type == "oracle":
+            return self.user.upper()  # Oracle uses user as schema
+        elif self.db_type == "sqlserver":
+            return "dbo"
+        else:
+            return "public"
+
     def get_connection_string(self) -> str:
-        """Generate connection string based on database type."""
+        """Generate SQLAlchemy connection string based on database type."""
         if self.db_type == "mysql":
             return f"mysql+pymysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
         elif self.db_type == "postgresql":
             return f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
+        elif self.db_type == "oracle":
+            # Oracle using oracledb driver (thin mode by default)
+            return f"oracle+oracledb://{self.user}:{self.password}@{self.host}:{self.port}/?service_name={self.database}"
+        elif self.db_type == "sqlserver":
+            # SQL Server using pyodbc driver
+            return f"mssql+pyodbc://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}?driver=ODBC+Driver+17+for+SQL+Server"
         else:
             raise ValueError(f"Unsupported database type: {self.db_type}")
 
     def __repr__(self) -> str:
-        return f"DatabaseConfig(name={self.name}, type={self.db_type}, database={self.database})"
+        return f"DatabaseConfig(name={self.name}, type={self.db_type}, database={self.database}, schema={self.get_default_schema()})"
+
 
 
 class Settings(BaseSettings):
@@ -131,7 +159,7 @@ class Settings(BaseSettings):
                 )
                 databases.append(config)
             except (ValueError, TypeError) as e:
-                print(f"Warning: Failed to parse database config {db_name}: {e}")
+                logger.warning(f"Failed to parse database config {db_name}: {e}")
 
         # Store in a special key for later retrieval
         data["_parsed_databases"] = databases
@@ -175,7 +203,7 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         Settings: Application settings instance
     """
     if env_file:
-        os.environ["ENV_FILE"] = str(env_file)
-    # Clear cache to reload
+        return Settings(_env_file=env_file, _env_file_encoding="utf-8")
+    # Clear cache to reload default settings
     get_settings.cache_clear()
     return get_settings()

@@ -70,9 +70,9 @@ class ColumnMeta(BaseModel):
     enum_values: list[str] = Field(default_factory=list, description="Enum values if applicable")
     ordinal_position: int = Field(default=0, description="Column position in table")
 
-    def get_id(self, db_name: str, table_name: str) -> str:
+    def get_id(self, db_name: str, schema_name: str, table_name: str) -> str:
         """Generate unique column ID."""
-        return f"{db_name}.{table_name}.{self.name}"
+        return f"{db_name}.{schema_name}.{table_name}.{self.name}"
 
     def get_embedding_text(self) -> str:
         """Generate text for embedding."""
@@ -138,6 +138,7 @@ class TableMeta(BaseModel):
     is_archive: bool = Field(default=False, description="Is archive/history table")
     is_view: bool = Field(default=False, description="Is view (not table)")
     primary_key: list[str] = Field(default_factory=list, description="Primary key columns")
+    unique_constraints: list[list[str]] = Field(default_factory=list, description="Unique constraints (each is list of column names)")
     columns: list[ColumnMeta] = Field(default_factory=list, description="Table columns")
     indexes: list[IndexMeta] = Field(default_factory=list, description="Table indexes")
 
