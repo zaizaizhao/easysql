@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from dotenv import load_dotenv
 
 from easysql.utils.logger import get_logger
 
@@ -88,7 +89,7 @@ class Settings(BaseSettings):
     All settings can be overridden via environment variables.
     Database configurations are dynamically parsed from DB_<NAME>_* variables.
     """
-
+    # load_dotenv的优先级高于BaseSettings的env_file
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -203,7 +204,10 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         Settings: Application settings instance
     """
     if env_file:
-        return Settings(_env_file=env_file, _env_file_encoding="utf-8")
-    # Clear cache to reload default settings
-    get_settings.cache_clear()
+        load_dotenv(env_file, override=True)
+        # Clear cache and reload with new env vars
+        get_settings.cache_clear()
+    else:
+        # Clear cache to reload default settings
+        get_settings.cache_clear()
     return get_settings()

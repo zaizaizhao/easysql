@@ -69,6 +69,7 @@ class Neo4jSchemaWriter:
         """Get the Neo4j driver, connecting if necessary."""
         if not self._driver:
             self.connect()
+        assert self._driver is not None
         return self._driver
 
     def write_database(self, db_meta: DatabaseMeta) -> dict[str, int]:
@@ -270,7 +271,7 @@ class Neo4jSchemaWriter:
 
     def find_join_path(
         self, table1: str, table2: str, max_hops: int = 5
-    ) -> list[dict] | None:
+    ) -> dict[str, list] | None:
         """
         Find the shortest join path between two tables.
 
@@ -304,6 +305,41 @@ class Neo4jSchemaWriter:
                     "relationships": record["relationships"],
                 }
             return None
+
+    # 找到连接多个表的所有必要路径
+    def find_join_paths_for_tables(self, tables: list[str], max_hops: int = 5) -> list[dict]:
+        """
+        Find the unique join edges needed to connect all given tables.
+        """
+        with self.driver.session() as session:
+            result = session.run(
+                f"""
+                UNWIND $tables AS t1
+                UNWIND $tables AS t2
+                WITH t1, t2 WHERE t1 < t2
+                MATCH (table1:Table {{name: t1}}), (table2:Table {{name: t2}})
+                MATCH path = shortestPath((table1)-[:FOREIGN_KEY*..{max_hops}]-(table2))
+                UNWIND relationships(path) AS rel
+                WITH DISTINCT 
+                    startNode(rel).name AS fk_table, 
+                    endNode(rel).name AS pk_table,
+                    rel.fk_column AS fk_column,
+                    rel.pk_column AS pk_column
+                RETURN fk_table, pk_table, fk_column, pk_column
+                """,
+                tables=tables,
+            )
+
+            # 去重（不同路径可能包含相同的边）
+            seen = set()
+            edges = []
+            for record in result:
+                edge_key = (record["fk_table"], record["pk_table"], record["fk_column"])
+                if edge_key not in seen:
+                    seen.add(edge_key)
+                    edges.append(dict(record))
+            
+            return edges
 
     def __enter__(self) -> "Neo4jSchemaWriter":
         """Context manager entry."""

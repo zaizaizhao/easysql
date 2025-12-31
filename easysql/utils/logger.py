@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from loguru import logger
+from loguru import Logger
 
 
 def setup_logging(
@@ -57,7 +58,7 @@ def setup_logging(
         )
 
 
-def get_logger(name: str | None = None) -> "logger":
+def get_logger(name: str | None = None) -> Logger:
     """
     Get a logger instance.
 

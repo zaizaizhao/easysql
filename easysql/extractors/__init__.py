@@ -6,7 +6,7 @@ from easysql.extractors.metadata_providers import (
     DBMetadataProvider,
     MetadataProviderFactory,
 )
-
+# 模块导入时自动注册    注册表模式 (Registry Pattern)
 # Register uniform extractor for all supported types
 # This replaces the legacy specific classes
 ExtractorFactory.register("mysql", SQLAlchemySchemaExtractor)
