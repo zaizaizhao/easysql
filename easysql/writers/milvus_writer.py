@@ -30,15 +30,16 @@ class MilvusVectorWriter:
         writer.write_column_embeddings(db_meta)
     """
 
-    # Collection names
-    TABLE_COLLECTION = "table_embeddings"
-    COLUMN_COLLECTION = "column_embeddings"
+    # Default collection names (base names without prefix)
+    _TABLE_COLLECTION_BASE = "table_embeddings"
+    _COLUMN_COLLECTION_BASE = "column_embeddings"
 
     def __init__(
         self,
         uri: str,
         embedding_service: EmbeddingService,
         token: str | None = None,
+        collection_prefix: str = "",
     ):
         """
         Initialize Milvus writer.
@@ -47,11 +48,28 @@ class MilvusVectorWriter:
             uri: Milvus connection URI
             embedding_service: Service for generating embeddings
             token: Optional authentication token
+            collection_prefix: Prefix for collection names (for isolation)
         """
         self.uri = uri
         self.token = token
         self.embedding_service = embedding_service
+        self.collection_prefix = collection_prefix
         self._client: MilvusClient | None = None
+
+    @property
+    def TABLE_COLLECTION(self) -> str:
+        """Get table collection name with optional prefix."""
+        if self.collection_prefix:
+            return f"{self.collection_prefix}_table_embeddings"
+        return self._TABLE_COLLECTION_BASE
+
+    @property
+    def COLUMN_COLLECTION(self) -> str:
+        """Get column collection name with optional prefix."""
+        if self.collection_prefix:
+            return f"{self.collection_prefix}_column_embeddings"
+        return self._COLUMN_COLLECTION_BASE
+
 
     def connect(self) -> None:
         """Establish connection to Milvus."""

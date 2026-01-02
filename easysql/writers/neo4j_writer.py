@@ -30,7 +30,7 @@ class Neo4jSchemaWriter:
         writer.close()
     """
 
-    def __init__(self, uri: str, user: str, password: str):
+    def __init__(self, uri: str, user: str, password: str, database: str = "neo4j"):
         """
         Initialize Neo4j writer.
 
@@ -38,10 +38,12 @@ class Neo4jSchemaWriter:
             uri: Neo4j connection URI (e.g., bolt://localhost:7687)
             user: Neo4j username
             password: Neo4j password
+            database: Neo4j database name (default: neo4j)
         """
         self.uri = uri
         self.user = user
         self.password = password
+        self.database = database
         self._driver: Driver | None = None
 
     def connect(self) -> None:
@@ -53,9 +55,48 @@ class Neo4jSchemaWriter:
             # Verify connectivity
             self._driver.verify_connectivity()
             logger.info(f"Connected to Neo4j: {self.uri}")
+            
+            # Auto-create database if not default and not exists
+            if self.database != "neo4j":
+                self._ensure_database_exists()
+                
         except Exception as e:
             logger.error(f"Failed to connect to Neo4j: {e}")
             raise ConnectionError(f"Neo4j connection failed: {e}") from e
+
+    def _ensure_database_exists(self) -> None:
+        """Create the database if it doesn't exist (Neo4j Enterprise/AuraDB only)."""
+        if self._driver is None:
+            return
+        try:
+            # Connect to system database to manage databases
+            with self._driver.session(database="system") as session:
+                # Check if database exists
+                result = session.run(
+                    "SHOW DATABASES WHERE name = $name",
+                    name=self.database
+                )
+                exists = result.single() is not None
+                
+                if not exists:
+                    logger.info(f"Creating Neo4j database: {self.database}")
+                    session.run(f"CREATE DATABASE {self.database} IF NOT EXISTS")
+                    logger.info(f"Database '{self.database}' created successfully")
+                else:
+                    logger.debug(f"Database '{self.database}' already exists")
+                    
+        except Exception as e:
+            # Community edition doesn't support multi-database
+            error_msg = str(e).lower()
+            if "unsupported" in error_msg or "not supported" in error_msg or "does not exist" in error_msg:
+                logger.warning(
+                    f"Multi-database not supported (Neo4j Community Edition). "
+                    f"Falling back to default 'neo4j' database."
+                )
+                self.database = "neo4j"  # Fallback to default database
+            else:
+                logger.warning(f"Could not ensure database exists: {e}. Falling back to 'neo4j'.")
+                self.database = "neo4j"  # Fallback to default database
 
     def close(self) -> None:
         """Close Neo4j connection."""
@@ -86,7 +127,7 @@ class Neo4jSchemaWriter:
 
         stats = {"databases": 0, "tables": 0, "columns": 0, "foreign_keys": 0}
 
-        with self.driver.session() as session:
+        with self.driver.session(database=self.database) as session:
             # Create database node
             session.execute_write(self._create_database_node, db_meta)
             stats["databases"] = 1
@@ -242,7 +283,7 @@ class Neo4jSchemaWriter:
         """
         logger.warning(f"Clearing Neo4j data for database: {db_name}")
 
-        with self.driver.session() as session:
+        with self.driver.session(database=self.database) as session:
             result = session.run(
                 """
                 MATCH (db:Database {name: $db_name})-[:HAS_TABLE]->(t:Table)-[:HAS_COLUMN]->(c:Column)
@@ -264,13 +305,13 @@ class Neo4jSchemaWriter:
 
     def get_table_count(self) -> int:
         """Get total number of tables in Neo4j."""
-        with self.driver.session() as session:
+        with self.driver.session(database=self.database) as session:
             result = session.run("MATCH (t:Table) RETURN count(t) as count")
             record = result.single()
             return record["count"] if record else 0
 
     def find_join_path(
-        self, table1: str, table2: str, max_hops: int = 5
+        self, table1: str, table2: str, max_hops: int = 5, db_name: str | None = None
     ) -> dict[str, list] | None:
         """
         Find the shortest join path between two tables.
@@ -279,13 +320,27 @@ class Neo4jSchemaWriter:
             table1: First table name
             table2: Second table name
             max_hops: Maximum number of hops
+            db_name: Optional database name filter for isolation
 
         Returns:
             List of path nodes/relationships or None if no path found
         """
-        with self.driver.session() as session:
-            result = session.run(
-                f"""
+        with self.driver.session(database=self.database) as session:
+            # Build query with optional database filter
+            if db_name:
+                query = f"""
+                MATCH path = shortestPath(
+                    (t1:Table {{name: $table1, database: $db_name}})-[:FOREIGN_KEY*1..{max_hops}]-(t2:Table {{name: $table2, database: $db_name}})
+                )
+                RETURN [node IN nodes(path) | node.name] as tables,
+                       [rel IN relationships(path) | {{
+                           fk_column: rel.fk_column, 
+                           pk_column: rel.pk_column
+                       }}] as relationships
+                """
+                result = session.run(query, table1=table1, table2=table2, db_name=db_name)
+            else:
+                query = f"""
                 MATCH path = shortestPath(
                     (t1:Table {{name: $table1}})-[:FOREIGN_KEY*1..{max_hops}]-(t2:Table {{name: $table2}})
                 )
@@ -294,10 +349,9 @@ class Neo4jSchemaWriter:
                            fk_column: rel.fk_column, 
                            pk_column: rel.pk_column
                        }}] as relationships
-                """,
-                table1=table1,
-                table2=table2,
-            )
+                """
+                result = session.run(query, table1=table1, table2=table2)
+            
             record = result.single()
             if record:
                 return {
@@ -307,13 +361,37 @@ class Neo4jSchemaWriter:
             return None
 
     # 找到连接多个表的所有必要路径
-    def find_join_paths_for_tables(self, tables: list[str], max_hops: int = 5) -> list[dict]:
+    def find_join_paths_for_tables(
+        self, tables: list[str], max_hops: int = 5, db_name: str | None = None
+    ) -> list[dict]:
         """
         Find the unique join edges needed to connect all given tables.
+
+        Args:
+            tables: List of table names
+            max_hops: Maximum number of hops
+            db_name: Optional database name filter for isolation
         """
-        with self.driver.session() as session:
-            result = session.run(
-                f"""
+        with self.driver.session(database=self.database) as session:
+            # Build query with optional database filter
+            if db_name:
+                query = f"""
+                UNWIND $tables AS t1
+                UNWIND $tables AS t2
+                WITH t1, t2 WHERE t1 < t2
+                MATCH (table1:Table {{name: t1, database: $db_name}}), (table2:Table {{name: t2, database: $db_name}})
+                MATCH path = shortestPath((table1)-[:FOREIGN_KEY*..{max_hops}]-(table2))
+                UNWIND relationships(path) AS rel
+                WITH DISTINCT 
+                    startNode(rel).name AS fk_table, 
+                    endNode(rel).name AS pk_table,
+                    rel.fk_column AS fk_column,
+                    rel.pk_column AS pk_column
+                RETURN fk_table, pk_table, fk_column, pk_column
+                """
+                result = session.run(query, tables=tables, db_name=db_name)
+            else:
+                query = f"""
                 UNWIND $tables AS t1
                 UNWIND $tables AS t2
                 WITH t1, t2 WHERE t1 < t2
@@ -326,9 +404,8 @@ class Neo4jSchemaWriter:
                     rel.fk_column AS fk_column,
                     rel.pk_column AS pk_column
                 RETURN fk_table, pk_table, fk_column, pk_column
-                """,
-                tables=tables,
-            )
+                """
+                result = session.run(query, tables=tables)
 
             # 去重（不同路径可能包含相同的边）
             seen = set()

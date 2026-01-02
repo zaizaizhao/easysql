@@ -125,6 +125,7 @@ class EmbeddingService:
 
         return embeddings.tolist()
 
+    # Compute cosine similarity between two texts.（not used）
     def compute_similarity(
         self,
         text1: str,

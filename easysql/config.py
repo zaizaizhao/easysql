@@ -101,10 +101,12 @@ class Settings(BaseSettings):
     neo4j_uri: str = Field(default="bolt://localhost:7687", description="Neo4j connection URI")
     neo4j_user: str = Field(default="neo4j", description="Neo4j username")
     neo4j_password: str = Field(default="", description="Neo4j password")
+    neo4j_database: str = Field(default="neo4j", description="Neo4j database name (requires Neo4j 4.0+)")
 
     # Milvus Configuration
     milvus_uri: str = Field(default="http://localhost:19530", description="Milvus connection URI")
     milvus_token: str | None = Field(default=None, description="Milvus authentication token")
+    milvus_collection_prefix: str = Field(default="", description="Prefix for Milvus collection names")
 
     # Embedding Configuration
     embedding_model: str = Field(

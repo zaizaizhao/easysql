@@ -92,6 +92,7 @@ class SchemaPipeline:
                 uri=self.settings.neo4j_uri,
                 user=self.settings.neo4j_user,
                 password=self.settings.neo4j_password,
+                database=self.settings.neo4j_database,
             )
         return self._neo4j_writer
 
@@ -112,6 +113,7 @@ class SchemaPipeline:
                 uri=self.settings.milvus_uri,
                 embedding_service=self.embedding_service,
                 token=self.settings.milvus_token,
+                collection_prefix=self.settings.milvus_collection_prefix,
             )
         return self._milvus_writer
 
