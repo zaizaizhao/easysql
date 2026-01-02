@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  # Neo4j 图数据库
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: easysql-neo4j
+    ports:
+      - "7474:7474" # HTTP Browser
+      - "7687:7687" # Bolt 协议
+    environment:
+      - NEO4J_AUTH=neo4j/your_password123 # 默认用户neo4j，密码至少8位
+      - NEO4J_PLUGINS=["apoc"] # 安装APOC插件
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Milvus 向量数据库（Standalone 单机版）
+  milvus:
+    image: milvusdb/milvus:v2.3.4
+    container_name: easysql-milvus
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      COMMON_STORAGETYPE: local
+    ports:
+      - "19530:19530" # gRPC 端口
+      - "9091:9091" # 健康检查
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+volumes:
+  neo4j_data:
+  milvus_data:
