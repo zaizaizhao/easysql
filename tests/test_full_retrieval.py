@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """
-完整链路测试：Query → Milvus(语义搜索) → Neo4j(关系补全)
-验证从用户问题到相关表和 JOIN 路径的完整流程
+完整链路测试：使用 SchemaRetrievalService 进行智能检索
+
+测试完整的检索流程：
+    Query → Milvus搜索 → FK扩展 → 语义过滤 → 桥梁保护 → LLM裁剪(可选)
 
 运行：
     PYTHONPATH=. python tests/test_full_retrieval.py
@@ -13,6 +15,10 @@ from dotenv import load_dotenv
 from easysql.embeddings import EmbeddingService
 from easysql.writers.milvus_writer import MilvusVectorWriter
 from easysql.writers.neo4j_writer import Neo4jSchemaWriter
+from easysql.retrieval import (
+    SchemaRetrievalService,
+    RetrievalConfig,
+)
 
 # 从 .env 加载配置
 load_dotenv()
@@ -22,27 +28,26 @@ MILVUS_COLLECTION_PREFIX = os.getenv("MILVUS_COLLECTION_PREFIX", "medical")
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
-DB_NAME = "medical"  # 源数据库名，用于 Neo4j 过滤
+DB_NAME = "medical"  # 源数据库名，用于隔离
 
 # 测试问题列表
 TEST_QUESTIONS = [
     ("简单", "患者信息", ["patient"]),
     ("中等", "查询住院超过7天的患者", ["admission", "patient"]),
     ("复杂", "查询患者的处方、用药和费用明细", ["patient", "prescription", "prescription_detail", "fee_record"]),
-    ("复杂", "找出做过CT检查的住院患者及其主治医生", ["inspection_request", "admission", "patient", "doctor"]),
+    ("复杂", "找出做过CT检查的住院患者及其主治医生", ["inspection_request", "admission", "patient", "employee"]),
 ]
 
 
 def main():
     print("=" * 70)
-    print("完整链路测试：Query → Milvus → Neo4j")
+    print("SchemaRetrievalService 完整链路测试")
     print("=" * 70)
     
     # 1. 初始化服务
-    print("\n[1] 初始化 Embedding 服务...")
+    print("\n[1] 初始化服务...")
     embedding_service = EmbeddingService(model_name="BAAI/bge-large-zh-v1.5")
     
-    print("[2] 连接 Milvus...")
     milvus = MilvusVectorWriter(
         uri=MILVUS_URI,
         embedding_service=embedding_service,
@@ -50,7 +55,6 @@ def main():
     )
     milvus.connect()
     
-    print("[3] 连接 Neo4j...")
     neo4j = Neo4jSchemaWriter(
         uri=NEO4J_URI,
         user=NEO4J_USER,
@@ -58,66 +62,148 @@ def main():
     )
     neo4j.connect()
     
-    print(f"    Milvus Tables: {milvus.TABLE_COLLECTION}")
-    print(f"    Neo4j Database: {neo4j.database}")
+    # 2. 创建检索服务 (使用配置)
+    config = RetrievalConfig(
+        # Milvus 搜索
+        search_top_k=5,
+        
+        # FK 扩展
+        expand_fk=True,
+        expand_max_depth=1,
+        
+        # 语义过滤 (关键配置)
+        semantic_filter_enabled=False,
+        semantic_threshold=0.55,
+        semantic_min_tables=3,
+        
+        # 核心表白名单 (这些表不会被过滤)
+        # core_tables=["patient", "employee", "department"],
+        
+        # 桥梁表保护
+        bridge_protection_enabled=True,
+        bridge_max_hops=3,
+        
+        # LLM 裁剪 (可选，需要设置 API key)
+        llm_filter_enabled=True,
+        llm_api_key=os.getenv("LLM_API_KEY"),
+        llm_api_base=os.getenv("LLM_API_BASE", "https://api.moonshot.cn/v1"),
+        llm_filter_model=os.getenv("LLM_FILTER_MODEL", "kimi-k2-0905-preview"),
+        llm_filter_max_tables=8,
+    )
     
-    # 2. 测试每个问题
+    service = SchemaRetrievalService(
+        milvus=milvus,
+        neo4j=neo4j,
+        config=config,
+    )
+    
+    # 显示配置
+    print("\n[2] 检索配置:")
+    print(f"    🔍 search_top_k: {config.search_top_k}")
+    print(f"    🔄 expand_fk: {config.expand_fk}")
+    print(f"    📊 semantic_filter: {config.semantic_filter_enabled} (threshold={config.semantic_threshold})")
+    print(f"    🔗 bridge_protection: {config.bridge_protection_enabled}")
+    print(f"    🤖 llm_filter: {config.llm_filter_enabled}")
+    print(f"    📌 core_tables: {config.core_tables}")
+    
+    # 3. 测试每个问题
+    total_coverage = 0
+    total_expected = 0
+    
     for level, question, expected_tables in TEST_QUESTIONS:
         print("\n" + "=" * 70)
         print(f"[{level}] 🔍 问题: {question}")
         print(f"📌 期望表: {expected_tables}")
         print("=" * 70)
         
-        # Step 1: Milvus 语义搜索
-        print("\n📋 Step 1: Milvus 语义搜索 - 相关表 (Top 5):")
-        tables = milvus.search_tables(question, top_k=5)
-        table_names = []
-        if tables:
-            for i, t in enumerate(tables, 1):
-                table_names.append(t['table_name'])
-                hit = "✅" if t['table_name'] in expected_tables else "  "
-                print(f"   {hit} {i}. {t['table_name']} ({t['chinese_name'] or 'N/A'}) - Score: {t['score']:.4f}")
-        else:
-            print("   (无结果)")
+        # 执行检索
+        result = service.retrieve(question=question, db_name=DB_NAME)
         
-        # 检查覆盖率
-        found = set(table_names) & set(expected_tables)
-        missing = set(expected_tables) - set(table_names)
-        print(f"\n   覆盖率: {len(found)}/{len(expected_tables)} | 缺失: {list(missing) or '无'}")
+        # 显示统计
+        stats = result.stats
         
-        # Step 2: Neo4j 获取 JOIN 路径
-        if len(table_names) >= 2:
-            print(f"\n🔗 Step 2: Neo4j JOIN 路径 (连接上述 {len(table_names)} 张表):")
-            try:
-                join_edges = neo4j.find_join_paths_for_tables(
-                    table_names[:5],  # 最多取5张表
-                    max_hops=5,
-                    db_name=DB_NAME,
-                )
-                if join_edges:
-                    print(f"   找到 {len(join_edges)} 条 JOIN 边:")
-                    for edge in join_edges:
-                        print(f"   • {edge['fk_table']}.{edge['fk_column']} → {edge['pk_table']}.{edge['pk_column']}")
-                else:
-                    print("   (未找到 JOIN 路径，表可能没有直接外键关联)")
-            except Exception as e:
-                print(f"   ❌ 查询失败: {e}")
+        # Milvus 搜索统计
+        milvus_stats = stats.get("milvus_search", {})
+        print(f"\n📋 Step 1: Milvus 语义搜索 ({milvus_stats.get('count', 0)} 张表)")
+        milvus_tables = milvus_stats.get("tables", [])
+        milvus_scores = milvus_stats.get("scores", {})
+        for i, t in enumerate(milvus_tables[:5], 1):
+            hit = "✅" if t in expected_tables else "  "
+            score = milvus_scores.get(t, 0)
+            print(f"   {hit} {i}. {t} (score: {score:.4f})")
         
-        # Step 3: 生成 Schema 概要
-        print(f"\n📄 Step 3: Schema 概要 (可传给 LLM):")
-        print("   ---")
-        for t in tables[:3]:
-            cols = milvus.search_columns(t['table_name'], top_k=5, table_filter=[t['table_name']])
-            col_str = ", ".join([f"{c['column_name']}({c['data_type']})" for c in cols[:4]])
-            print(f"   {t['table_name']} ({t['chinese_name'] or 'N/A'}): {col_str}...")
-        print("   ---")
+        # FK 扩展统计
+        fk_stats = stats.get("fk_expansion", {})
+        if fk_stats:
+            print(f"\n🔄 Step 2: FK 扩展 ({fk_stats.get('before', 0)} → {fk_stats.get('after', 0)} 张)")
+            added = fk_stats.get("added", [])
+            if added:
+                print(f"   新增: {added[:8]}{'...' if len(added) > 8 else ''}")
+        
+        # 过滤统计
+        filter_stats = stats.get("filters", {})
+        if "chain" in filter_stats:
+            chain = filter_stats["chain"]
+            
+            # 语义过滤
+            if "semantic" in chain:
+                sem = chain["semantic"]
+                print(f"\n📊 Step 3: 语义过滤")
+                print(f"   保留: {sem.get('after', '?')} 张 (必保: {sem.get('must_keep', 0)}, 高分: {sem.get('kept_by_score', 0)})")
+                removed = sem.get("removed", [])
+                if removed:
+                    print(f"   移除低分表: {removed[:5]}{'...' if len(removed) > 5 else ''}")
+            
+            # 桥梁保护
+            if "bridge" in chain:
+                bridge = chain["bridge"]
+                bridges_added = bridge.get("bridges_added", [])
+                if bridges_added:
+                    print(f"\n🔗 Step 4: 桥梁保护 (添加 {len(bridges_added)} 张)")
+                    print(f"   桥梁表: {bridges_added}")
+            
+            # LLM 裁剪
+            if "llm" in chain:
+                llm = chain["llm"]
+                if llm.get("action") == "llm_filter":
+                    print(f"\n🤖 Step 5: LLM 裁剪")
+                    print(f"   模型: {llm.get('model', 'N/A')}")
+                    print(f"   {llm.get('before', '?')} → {llm.get('after', '?')} 张表")
+                elif llm.get("action") == "skipped":
+                    print(f"\n🤖 Step 5: LLM 裁剪 (跳过: {llm.get('reason', 'N/A')})")
+        
+        # 最终结果
+        print(f"\n📋 最终表列表 ({len(result.tables)} 张):")
+        for i, t in enumerate(result.tables, 1):
+            hit = "✅" if t in expected_tables else "  "
+            print(f"   {hit} {i}. {t}")
+        
+        # 覆盖率检查
+        found = set(result.tables) & set(expected_tables)
+        missing = set(expected_tables) - set(result.tables)
+        coverage = len(found) / len(expected_tables) * 100
+        total_coverage += len(found)
+        total_expected += len(expected_tables)
+        
+        print(f"\n   覆盖率: {len(found)}/{len(expected_tables)} ({coverage:.0f}%) | 缺失: {list(missing) or '无'}")
+        
+        # JOIN 路径
+        if result.join_paths:
+            print(f"\n🔗 JOIN 路径 ({len(result.join_paths)} 条):")
+            for edge in result.join_paths[:5]:
+                print(f"   • {edge['fk_table']}.{edge['fk_column']} → {edge['pk_table']}.{edge['pk_column']}")
+            if len(result.join_paths) > 5:
+                print(f"   ... 还有 {len(result.join_paths) - 5} 条")
     
-    # 3. 关闭连接
+    # 4. 总结
+    total_pct = total_coverage / total_expected * 100 if total_expected > 0 else 0
+    print("\n" + "=" * 70)
+    print(f"测试完成！总覆盖率: {total_coverage}/{total_expected} ({total_pct:.0f}%)")
+    print("=" * 70)
+    
+    # 5. 关闭连接
     milvus.close()
     neo4j.close()
-    print("\n" + "=" * 70)
-    print("测试完成！")
-    print("=" * 70)
 
 
 if __name__ == "__main__":

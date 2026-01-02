@@ -124,6 +124,41 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level")
     log_file: str | None = Field(default=None, description="Log file path")
 
+    # ===== Retrieval Configuration =====
+    
+    # Search settings
+    retrieval_search_top_k: int = Field(default=5, description="Number of tables from Milvus search")
+    retrieval_expand_fk: bool = Field(default=True, description="Expand tables via FK relationships")
+    retrieval_expand_max_depth: int = Field(default=1, description="FK expansion depth")
+    
+    # Semantic filter settings
+    semantic_filter_enabled: bool = Field(default=True, description="Enable semantic filtering")
+    semantic_filter_threshold: float = Field(default=0.4, description="Minimum score for semantic filter")
+    semantic_filter_min_tables: int = Field(default=3, description="Minimum tables to keep")
+    
+    # Core tables that should never be filtered
+    core_tables: str = Field(
+        default="patient,employee,department,drug_dictionary,diagnosis_dictionary",
+        description="Comma-separated core tables that won't be filtered"
+    )
+    
+    # Bridge table protection
+    bridge_protection_enabled: bool = Field(default=True, description="Protect bridge tables")
+    bridge_max_hops: int = Field(default=3, description="Max hops for bridge detection")
+    
+    # LLM filter settings
+    llm_filter_enabled: bool = Field(default=False, description="Enable LLM-based table filtering")
+    llm_filter_max_tables: int = Field(default=8, description="Max tables after LLM filtering")
+    llm_filter_model: str = Field(default="deepseek-chat", description="LLM model for filtering")
+    llm_api_key: str | None = Field(default=None, description="LLM API key")
+    llm_api_base: str | None = Field(default=None, description="LLM API base URL")
+
+    @property
+    def core_tables_list(self) -> list[str]:
+        """Parse core_tables string into list."""
+        return [t.strip() for t in self.core_tables.split(",") if t.strip()]
+
+
     # Dynamically parsed database configurations
     _databases: list[DatabaseConfig] = []
 

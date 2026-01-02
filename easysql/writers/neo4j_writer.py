@@ -311,6 +311,146 @@ class Neo4jSchemaWriter:
             record = result.single()
             return record["count"] if record else 0
 
+    def expand_with_related_tables(
+        self,
+        table_names: list[str],
+        max_depth: int = 1,
+        db_name: str | None = None,
+    ) -> list[str]:
+        """
+        Expand table list with FK-related tables.
+
+        Automatically discovers tables connected via foreign key relationships
+        to the input tables. This helps complete schema context for queries
+        that involve implicit relationships (e.g., patient table when querying
+        prescriptions).
+
+        Args:
+            table_names: Initial list of table names from semantic search.
+            max_depth: How many FK hops to expand (1 = direct FKs only).
+            db_name: Optional database name filter for multi-project isolation.
+
+        Returns:
+            Expanded list of table names including related tables.
+
+        Example:
+            Input: ['prescription', 'fee_record']
+            Output: ['prescription', 'fee_record', 'patient', 'outpatient_visit', ...]
+        """
+        if not table_names:
+            return []
+
+        with self.driver.session(database=self.database) as session:
+            # Build query with optional database filter
+            if db_name:
+                query = f"""
+                UNWIND $tables AS t
+                MATCH (table:Table {{name: t, database: $db_name}})
+                MATCH (table)-[:FOREIGN_KEY*1..{max_depth}]-(related:Table {{database: $db_name}})
+                RETURN DISTINCT related.name as related_table
+                """
+                result = session.run(query, tables=table_names, db_name=db_name)
+            else:
+                query = f"""
+                UNWIND $tables AS t
+                MATCH (table:Table {{name: t}})
+                MATCH (table)-[:FOREIGN_KEY*1..{max_depth}]-(related:Table)
+                RETURN DISTINCT related.name as related_table
+                """
+                result = session.run(query, tables=table_names)
+
+            related = [r["related_table"] for r in result]
+            
+            # Merge original tables with related tables, preserve order
+            expanded = list(table_names)  # Start with original order
+            for table in related:
+                if table not in expanded:
+                    expanded.append(table)
+            
+            logger.debug(
+                f"Expanded {len(table_names)} tables to {len(expanded)} "
+                f"(+{len(expanded) - len(table_names)} related)"
+            )
+            return expanded
+
+    def find_bridge_tables(
+        self,
+        high_score_tables: list[str],
+        max_hops: int = 3,
+        db_name: str | None = None,
+    ) -> list[str]:
+        """
+        Find bridge tables that connect high-score tables.
+
+        Bridge tables are intermediate tables on the shortest path between
+        two high-score tables. Even if they have low semantic similarity,
+        they are essential for JOIN operations.
+
+        Args:
+            high_score_tables: Tables with high semantic scores.
+            max_hops: Maximum FK hops to consider (default 3).
+            db_name: Optional database name filter.
+
+        Returns:
+            List of bridge table names (not including the input tables).
+
+        Example:
+            Input: ['patient', 'prescription']
+            Output: ['outpatient_visit']  # connects patient to prescription
+        """
+        if len(high_score_tables) < 2:
+            return []
+
+        with self.driver.session(database=self.database) as session:
+            if db_name:
+                query = f"""
+                UNWIND $tables AS t1
+                UNWIND $tables AS t2
+                WITH t1, t2 WHERE t1 < t2
+                
+                MATCH (table1:Table {{name: t1, database: $db_name}}),
+                      (table2:Table {{name: t2, database: $db_name}})
+                MATCH path = shortestPath(
+                    (table1)-[:FOREIGN_KEY*1..{max_hops}]-(table2)
+                )
+                
+                UNWIND nodes(path) AS node
+                WITH node.name AS bridge_table
+                WHERE NOT bridge_table IN $tables
+                
+                RETURN DISTINCT bridge_table
+                """
+                result = session.run(
+                    query, tables=high_score_tables, db_name=db_name
+                )
+            else:
+                query = f"""
+                UNWIND $tables AS t1
+                UNWIND $tables AS t2
+                WITH t1, t2 WHERE t1 < t2
+                
+                MATCH (table1:Table {{name: t1}}), (table2:Table {{name: t2}})
+                MATCH path = shortestPath(
+                    (table1)-[:FOREIGN_KEY*1..{max_hops}]-(table2)
+                )
+                
+                UNWIND nodes(path) AS node
+                WITH node.name AS bridge_table
+                WHERE NOT bridge_table IN $tables
+                
+                RETURN DISTINCT bridge_table
+                """
+                result = session.run(query, tables=high_score_tables)
+
+            bridges = [r["bridge_table"] for r in result]
+            
+            if bridges:
+                logger.debug(
+                    f"Found {len(bridges)} bridge tables for {high_score_tables}: {bridges}"
+                )
+            
+            return bridges
+
     def find_join_path(
         self, table1: str, table2: str, max_hops: int = 5, db_name: str | None = None
     ) -> dict[str, list] | None:
