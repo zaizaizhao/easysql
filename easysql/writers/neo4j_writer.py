@@ -185,6 +185,7 @@ class Neo4jSchemaWriter:
             MATCH (db:Database {name: $db_name})
             MERGE (t:Table {id: $table_id})
             SET t.name = $name,
+                t.database = $db_name,
                 t.schema_name = $schema_name,
                 t.chinese_name = $chinese_name,
                 t.description = $description,
