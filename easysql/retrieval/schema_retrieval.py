@@ -24,8 +24,18 @@ class RetrievalResult:
     tables: List[str]
     """Final list of relevant table names."""
     
-    columns: List[Dict[str, Any]] = field(default_factory=list)
-    """Relevant columns from the tables."""
+    table_columns: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
+    """Complete column info for each table from Neo4j.
+    
+    Structure: {table_name: [column_info, ...]}
+    Each column_info contains: name, chinese_name, data_type, is_pk, is_fk, etc.
+    """
+    
+    table_metadata: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    """Table metadata including chinese_name, description, etc."""
+    
+    semantic_columns: List[Dict[str, Any]] = field(default_factory=list)
+    """Semantically relevant columns from Milvus search (for highlighting)."""
     
     join_paths: List[Dict[str, str]] = field(default_factory=list)
     """FK join paths between tables."""
@@ -305,17 +315,25 @@ class SchemaRetrievalService:
         final_tables = filter_result.tables
         stats["filters"] = filter_result.stats
         
-        # Step 5: Get columns for final tables
-        columns = []
+        # Step 5: Get complete table columns from Neo4j
+        table_columns = {}
+        if final_tables:
+            table_columns = self.neo4j.get_table_columns(
+                table_names=final_tables,
+                db_name=db_name,
+            )
+        
+        # Step 6: Get semantically relevant columns from Milvus (for highlighting)
+        semantic_columns = []
         if final_tables:
             column_results = self.milvus.search_columns(
                 query=question,
                 top_k=20,
                 table_filter=final_tables,
             )
-            columns = column_results
+            semantic_columns = column_results
         
-        # Step 6: Get JOIN paths
+        # Step 7: Get JOIN paths
         join_paths = []
         if len(final_tables) >= 2:
             join_paths = self.neo4j.find_join_paths_for_tables(
@@ -326,13 +344,17 @@ class SchemaRetrievalService:
         
         stats["final"] = {
             "tables": len(final_tables),
-            "columns": len(columns),
+            "table_columns": sum(len(cols) for cols in table_columns.values()),
+            "semantic_columns": len(semantic_columns),
             "join_paths": len(join_paths),
         }
         
         return RetrievalResult(
             tables=final_tables,
-            columns=columns,
+            table_columns=table_columns,
+            table_metadata=table_metadata,
+            semantic_columns=semantic_columns,
             join_paths=join_paths,
             stats=stats,
         )
+

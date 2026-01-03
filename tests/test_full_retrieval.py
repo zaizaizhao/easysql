@@ -1,16 +1,18 @@
 #!/usr/bin/env python
 """
-完整链路测试：使用 SchemaRetrievalService 进行智能检索
+完整链路测试：使用 SchemaRetrievalService 进行智能检索，并集成 ContextBuilder 生成 LLM 上下文，最后调用 LLM 生成 SQL
 
 测试完整的检索流程：
-    Query → Milvus搜索 → FK扩展 → 语义过滤 → 桥梁保护 → LLM裁剪(可选)
+    Query → Milvus搜索 → FK扩展 → 语义过滤 → 桥梁保护 → LLM裁剪(可选) → Context构建 → LLM生成SQL
 
 运行：
     PYTHONPATH=. python tests/test_full_retrieval.py
 """
 
 import os
+import re
 from dotenv import load_dotenv
+from openai import OpenAI
 
 from easysql.embeddings import EmbeddingService
 from easysql.writers.milvus_writer import MilvusVectorWriter
@@ -19,6 +21,7 @@ from easysql.retrieval import (
     SchemaRetrievalService,
     RetrievalConfig,
 )
+from easysql.context import ContextBuilder, ContextInput
 
 # 从 .env 加载配置
 load_dotenv()
@@ -30,6 +33,11 @@ NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
 DB_NAME = "medical"  # 源数据库名，用于隔离
 
+# LLM 配置
+LLM_API_BASE = os.getenv("LLM_API_BASE", "https://api.moonshot.cn/v1")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_SQL_MODEL", "kimi-k2-0905-preview")
+
 # 测试问题列表
 TEST_QUESTIONS = [
     ("简单", "患者信息", ["patient"]),
@@ -37,6 +45,56 @@ TEST_QUESTIONS = [
     ("复杂", "查询患者的处方、用药和费用明细", ["patient", "prescription", "prescription_detail", "fee_record"]),
     ("复杂", "找出做过CT检查的住院患者及其主治医生", ["inspection_request", "admission", "patient", "employee"]),
 ]
+
+
+def generate_sql(
+    client: OpenAI,
+    system_prompt: str,
+    user_prompt: str,
+    model: str = LLM_MODEL,
+) -> str:
+    """
+    调用 LLM 生成 SQL 语句。
+    
+    Args:
+        client: OpenAI 客户端
+        system_prompt: 系统提示词
+        user_prompt: 用户提示词（包含 schema 和问题）
+        model: 模型名称
+        
+    Returns:
+        生成的 SQL 语句
+    """
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.0,  # 使用确定性输出
+            max_tokens=1024,
+        )
+        
+        content = response.choices[0].message.content
+        
+        # 提取 SQL（处理 markdown 代码块）
+        sql = content.strip()
+        
+        # 如果返回的是 markdown 代码块，提取其中的 SQL
+        if "```sql" in sql.lower():
+            match = re.search(r"```sql\s*(.*?)\s*```", sql, re.DOTALL | re.IGNORECASE)
+            if match:
+                sql = match.group(1).strip()
+        elif "```" in sql:
+            match = re.search(r"```\s*(.*?)\s*```", sql, re.DOTALL)
+            if match:
+                sql = match.group(1).strip()
+        
+        return sql
+        
+    except Exception as e:
+        return f"-- Error: {str(e)}"
 
 
 def main():
@@ -61,6 +119,17 @@ def main():
         password=NEO4J_PASSWORD,
     )
     neo4j.connect()
+    
+    # 初始化 LLM 客户端
+    llm_client = None
+    if LLM_API_KEY:
+        llm_client = OpenAI(
+            api_key=LLM_API_KEY,
+            base_url=LLM_API_BASE,
+        )
+        print(f"    ✅ LLM 客户端已初始化 (model: {LLM_MODEL})")
+    else:
+        print("    ⚠️ LLM_API_KEY 未设置，跳过 SQL 生成")
     
     # 2. 创建检索服务 (使用配置)
     config = RetrievalConfig(
@@ -194,6 +263,60 @@ def main():
                 print(f"   • {edge['fk_table']}.{edge['fk_column']} → {edge['pk_table']}.{edge['pk_column']}")
             if len(result.join_paths) > 5:
                 print(f"   ... 还有 {len(result.join_paths) - 5} 条")
+        
+        # ===== Context 构建 =====
+        print(f"\n{'='*70}")
+        print("📝 Context 构建测试")
+        print("="*70)
+        
+        # 创建 ContextInput
+        context_input = ContextInput(
+            question=question,
+            retrieval_result=result,
+            db_name=DB_NAME,
+        )
+        
+        # 使用默认的 ContextBuilder 构建上下文
+        builder = ContextBuilder.default()
+        context_output = builder.build(context_input)
+        
+        # 输出 Context 统计
+        print(f"\n📊 Context 统计:")
+        print(f"   总 Token 数: {context_output.total_tokens}")
+        print(f"   Section 数量: {len(context_output.sections)}")
+        for section in context_output.sections:
+            print(f"     - {section.name}: {section.token_count} tokens")
+        
+        # 输出 System Prompt
+        print(f"\n{'─'*70}")
+        print("🤖 System Prompt:")
+        print("─"*70)
+        print(context_output.system_prompt)
+        
+        # 输出 User Prompt
+        print(f"\n{'─'*70}")
+        print("👤 User Prompt:")
+        print("─"*70)
+        print(context_output.user_prompt)
+        print("─"*70)
+        
+        # ===== LLM 生成 SQL =====
+        if llm_client:
+            print(f"\n{'='*70}")
+            print("🧠 LLM SQL 生成")
+            print("="*70)
+            
+            sql = generate_sql(
+                client=llm_client,
+                system_prompt=context_output.system_prompt,
+                user_prompt=context_output.user_prompt,
+                model=LLM_MODEL,
+            )
+            
+            print(f"\n📝 生成的 SQL:")
+            print("─"*70)
+            print(sql)
+            print("─"*70)
     
     # 4. 总结
     total_pct = total_coverage / total_expected * 100 if total_expected > 0 else 0

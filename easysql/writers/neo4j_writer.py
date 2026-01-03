@@ -311,6 +311,109 @@ class Neo4jSchemaWriter:
             logger.info(f"Cleared {deleted} nodes for database: {db_name}")
             return deleted
 
+    def get_table_columns(
+        self,
+        table_names: list[str],
+        db_name: str | None = None,
+    ) -> dict[str, list[dict]]:
+        """
+        Get complete column information for specified tables.
+        
+        Args:
+            table_names: List of table names to get columns for.
+            db_name: Optional database name filter for isolation.
+            
+        Returns:
+            Dictionary mapping table name to list of column info dicts.
+            Each column dict contains: name, chinese_name, data_type, 
+            is_pk, is_fk, is_nullable, description, ordinal_position.
+            
+        Example:
+            >>> columns = neo4j.get_table_columns(['patient', 'prescription'])
+            >>> columns['patient']
+            [
+                {'name': 'patient_id', 'chinese_name': '患者ID', 'data_type': 'int', 'is_pk': True, ...},
+                {'name': 'name', 'chinese_name': '姓名', 'data_type': 'varchar(50)', ...},
+            ]
+        """
+        if not table_names:
+            return {}
+        
+        with self.driver.session(database=self.database) as session:
+            if db_name:
+                query = """
+                UNWIND $tables AS table_name
+                MATCH (t:Table {name: table_name, database: $db_name})-[r:HAS_COLUMN]->(c:Column)
+                RETURN t.name AS table_name, 
+                       t.chinese_name AS table_chinese_name,
+                       c.name AS name,
+                       c.chinese_name AS chinese_name,
+                       c.data_type AS data_type,
+                       c.base_type AS base_type,
+                       c.is_pk AS is_pk,
+                       c.is_fk AS is_fk,
+                       c.is_nullable AS is_nullable,
+                       c.is_indexed AS is_indexed,
+                       c.is_unique AS is_unique,
+                       c.description AS description,
+                       c.ordinal_position AS ordinal_position
+                ORDER BY table_name, c.ordinal_position
+                """
+                result = session.run(query, tables=table_names, db_name=db_name)
+            else:
+                query = """
+                UNWIND $tables AS table_name
+                MATCH (t:Table {name: table_name})-[r:HAS_COLUMN]->(c:Column)
+                RETURN t.name AS table_name,
+                       t.chinese_name AS table_chinese_name,
+                       c.name AS name,
+                       c.chinese_name AS chinese_name,
+                       c.data_type AS data_type,
+                       c.base_type AS base_type,
+                       c.is_pk AS is_pk,
+                       c.is_fk AS is_fk,
+                       c.is_nullable AS is_nullable,
+                       c.is_indexed AS is_indexed,
+                       c.is_unique AS is_unique,
+                       c.description AS description,
+                       c.ordinal_position AS ordinal_position
+                ORDER BY table_name, c.ordinal_position
+                """
+                result = session.run(query, tables=table_names)
+            
+            # Group columns by table name
+            table_columns: dict[str, list[dict]] = {}
+            table_metadata: dict[str, dict] = {}
+            
+            for record in result:
+                table_name = record["table_name"]
+                if table_name not in table_columns:
+                    table_columns[table_name] = []
+                    table_metadata[table_name] = {
+                        "chinese_name": record["table_chinese_name"]
+                    }
+                
+                table_columns[table_name].append({
+                    "name": record["name"],
+                    "chinese_name": record["chinese_name"],
+                    "data_type": record["data_type"],
+                    "base_type": record["base_type"],
+                    "is_pk": record["is_pk"],
+                    "is_fk": record["is_fk"],
+                    "is_nullable": record["is_nullable"],
+                    "is_indexed": record["is_indexed"],
+                    "is_unique": record["is_unique"],
+                    "description": record["description"],
+                    "ordinal_position": record["ordinal_position"],
+                })
+            
+            logger.debug(
+                f"Retrieved columns for {len(table_columns)} tables: "
+                f"{list(table_columns.keys())}"
+            )
+            
+            return table_columns
+
     def get_table_count(self) -> int:
         """Get total number of tables in Neo4j."""
         with self.driver.session(database=self.database) as session:
