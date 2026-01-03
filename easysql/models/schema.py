@@ -106,19 +106,30 @@ class ForeignKeyMeta(BaseModel):
     Foreign key metadata model.
 
     Stores information about foreign key relationships between tables.
+    Includes schema information to support multi-schema environments.
     """
 
     constraint_name: str = Field(..., description="Constraint name")
+    from_schema: str = Field(default="public", description="Source schema name")
     from_table: str = Field(..., description="Source table name")
     from_column: str = Field(..., description="Source column name")
+    to_schema: str = Field(default="public", description="Referenced schema name")
     to_table: str = Field(..., description="Referenced table name")
     to_column: str = Field(..., description="Referenced column name")
     on_delete: str = Field(default="RESTRICT", description="ON DELETE action")
     on_update: str = Field(default="RESTRICT", description="ON UPDATE action")
 
-    def get_id(self) -> str:
-        """Generate unique foreign key ID."""
-        return f"fk_{self.from_table}_{self.from_column}_{self.to_table}"
+    def get_id(self, db_name: str) -> str:
+        """Generate unique foreign key ID including schema for multi-schema support."""
+        return f"fk_{db_name}.{self.from_schema}.{self.from_table}.{self.from_column}_{self.to_schema}.{self.to_table}"
+
+    def get_from_table_id(self, db_name: str) -> str:
+        """Get the full ID of the source table."""
+        return f"{db_name}.{self.from_schema}.{self.from_table}"
+
+    def get_to_table_id(self, db_name: str) -> str:
+        """Get the full ID of the referenced table."""
+        return f"{db_name}.{self.to_schema}.{self.to_table}"
 
 
 class TableMeta(BaseModel):

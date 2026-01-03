@@ -182,11 +182,22 @@ class LLMFilter(TableFilter):
                 # Ensure we don't exceed max_tables
                 valid_tables = valid_tables[:self._max_tables]
                 
-                # Always include original tables that were in the selection
+                # IMPORTANT: Always include original_tables (Milvus results + bridge tables)
+                # These are critical for the query and should never be filtered out
+                must_keep = set(context.original_tables)
+                
                 final_tables = []
+                # First add must-keep tables that LLM selected
                 for t in valid_tables:
                     if t not in final_tables:
                         final_tables.append(t)
+                
+                # Then add must-keep tables that LLM didn't select (but we need to keep)
+                kept_by_must_keep = []
+                for t in context.original_tables:
+                    if t not in final_tables and t in tables:
+                        final_tables.append(t)
+                        kept_by_must_keep.append(t)
                 
                 return FilterResult(
                     tables=final_tables,
@@ -195,7 +206,8 @@ class LLMFilter(TableFilter):
                         "model": self._model,
                         "before": len(tables),
                         "after": len(final_tables),
-                        "selected": final_tables,
+                        "selected_by_llm": valid_tables,
+                        "kept_by_must_keep": kept_by_must_keep,
                         "raw_response": content,
                     }
                 )

@@ -315,6 +315,8 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
                     constrained_columns = fk.get("constrained_columns", [])
                     referred_columns = fk.get("referred_columns", [])
                     referred_table = fk.get("referred_table", "")
+                    # Get referred schema (defaults to current schema if not specified)
+                    referred_schema = fk.get("referred_schema") or schema
 
                     # Handle composite keys by creating multiple metadata entries
                     for i, col_name in enumerate(constrained_columns):
@@ -323,8 +325,10 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
                         foreign_keys.append(
                             ForeignKeyMeta(
                                 constraint_name=fk.get("name") or f"fk_{table_name}_{col_name}",
+                                from_schema=schema,
                                 from_table=table_name,
                                 from_column=col_name,
+                                to_schema=referred_schema,
                                 to_table=referred_table,
                                 to_column=ref_col_name,
                                 on_delete=fk.get("options", {}).get("ondelete", "RESTRICT"),

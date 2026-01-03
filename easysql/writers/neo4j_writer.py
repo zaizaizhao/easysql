@@ -251,23 +251,30 @@ class Neo4jSchemaWriter:
         tx: Any, db_name: str, fk: ForeignKeyMeta
     ) -> None:
         """Create a FOREIGN_KEY relationship between tables."""
+        # Use full table IDs to correctly match tables in multi-schema environments
+        from_table_id = fk.get_from_table_id(db_name)
+        to_table_id = fk.get_to_table_id(db_name)
+        
         tx.run(
             """
-            MATCH (t1:Table) WHERE t1.name = $from_table AND t1.id STARTS WITH $db_prefix
-            MATCH (t2:Table) WHERE t2.name = $to_table AND t2.id STARTS WITH $db_prefix
+            MATCH (t1:Table {id: $from_table_id})
+            MATCH (t2:Table {id: $to_table_id})
             MERGE (t1)-[r:FOREIGN_KEY {constraint_name: $constraint_name}]->(t2)
             SET r.fk_column = $fk_column,
                 r.pk_column = $pk_column,
+                r.from_schema = $from_schema,
+                r.to_schema = $to_schema,
                 r.on_delete = $on_delete,
                 r.on_update = $on_update,
                 r.updated_at = datetime()
             """,
-            db_prefix=f"{db_name}.",
-            from_table=fk.from_table,
-            to_table=fk.to_table,
+            from_table_id=from_table_id,
+            to_table_id=to_table_id,
             constraint_name=fk.constraint_name,
             fk_column=fk.from_column,
             pk_column=fk.to_column,
+            from_schema=fk.from_schema,
+            to_schema=fk.to_schema,
             on_delete=fk.on_delete,
             on_update=fk.on_update,
         )

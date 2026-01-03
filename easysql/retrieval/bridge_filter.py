@@ -85,6 +85,10 @@ class BridgeFilter(TableFilter):
             if bridge not in result_tables:
                 result_tables.append(bridge)
                 added.append(bridge)
+                # IMPORTANT: Also add to context.original_tables so subsequent
+                # filters (like LLMFilter) will protect these tables
+                if bridge not in context.original_tables:
+                    context.original_tables.append(bridge)
         
         # 2. Find direct FK neighbors (tables directly connected via FK)
         direct_neighbors = []
@@ -107,6 +111,9 @@ class BridgeFilter(TableFilter):
                 if table in self._protected_tables and table not in result_tables:
                     result_tables.append(table)
                     direct_neighbors.append(table)
+                    # Also protect in context
+                    if table not in context.original_tables:
+                        context.original_tables.append(table)
         
         return FilterResult(
             tables=result_tables,

@@ -287,6 +287,10 @@ class SchemaRetrievalService:
         for bridge in bridge_tables:
             if bridge not in must_keep_tables:
                 must_keep_tables.append(bridge)
+            # IMPORTANT: Also add bridge tables to expanded_tables so they are
+            # available for the filter chain to preserve
+            if bridge not in expanded_tables:
+                expanded_tables.append(bridge)
         
         # Step 4: Apply filter chain
         context = FilterContext(
