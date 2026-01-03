@@ -4,7 +4,7 @@ Schema Retrieval Service
 The main service that orchestrates schema retrieval for Text2SQL.
 Combines Milvus semantic search, Neo4j FK expansion, and configurable filters.
 """
-
+from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
@@ -12,7 +12,7 @@ from .base import FilterContext, FilterResult, FilterChain, NoOpFilter
 from .semantic_filter import SemanticFilter
 from .bridge_filter import BridgeFilter
 from .llm_filter import LLMFilter
-from __future__ import annotations
+
 from easysql.writers.milvus_writer import MilvusVectorWriter
 from easysql.writers.neo4j_writer import Neo4jSchemaWriter
 

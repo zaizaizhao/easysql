@@ -23,6 +23,9 @@ pymilvus>=2.3.0
 # Embeddings
 sentence-transformers>=2.2.0
 
+# LLM (Optional - for LLMFilter)
+openai>=1.0.0
+
 # CLI & Logging
 typer>=0.9.0
 rich>=13.0.0
