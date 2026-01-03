@@ -6,16 +6,15 @@ Combines Milvus semantic search, Neo4j FK expansion, and configurable filters.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any, Optional
 
 from .base import FilterContext, FilterResult, FilterChain, NoOpFilter
 from .semantic_filter import SemanticFilter
 from .bridge_filter import BridgeFilter
 from .llm_filter import LLMFilter
-
-if TYPE_CHECKING:
-    from easysql.writers.milvus_writer import MilvusVectorWriter
-    from easysql.writers.neo4j_writer import Neo4jSchemaWriter
+from __future__ import annotations
+from easysql.writers.milvus_writer import MilvusVectorWriter
+from easysql.writers.neo4j_writer import Neo4jSchemaWriter
 
 
 @dataclass
@@ -102,8 +101,8 @@ class SchemaRetrievalService:
     
     def __init__(
         self,
-        milvus: "MilvusVectorWriter",
-        neo4j: "Neo4jSchemaWriter",
+        milvus: MilvusVectorWriter,
+        neo4j: Neo4jSchemaWriter,
         config: Optional[RetrievalConfig] = None,
     ):
         """
