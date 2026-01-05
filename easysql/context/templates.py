@@ -52,7 +52,7 @@ class PromptTemplate:
     
     @classmethod
     def default(cls) -> "PromptTemplate":
-        """Create default Text2SQL template."""
+        """Create default Text2SQL template. factory mode"""
         return cls(
             system_template=DEFAULT_SYSTEM_PROMPT,
             user_template=DEFAULT_USER_PROMPT_TEMPLATE,

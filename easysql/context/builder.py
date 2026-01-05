@@ -38,7 +38,7 @@ class ContextBuilder:
     def __init__(
         self,
         template: Optional[PromptTemplate] = None,
-        max_total_tokens: int = 8000,
+        max_total_tokens: int = 32000,
     ):
         """
         Initialize context builder.

@@ -39,7 +39,7 @@ class SchemaSection(ContextSection):
         include_types: bool = True,
         include_descriptions: bool = True,
         include_constraints: bool = True,
-        max_columns_per_table: int = 30,
+        max_columns_per_table: int = 50,
         highlight_semantic_columns: bool = False,
     ):
         """
