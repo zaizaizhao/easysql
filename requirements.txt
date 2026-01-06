@@ -24,7 +24,17 @@ pymilvus>=2.3.0
 # Embeddings
 sentence-transformers>=2.2.0
 
-# LLM (Optional - for LLMFilter)
+# LLM Framework & Providers
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+langchain-google-genai>=2.0.0
+langchain-mcp-adapters>=0.1.0
+# Optional:
+# langchain-anthropic>=0.2.0
+
+# Legacy LLM (Optional - for LLMFilter)
 openai>=1.0.0
 
 # CLI & Logging

@@ -772,12 +772,204 @@ easysql/
 3. **HITL 友好**：原生支持多轮对话
 4. **与现有代码兼容**：复用 [SchemaRetrievalService](cci:2://file:///Users/zhucaiyunxiaodi/Downloads/easysql/easysql/retrieval/schema_retrieval.py:99:0-358:9) 和 [ContextBuilder](cci:2://file:///Users/zhucaiyunxiaodi/Downloads/easysql/easysql/context/builder.py:14:0-237:22)
 
-需要我进一步细化某个部分吗？或者我可以开始编写正式的实现计划？
+LangGraph 1.0+ 官方文档调研报告
+1. HITL（Human-in-the-Loop）实现：与 llm_plan.md 对比
+llm_plan.md 中的描述（第 77-81 行、396-404 行）：
 
-### User Input
+python
+# llm_plan.md 的方案
+graph = graph.compile(
+    interrupt_before=["clarify"],  # 在 clarify 前暂停等待用户输入
+    checkpointer=MemorySaver()
+)
+LangGraph 1.0+ 官方最新推荐：
 
-请帮我阅读langgraph的官方文档，你需要帮我调研下langgraph1.0后的使用，比如hitl是否和上述的一样？是否需要集成middleware，构建graph的流程和你上述是否一致，还有如果我想使用dbhub这个mcp，而不是自己造sql 的tool，集成是否有问题？帮我仔细调研上述问题，给出详细的解释和代码示例解释
+特性	llm_plan.md 描述	LangGraph 1.0+ 官方文档
+中断机制	interrupt_before/interrupt_after	✅ 仍支持，但推荐使用 interrupt() 函数
+恢复方式	未明确描述	使用 Command(resume=...) 恢复
+中断位置	节点级别静态定义	可在任意节点内部动态调用
+🔄 关键变化：LangGraph 1.0+ 推荐使用 interrupt() 函数替代静态的 interrupt_before
 
-### User Input
+新的官方推荐写法：
 
-请帮我阅读langgraph的官方文档，你需要帮我调研下langgraph1.0后的使用，比如hitl是否和上述的一样？是否需要集成middleware，构建graph的流程和你上述是否一致，还有如果我想使用dbhub这个mcp，而不是自己造sql 的tool，集成是否有问题？帮我仔细调研上述问题，给出详细的解释和代码示例解释
+python
+from langgraph.types import interrupt, Command
+def clarify_node(state: State):
+    # 动态中断，payload 会返回给调用方
+    user_response = interrupt({
+        "question": "请问您要查询哪个时间段的销售额？",
+        "options": ["本月", "本年", "自定义"]
+    })
+    
+    # 用户回答后，代码从这里继续执行
+    return {"clarified_query": user_response}
+# 恢复执行
+config = {"configurable": {"thread_id": "session-123"}}
+result = graph.invoke({"raw_query": "查询销售额"}, config)
+# 检查中断
+if result.get("__interrupt__"):
+    # 用户回答后恢复
+    resumed = graph.invoke(
+        Command(resume="我要查询2024年的销售额"),
+        config
+    )
+✅ 结论：llm_plan.md 的 HITL 设计思路完全正确，但代码写法需要更新。interrupt_before 仍可用（适合调试和静态断点），但生产环境推荐使用 interrupt() 函数，更灵活。
+
+2. Middleware 是否需要集成？
+答案：不是必需的，但推荐用于高级场景
+
+LangGraph 1.0 引入了 middleware hooks（2025年底正式发布），但这是可选的高级功能：
+
+Hook	作用	您的场景是否需要
+before_model	在 LLM 调用前修改 state	🟡 可选：用于 token 限制、消息历史管理
+modify_model_request	修改发送给 LLM 的请求	🟡 可选：动态切换模型或修改 tools
+after_model	LLM 调用后处理输出	🟡 可选：输出验证、安全检查
+对于您的 EasySQLAgent，目前不需要 middleware。您的需求完全可以通过标准的节点（nodes）实现：
+
+Query 分析 → analyze_query 节点
+SQL 验证 → validate_sql 节点
+只有当您需要跨节点的通用逻辑（如统一的日志记录、安全检查）时才需考虑 middleware。
+
+3. Graph 构建流程：与 llm_plan.md 对比
+llm_plan.md 中的构建方式（第 639-698 行）：
+
+python
+graph = StateGraph(EasySQLState)
+graph.add_node("analyze", AnalyzeQueryNode(llm))
+graph.add_node("clarify", ClarifyNode(llm))
+graph.set_entry_point("analyze")
+graph.add_conditional_edges("analyze", lambda s: ...)
+graph.add_edge("clarify", "retrieve")
+return graph.compile(interrupt_before=["clarify"], checkpointer=MemorySaver())
+LangGraph 1.0+ 官方 Quickstart 的构建方式：
+
+python
+from langgraph.graph import StateGraph, START, END
+builder = StateGraph(MessagesState)
+builder.add_node("llm_call", llm_call)
+builder.add_node("tool_node", tool_node)
+builder.add_edge(START, "llm_call")  # 使用 START 常量
+builder.add_conditional_edges("llm_call", should_continue, ["tool_node", END])
+builder.add_edge("tool_node", "llm_call")
+agent = builder.compile()
+✅ 对比结论：
+
+方面	llm_plan.md	LangGraph 1.0+	状态
+StateGraph 使用	✅ 一致	✅ 一致	✅
+add_node	✅ 一致	✅ 一致	✅
+add_edge	✅ 一致	✅ 一致	✅
+add_conditional_edges	✅ 一致	✅ 一致	✅
+入口点	set_entry_point()	add_edge(START, ...)	🔄 需更新
+compile()	✅ 一致	✅ 一致	✅
+唯一需要修改的：set_entry_point("analyze") 应改为 add_edge(START, "analyze")
+
+4. DBHub MCP 集成：替代自建 SQL Tool
+DBHub 是什么：
+
+由 Bytebase 开发的 零依赖、token 高效的 MCP Server
+支持 PostgreSQL、MySQL、MariaDB、SQL Server、SQLite
+提供两个核心 Tool：
+execute_sql：执行 SQL 查询
+search_objects：搜索数据库 schema
+集成方案：使用 langchain-mcp-adapters 将 DBHub 的 MCP Tools 转换为 LangChain Tools
+
+python
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.graph import StateGraph, MessagesState, START
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain.chat_models import init_chat_model
+# 1. 配置 DBHub MCP 连接
+client = MultiServerMCPClient({
+    "dbhub": {
+        "url": "http://localhost:8080/mcp",  # DBHub HTTP 端口
+        "transport": "http",
+    }
+})
+# 2. 获取 MCP Tools（execute_sql, search_objects）
+tools = await client.get_tools()
+# 3. 构建 LangGraph Agent
+model = init_chat_model("deepseek-chat")
+def call_model(state: MessagesState):
+    response = model.bind_tools(tools).invoke(state["messages"])
+    return {"messages": response}
+builder = StateGraph(MessagesState)
+builder.add_node("call_model", call_model)
+builder.add_node("tools", ToolNode(tools))  # 这里的 tools 包含 DBHub 的 execute_sql
+builder.add_edge(START, "call_model")
+builder.add_conditional_edges("call_model", tools_condition)
+builder.add_edge("tools", "call_model")
+graph = builder.compile()
+DBHub 启动命令：
+
+bash
+# Docker 方式
+docker run --rm --init \
+  --name dbhub \
+  --publish 8080:8080 \
+  bytebase/dbhub \
+  --transport http \
+  --port 8080 \
+  --dsn "postgres://user:password@host:5432/dbname"
+# 或 NPM 方式
+npx @bytebase/dbhub@latest --transport http --port 8080 --dsn "mysql://..."
+✅ 集成可行性：
+
+问题	答案
+能否替代自建 SQL Tool？	✅ 完全可以，DBHub 提供 execute_sql 和 search_objects
+是否需要改代码？	🔄 需要修改 ValidateSQLNode，把自定义 Tool 替换为 DBHub MCP Tools
+安全性如何？	✅ DBHub 支持只读模式、行数限制、查询超时
+多数据库支持？	✅ 支持 PostgreSQL/MySQL/MariaDB/SQL Server/SQLite
+需要注意的点：
+
+DBHub 需要单独启动（Docker 或 NPX）
+您的 Agent 通过 HTTP 与 DBHub 通信
+加 langchain-mcp-adapters 到 requirements.txt
+5. 总结：llm_plan.md 需要更新的内容
+项目	原始设计	更新建议
+HITL 中断	interrupt_before=["clarify"]	改用节点内 interrupt() 函数
+恢复机制	未描述	添加 Command(resume=...) 恢复逻辑
+入口点	set_entry_point("analyze")	改为 add_edge(START, "analyze")
+SQL 验证 Tool	自定义 sql_syntax_check、sql_explain	可选替换为 DBHub 的 execute_sql（验证用 EXPLAIN）
+Middleware	未使用	不需要，当前设计已足够
+依赖版本	langgraph>=0.2.0	建议升级至 langgraph>=1.0.0
+更新后的示例代码：
+
+python
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import interrupt, Command
+from langgraph.checkpoint.memory import MemorySaver
+class EasySQLState(TypedDict):
+    raw_query: str
+    clarified_query: Optional[str]
+    messages: Annotated[list, add_messages]
+    # ... 其他字段
+def clarify_node(state: EasySQLState):
+    """HITL 澄清节点 - 使用新的 interrupt() API"""
+    response = interrupt({
+        "question": "请问您要查询的具体时间范围是？",
+        "context": state["raw_query"]
+    })
+    return {
+        "clarified_query": response,
+        "messages": [AIMessage(content=f"好的，我理解您要查询: {response}")]
+    }
+# 构建 Graph
+builder = StateGraph(EasySQLState)
+builder.add_node("analyze", analyze_node)
+builder.add_node("clarify", clarify_node)
+builder.add_node("retrieve", retrieve_node)
+builder.add_node("generate_sql", generate_sql_node)
+builder.add_node("validate_sql", validate_sql_node)
+builder.add_edge(START, "analyze")  # ✅ 新写法
+builder.add_conditional_edges("analyze", route_after_analyze)
+builder.add_edge("clarify", "retrieve")
+builder.add_edge("retrieve", "generate_sql")
+builder.add_edge("generate_sql", "validate_sql")
+builder.add_conditional_edges("validate_sql", route_after_validate)
+graph = builder.compile(checkpointer=MemorySaver())
+# 使用
+config = {"configurable": {"thread_id": "user-123"}}
+result = graph.invoke({"raw_query": "查询销售额"}, config)
+if result.get("__interrupt__"):
+    # 用户回答后恢复
+    result = graph.invoke(Command(resume="2024年全年"), config)

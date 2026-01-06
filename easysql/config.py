@@ -9,7 +9,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -80,6 +80,53 @@ class DatabaseConfig:
         return f"DatabaseConfig(name={self.name}, type={self.db_type}, database={self.database}, schema={self.get_default_schema()})"
 
 
+class LLMConfig(BaseSettings):
+    """
+    Configuration for the LLM layer.
+    """
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+    
+    # Query Mode: 'plan' (HITL enabled) or 'fast' (direct execution)
+    query_mode: str = Field(default="plan", description="Query execution mode")
+    
+    # Model Provider: openai, google_genai, anthropic, etc.
+    llm_provider: str = Field(default="openai", description="LLM provider")
+    
+    # API Keys & Endpoints (Provider-specific)
+    # OpenAI
+    openai_api_key: str | None = None
+    openai_api_base: str | None = Field(default="https://api.openai.com/v1", description="OpenAI API Base URL")
+    
+    # Google Gemini
+    google_api_key: str | None = None
+    
+    # Anthropic
+    anthropic_api_key: str | None = None
+    
+    # MCP
+    mcp_dbhub_url: str | None = Field(default=None, description="DBHub MCP Server URL")
+    
+    # Models
+    # Strong model for planning, analyzing, and complex generation (e.g., GPT-4o, Gemini 1.5 Pro)
+    model_planning: str = Field(default="gpt-4o", description="Model for planning and complex tasks")
+    
+    # Fast model for simple tasks (e.g., GPT-4o-mini, Gemini 1.5 Flash)
+    model_fast: str = Field(default="gpt-4o-mini", description="Model for simple tasks")
+    
+    # Retry Configuration
+    max_sql_retries: int = Field(default=3, description="Max SQL generation retries")
+    
+    @field_validator("query_mode")
+    @classmethod
+    def validate_query_mode(cls, v: str) -> str:
+        if v.lower() not in ["plan", "fast"]:
+            raise ValueError("QUERY_MODE must be 'plan' or 'fast'")
+        return v.lower()
+
 
 class Settings(BaseSettings):
     """
@@ -145,21 +192,25 @@ class Settings(BaseSettings):
     bridge_protection_enabled: bool = Field(default=True, description="Protect bridge tables")
     bridge_max_hops: int = Field(default=3, description="Max hops for bridge detection")
     
-    # LLM filter settings
+    # LLM filter settings (Legacy/Retrieval layer)
     llm_filter_enabled: bool = Field(default=False, description="Enable LLM-based table filtering")
     llm_filter_max_tables: int = Field(default=8, description="Max tables after LLM filtering")
     llm_filter_model: str = Field(default="deepseek-chat", description="LLM model for filtering")
     llm_api_key: str | None = Field(default=None, description="LLM API key")
     llm_api_base: str | None = Field(default=None, description="LLM API base URL")
 
+    # --- LLM Layer Configs (New) ---
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+
     @property
     def core_tables_list(self) -> list[str]:
         """Parse core_tables string into list."""
+        if not self.core_tables:
+            return []
         return [t.strip() for t in self.core_tables.split(",") if t.strip()]
 
-
     # Dynamically parsed database configurations
-    _databases: list[DatabaseConfig] = []
+    _databases: dict[str, DatabaseConfig] = {}
 
     @model_validator(mode="before")
     @classmethod
@@ -179,7 +230,7 @@ class Settings(BaseSettings):
                 db_names.add(match.group(1).upper())
 
         # Parse each database configuration
-        databases = []
+        databases = {}
         for db_name in db_names:
             prefix = f"db_{db_name.lower()}_"
             try:
@@ -191,10 +242,11 @@ class Settings(BaseSettings):
                     user=merged.get(f"{prefix}user", "root"),
                     password=merged.get(f"{prefix}password", ""),
                     database=merged.get(f"{prefix}database", ""),
+                    schema=merged.get(f"{prefix}schema"),
                     system_type=merged.get(f"{prefix}system_type", "UNKNOWN"),
                     description=merged.get(f"{prefix}description", ""),
                 )
-                databases.append(config)
+                databases[db_name.lower()] = config
             except (ValueError, TypeError) as e:
                 logger.warning(f"Failed to parse database config {db_name}: {e}")
 
@@ -203,9 +255,9 @@ class Settings(BaseSettings):
         return data
 
     @property
-    def databases(self) -> list[DatabaseConfig]:
+    def databases(self) -> dict[str, DatabaseConfig]:
         """Get all configured database connections."""
-        return getattr(self, "_parsed_databases", [])
+        return getattr(self, "_parsed_databases", {})
 
     @field_validator("log_level")
     @classmethod
@@ -214,7 +266,7 @@ class Settings(BaseSettings):
         valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         upper_v = v.upper()
         if upper_v not in valid_levels:
-            raise ValueError(f"log_level must be one of {valid_levels}")
+            raise ValueError(f"LOG_LEVEL must be one of {valid_levels}")
         return upper_v
 
 
@@ -244,5 +296,6 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
     
     if env_file:
         # Use pydantic-settings native _env_file parameter
-        return Settings(_env_file=env_file)
+        # Note: we ignore type error here because _env_file is handled by BaseSettings __init__
+        return Settings(_env_file=env_file)  # type: ignore
     return get_settings()
