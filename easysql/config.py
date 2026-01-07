@@ -110,15 +110,36 @@ class LLMConfig(BaseSettings):
     # MCP
     mcp_dbhub_url: str | None = Field(default=None, description="DBHub MCP Server URL")
     
-    # Models
-    # Strong model for planning, analyzing, and complex generation (e.g., GPT-4o, Gemini 1.5 Pro)
-    model_planning: str = Field(default="gpt-4o", description="Model for planning and complex tasks")
+    # Provider-specific Models (Priority: Google > Anthropic > OpenAI)
+    google_llm_model: str | None = Field(default=None, description="Google Gemini model name")
+    anthropic_llm_model: str | None = Field(default=None, description="Anthropic Claude model name")
+    openai_llm_model: str = Field(default="gpt-4o", description="OpenAI model name (fallback)")
     
-    # Fast model for simple tasks (e.g., GPT-4o-mini, Gemini 1.5 Flash)
-    model_fast: str = Field(default="gpt-4o-mini", description="Model for simple tasks")
+    # Optional: Model for planning/analyze phase (query analysis, clarification)
+    # If not specified, falls back to the resolved primary model
+    model_planning: str | None = Field(default=None, description="Optional model for analyze/clarify phase")
     
     # Retry Configuration
     max_sql_retries: int = Field(default=3, description="Max SQL generation retries")
+    
+    def get_model(self) -> str:
+        """Get the primary model based on priority: Google > Anthropic > OpenAI.
+        
+        Also auto-selects the provider based on which model is configured.
+        """
+        if self.google_llm_model and self.google_api_key:
+            return self.google_llm_model
+        if self.anthropic_llm_model and self.anthropic_api_key:
+            return self.anthropic_llm_model
+        return self.openai_llm_model
+    
+    def get_provider(self) -> str:
+        """Get the provider based on model priority: Google > Anthropic > OpenAI."""
+        if self.google_llm_model and self.google_api_key:
+            return "google_genai"
+        if self.anthropic_llm_model and self.anthropic_api_key:
+            return "anthropic"
+        return "openai"
     
     @field_validator("query_mode")
     @classmethod

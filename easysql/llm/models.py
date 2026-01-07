@@ -13,15 +13,19 @@ from easysql.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-ModelType = Literal["planning", "fast"]
+# Purpose: "generation" for SQL generation/repair, "planning" for analyze/clarify
+ModelPurpose = Literal["generation", "planning"]
 
-def get_llm(config: LLMConfig, model_type: ModelType = "planning") -> BaseChatModel:
+
+def get_llm(config: LLMConfig, purpose: ModelPurpose = "generation") -> BaseChatModel:
     """
     Initialize and return a LangChain ChatModel based on configuration.
     
     Args:
         config: LLM configuration object.
-        model_type: "planning" (strong model) or "fast" (weak/fast model).
+        purpose: "generation" for SQL generation/repair (uses config.get_model()),
+                 "planning" for analyze/clarify phase (uses config.model_planning if set,
+                 otherwise falls back to config.get_model()).
         
     Returns:
         Configured BaseChatModel instance.
@@ -30,12 +34,16 @@ def get_llm(config: LLMConfig, model_type: ModelType = "planning") -> BaseChatMo
         ValueError: If provider is unsupported or API keys are missing.
         ImportError: If required packages are missing.
     """
-    provider = config.llm_provider.lower()
+    # Use auto-detected provider based on priority: Google > Anthropic > OpenAI
+    provider = config.get_provider()
     
-    # Determined model name based on type
-    model_name = config.model_planning if model_type == "planning" else config.model_fast
+    # Determine model name based on purpose
+    if purpose == "planning" and config.model_planning:
+        model_name = config.model_planning
+    else:
+        model_name = config.get_model()
     
-    logger.info(f"Initializing LLM: provider={provider}, model={model_name}, type={model_type}")
+    logger.info(f"Initializing LLM: provider={provider}, model={model_name}, purpose={purpose}")
     
     if provider == "openai":
         return _init_openai(config, model_name)

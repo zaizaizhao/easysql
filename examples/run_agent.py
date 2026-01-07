@@ -7,7 +7,7 @@ import uuid
 from typing import Any
 
 from easysql.config import load_settings
-from easysql.llm.agent import build_graph
+from easysql.llm import build_graph
 
 
 def run_agent_demo():
@@ -16,8 +16,10 @@ def run_agent_demo():
     settings = load_settings()
     
     print(f"--- EasySQL Agent Demo (Mode: {settings.llm.query_mode}) ---")
-    print(f"    Provider: {settings.llm.llm_provider}")
-    print(f"    Model: {settings.llm.model_planning if settings.llm.query_mode == 'plan' else settings.llm.model_fast}")
+    print(f"    Provider: {settings.llm.get_provider()}")
+    print(f"    Model: {settings.llm.get_model()}")
+    if settings.llm.model_planning:
+        print(f"    Planning Model: {settings.llm.model_planning}")
     
     # Show available databases
     if settings.databases:

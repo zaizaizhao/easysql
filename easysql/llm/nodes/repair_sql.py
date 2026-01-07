@@ -36,10 +36,13 @@ class RepairSQLNode(BaseNode):
     
     @property
     def llm(self) -> BaseChatModel:
-        """Get or lazily initialize the LLM."""
+        """Get or lazily initialize the LLM.
+        
+        Uses the generation model since SQL repair is part of the SQL generation flow.
+        """
         if self._llm is None:
             config = self._config or get_settings().llm
-            self._llm = get_llm(config, "planning")
+            self._llm = get_llm(config, "generation")
         return self._llm
     
     def __call__(self, state: EasySQLState) -> dict:

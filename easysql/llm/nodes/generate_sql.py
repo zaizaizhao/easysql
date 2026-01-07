@@ -38,13 +38,16 @@ class GenerateSQLNode(BaseNode):
         return self._config
     
     def _get_llm(self) -> BaseChatModel:
-        """Get LLM based on query mode."""
+        """Get LLM for SQL generation.
+        
+        Always uses the primary 'model' configured for generation tasks.
+        The query_mode only controls HITL flow, not model selection.
+        """
         if self._llm is not None:
             return self._llm
         
-        # Select model based on query mode
-        model_type = "planning" if self.config.query_mode == "plan" else "fast"
-        return get_llm(self.config, model_type)
+        # Always use generation model for SQL generation
+        return get_llm(self.config, "generation")
     
     def __call__(self, state: EasySQLState) -> dict:
         """Generate SQL using the configured LLM.
