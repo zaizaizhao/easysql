@@ -2,16 +2,15 @@
 import sys
 
 # Ensure extractors package is imported to trigger registration
-import easysql.extractors
-
 from easysql.config import DatabaseConfig
 from easysql.extractors.base import ExtractorFactory
 from easysql.extractors.sqlalchemy_extractor import SQLAlchemySchemaExtractor
 
+
 def test_factory_registration():
     """Test that factory returns correct extractor for DB types."""
     print("Testing ExtractorFactory registration...")
-    
+
     # Test MySQL
     mysql_config = DatabaseConfig(
         name="test_mysql",
@@ -22,7 +21,7 @@ def test_factory_registration():
         password="password",
         database="test"
     )
-    
+
     try:
         extractor = ExtractorFactory.create(mysql_config)
         print(f"Created extractor for mysql: {type(extractor).__name__}")
@@ -42,7 +41,7 @@ def test_factory_registration():
         password="password",
         database="test"
     )
-    
+
     try:
         extractor = ExtractorFactory.create(pg_config)
         print(f"Created extractor for postgresql: {type(extractor).__name__}")
@@ -62,7 +61,7 @@ def test_factory_registration():
         password="password",
         database="ORCL"
     )
-    
+
     try:
         extractor = ExtractorFactory.create(oracle_config)
         print(f"Created extractor for oracle: {type(extractor).__name__}")
@@ -81,7 +80,7 @@ def test_factory_registration():
         password="password",
         database="master"
     )
-    
+
     try:
         extractor = ExtractorFactory.create(sqlserver_config)
         print(f"Created extractor for sqlserver: {type(extractor).__name__}")
@@ -103,7 +102,7 @@ def test_factory_registration():
     )
     assert custom_schema_config.get_default_schema() == "my_schema", "Custom schema should be used"
     print(f"Custom schema test passed: {custom_schema_config.get_default_schema()}")
-        
+
     print("Factory verification successful!")
     return True
 

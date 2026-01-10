@@ -3,104 +3,78 @@ Retrieve Schema Node.
 
 Wraps the existing SchemaRetrievalService.
 """
+
 from functools import lru_cache
-from typing import Optional
 
 from easysql.config import get_settings
-from easysql.llm.state import EasySQLState
-from easysql.llm.nodes.base import BaseNode
-from easysql.retrieval.schema_retrieval import SchemaRetrievalService
-from easysql.writers.milvus_writer import MilvusVectorWriter
-from easysql.writers.neo4j_writer import Neo4jSchemaWriter
 from easysql.embeddings.embedding_service import EmbeddingService
+from easysql.llm.nodes.base import BaseNode
+from easysql.llm.state import EasySQLState
+from easysql.readers.milvus_reader import MilvusSchemaReader
+from easysql.readers.neo4j_reader import Neo4jSchemaReader
+from easysql.repositories.milvus_repository import MilvusRepository
+from easysql.repositories.neo4j_repository import Neo4jRepository
+from easysql.retrieval.schema_retrieval import SchemaRetrievalService
 
 
 @lru_cache(maxsize=1)
 def get_retrieval_service() -> SchemaRetrievalService:
-    """Get singleton SchemaRetrievalService instance.
-    
-    Uses lru_cache to ensure a single instance is reused.
-    Properly initializes MilvusVectorWriter with required dependencies.
-    
-    Returns:
-        Configured SchemaRetrievalService instance.
-    """
+    """Get singleton SchemaRetrievalService instance."""
     settings = get_settings()
-    
-    # Initialize EmbeddingService
-    # Only accepts: model_name, device, normalize
+
     embedding_service = EmbeddingService(
         model_name=settings.embedding_model,
     )
-    
-    # Initialize MilvusVectorWriter with required parameters
-    milvus = MilvusVectorWriter(
+
+    milvus_repo = MilvusRepository(
         uri=settings.milvus_uri,
-        embedding_service=embedding_service,
-        token=getattr(settings, 'milvus_token', None),
-        collection_prefix=getattr(settings, 'milvus_collection_prefix', ''),
+        token=settings.milvus_token,
+        collection_prefix=settings.milvus_collection_prefix,
     )
-    
-    # Initialize Neo4jSchemaWriter with required parameters
-    neo4j = Neo4jSchemaWriter(
+    milvus_repo.connect()
+
+    neo4j_repo = Neo4jRepository(
         uri=settings.neo4j_uri,
         user=settings.neo4j_user,
         password=settings.neo4j_password,
-        database=getattr(settings, 'neo4j_database', 'neo4j'),
+        database=settings.neo4j_database,
     )
-    
+    neo4j_repo.connect()
+
+    milvus_reader = MilvusSchemaReader(
+        repository=milvus_repo,
+        embedding_service=embedding_service,
+    )
+
+    neo4j_reader = Neo4jSchemaReader(repository=neo4j_repo)
+
     return SchemaRetrievalService.from_settings(
-        milvus=milvus,
-        neo4j=neo4j,
+        milvus_reader=milvus_reader,
+        neo4j_reader=neo4j_reader,
         settings=settings,
     )
 
 
 class RetrieveNode(BaseNode):
-    """Node to retrieve schema based on query.
-    
-    Wraps SchemaRetrievalService with DI support.
-    """
-    
-    def __init__(self, service: Optional[SchemaRetrievalService] = None):
-        """Initialize the retrieve node.
-        
-        Args:
-            service: Optional pre-configured SchemaRetrievalService. 
-                    If None, will use singleton instance.
-        """
+    """Node to retrieve schema based on query."""
+
+    def __init__(self, service: SchemaRetrievalService | None = None):
         self._service = service
-    
+
     @property
     def service(self) -> SchemaRetrievalService:
-        """Get or lazily initialize the retrieval service."""
         if self._service is None:
             self._service = get_retrieval_service()
         return self._service
-    
+
     def __call__(self, state: EasySQLState) -> dict:
-        """Retrieve schema based on clarified query.
-        
-        Args:
-            state: Current graph state.
-            
-        Returns:
-            State updates with retrieval_result.
-        """
         query = state["clarified_query"] or state["raw_query"]
-        
-        result = self.service.retrieve(
-            question=query,
-            db_name=state.get("db_name")
-        )
-        
-        # Convert dataclass to dict for State compatibility (serialized)
-        return {
-            "retrieval_result": result.__dict__
-        }
+
+        result = self.service.retrieve(question=query, db_name=state.get("db_name"))
+
+        return {"retrieval_result": result.__dict__}
 
 
-# Factory function for backward compatibility
 def retrieve_node(state: EasySQLState) -> dict:
     """Legacy function wrapper for RetrieveNode."""
     node = RetrieveNode()

@@ -4,103 +4,77 @@ Schema Retrieval Service
 The main service that orchestrates schema retrieval for Text2SQL.
 Combines Milvus semantic search, Neo4j FK expansion, and configurable filters.
 """
-from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
 
-from .base import FilterContext, FilterResult, FilterChain, NoOpFilter
-from .semantic_filter import SemanticFilter
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from .base import FilterChain, FilterContext, NoOpFilter
 from .bridge_filter import BridgeFilter
 from .llm_filter import LLMFilter
+from .semantic_filter import SemanticFilter
 
-from easysql.writers.milvus_writer import MilvusVectorWriter
-from easysql.writers.neo4j_writer import Neo4jSchemaWriter
+if TYPE_CHECKING:
+    from easysql.config import Settings
+    from easysql.readers.milvus_reader import MilvusSchemaReader
+    from easysql.readers.neo4j_reader import Neo4jSchemaReader
 
 
 @dataclass
 class RetrievalResult:
     """Result of schema retrieval."""
-    
-    tables: List[str]
-    """Final list of relevant table names."""
-    
-    table_columns: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
-    """Complete column info for each table from Neo4j.
-    
-    Structure: {table_name: [column_info, ...]}
-    Each column_info contains: name, chinese_name, data_type, is_pk, is_fk, etc.
-    """
-    
-    table_metadata: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    """Table metadata including chinese_name, description, etc."""
-    
-    semantic_columns: List[Dict[str, Any]] = field(default_factory=list)
-    """Semantically relevant columns from Milvus search (for highlighting)."""
-    
-    join_paths: List[Dict[str, str]] = field(default_factory=list)
-    """FK join paths between tables."""
-    
-    stats: Dict[str, Any] = field(default_factory=dict)
-    """Statistics about the retrieval process."""
+
+    tables: list[str]
+
+    table_columns: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+
+    table_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    semantic_columns: list[dict[str, Any]] = field(default_factory=list)
+
+    join_paths: list[dict[str, str]] = field(default_factory=list)
+
+    stats: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class RetrievalConfig:
     """Configuration for schema retrieval."""
-    
-    # Milvus search
+
     search_top_k: int = 5
-    """Number of tables to retrieve from Milvus."""
-    
-    # FK expansion
+
     expand_fk: bool = True
-    """Whether to expand tables via FK relationships."""
-    
+
     expand_max_depth: int = 1
-    """Maximum FK depth for expansion."""
-    
-    # Semantic filter
+
     semantic_filter_enabled: bool = True
-    """Whether to apply semantic filtering."""
-    
+
     semantic_threshold: float = 0.4
-    """Minimum score for semantic filter."""
-    
+
     semantic_min_tables: int = 3
-    """Minimum tables to keep after semantic filter."""
-    
-    # Bridge protection
+
     bridge_protection_enabled: bool = True
-    """Whether to protect bridge tables."""
-    
+
     bridge_max_hops: int = 3
-    """Maximum hops for bridge table detection."""
-    
-    # Core tables
-    core_tables: Optional[List[str]] = None
-    """Tables that should never be filtered out."""
-    
-    # LLM filter
+
+    core_tables: list[str] | None = None
+
     llm_filter_enabled: bool = False
-    """Whether to use LLM for table filtering."""
-    
+
     llm_filter_max_tables: int = 8
-    """Maximum tables after LLM filtering."""
-    
+
     llm_filter_model: str = "deepseek-chat"
-    """LLM model name."""
-    
-    llm_api_key: Optional[str] = None
-    """LLM API key."""
-    
-    llm_api_base: Optional[str] = None
-    """LLM API base URL."""
+
+    llm_api_key: str | None = None
+
+    llm_api_base: str | None = None
 
 
 class SchemaRetrievalService:
     """
     Service for retrieving relevant schema for Text2SQL.
-    
+
     Workflow:
         1. Milvus semantic search → initial tables
         2. Neo4j FK expansion → expanded tables (optional)
@@ -108,88 +82,71 @@ class SchemaRetrievalService:
         4. Bridge protection → add back essential bridge tables (optional)
         5. Return final tables + columns + JOIN paths
     """
-    
+
     def __init__(
         self,
-        milvus: MilvusVectorWriter,
-        neo4j: Neo4jSchemaWriter,
-        config: Optional[RetrievalConfig] = None,
+        milvus_reader: MilvusSchemaReader,
+        neo4j_reader: Neo4jSchemaReader,
+        config: RetrievalConfig | None = None,
     ):
-        """
-        Initialize the service.
-        
-        Args:
-            milvus: Milvus writer for semantic search.
-            neo4j: Neo4j writer for graph queries.
-            config: Retrieval configuration.
-        """
-        self.milvus = milvus
-        self.neo4j = neo4j
+        self._milvus = milvus_reader
+        self._neo4j = neo4j_reader
         self.config = config or RetrievalConfig()
-        
-        # Build filter chain based on config
+
         self._filter_chain = self._build_filter_chain()
-    
+
     def _build_filter_chain(self) -> FilterChain:
-        """Build the filter chain based on config."""
         chain = FilterChain()
-        
+
         if self.config.semantic_filter_enabled:
             core_tables = set(self.config.core_tables) if self.config.core_tables else None
-            chain.add(SemanticFilter(
-                threshold=self.config.semantic_threshold,
-                min_tables=self.config.semantic_min_tables,
-                core_tables=core_tables,
-            ))
-        
+            chain.add(
+                SemanticFilter(
+                    threshold=self.config.semantic_threshold,
+                    min_tables=self.config.semantic_min_tables,
+                    core_tables=core_tables,
+                )
+            )
+
         if self.config.bridge_protection_enabled:
-            # Protected tables are core tables that should be recovered if they
-            # are direct FK neighbors of high-score tables
             protected = set(self.config.core_tables) if self.config.core_tables else set()
-            chain.add(BridgeFilter(
-                neo4j_writer=self.neo4j,
-                max_hops=self.config.bridge_max_hops,
-                include_direct_neighbors=True,
-                protected_tables=protected,
-            ))
-        
-        # LLM filter (last in chain)
+            chain.add(
+                BridgeFilter(
+                    neo4j_reader=self._neo4j,
+                    max_hops=self.config.bridge_max_hops,
+                    include_direct_neighbors=True,
+                    protected_tables=protected,
+                )
+            )
+
         if self.config.llm_filter_enabled and self.config.llm_api_key:
-            chain.add(LLMFilter(
-                api_key=self.config.llm_api_key,
-                api_base=self.config.llm_api_base,
-                model=self.config.llm_filter_model,
-                max_tables=self.config.llm_filter_max_tables,
-            ))
-        
-        # If no filters, add NoOp
+            chain.add(
+                LLMFilter(
+                    api_key=self.config.llm_api_key,
+                    api_base=self.config.llm_api_base,
+                    model=self.config.llm_filter_model,
+                    max_tables=self.config.llm_filter_max_tables,
+                )
+            )
+
         if not chain.filters:
             chain.add(NoOpFilter())
-        
+
         return chain
-    
+
     @classmethod
     def from_settings(
         cls,
-        milvus: "MilvusVectorWriter",
-        neo4j: "Neo4jSchemaWriter",
-        settings: "Settings" = None,
-    ) -> "SchemaRetrievalService":
-        """
-        Create service from Settings (environment variables).
-        
-        Args:
-            milvus: Milvus writer instance.
-            neo4j: Neo4j writer instance.
-            settings: Settings instance (uses get_settings() if None).
-        
-        Returns:
-            Configured SchemaRetrievalService.
-        """
+        milvus_reader: MilvusSchemaReader,
+        neo4j_reader: Neo4jSchemaReader,
+        settings: Settings | None = None,
+    ) -> SchemaRetrievalService:
+        """Create service from Settings (environment variables)."""
         if settings is None:
             from easysql.config import get_settings
+
             settings = get_settings()
-        
+
         config = RetrievalConfig(
             search_top_k=settings.retrieval_search_top_k,
             expand_fk=settings.retrieval_expand_fk,
@@ -206,32 +163,22 @@ class SchemaRetrievalService:
             llm_api_key=settings.llm_api_key,
             llm_api_base=settings.llm_api_base,
         )
-        
-        return cls(milvus=milvus, neo4j=neo4j, config=config)
-    
+
+        return cls(milvus_reader=milvus_reader, neo4j_reader=neo4j_reader, config=config)
+
     def retrieve(
         self,
         question: str,
-        db_name: Optional[str] = None,
+        db_name: str | None = None,
     ) -> RetrievalResult:
-        """
-        Retrieve relevant schema for a question.
-        
-        Args:
-            question: User's natural language question.
-            db_name: Optional database name for isolation.
-        
-        Returns:
-            RetrievalResult with tables, columns, join paths, and stats.
-        """
-        stats: Dict[str, Any] = {}
-        
-        # Step 1: Milvus semantic search
-        search_results = self.milvus.search_tables(
+        """Retrieve relevant schema for a question."""
+        stats: dict[str, Any] = {}
+
+        search_results = self._milvus.search_tables(
             query=question,
             top_k=self.config.search_top_k,
         )
-        
+
         original_tables = [r["table_name"] for r in search_results]
         table_scores = {r["table_name"]: r["score"] for r in search_results}
         table_metadata = {
@@ -242,26 +189,23 @@ class SchemaRetrievalService:
             }
             for r in search_results
         }
-        
+
         stats["milvus_search"] = {
             "count": len(original_tables),
             "tables": original_tables,
             "scores": table_scores,
         }
-        
-        # Step 2: FK expansion
+
         if self.config.expand_fk:
-            expanded_tables = self.neo4j.expand_with_related_tables(
+            expanded_tables = self._neo4j.expand_with_related_tables(
                 table_names=original_tables,
                 max_depth=self.config.expand_max_depth,
                 db_name=db_name,
             )
-            
-            # Get scores for expanded tables
+
             for table in expanded_tables:
                 if table not in table_scores:
-                    # Query Milvus for the score
-                    result = self.milvus.search_tables(
+                    result = self._milvus.search_tables(
                         query=question,
                         top_k=1,
                         filter_expr=f'table_name == "{table}"',
@@ -270,7 +214,7 @@ class SchemaRetrievalService:
                         table_scores[table] = result[0]["score"]
                     else:
                         table_scores[table] = 0.0
-            
+
             stats["fk_expansion"] = {
                 "before": len(original_tables),
                 "after": len(expanded_tables),
@@ -278,12 +222,10 @@ class SchemaRetrievalService:
             }
         else:
             expanded_tables = original_tables
-        
-        # Step 3: Identify bridge tables BEFORE semantic filtering
-        # Bridge tables connect high-score tables and should be protected
+
         bridge_tables = []
         if self.config.bridge_protection_enabled and len(original_tables) >= 2:
-            bridge_tables = self.neo4j.find_bridge_tables(
+            bridge_tables = self._neo4j.find_bridge_tables(
                 high_score_tables=original_tables,
                 max_hops=self.config.bridge_max_hops,
                 db_name=db_name,
@@ -291,64 +233,57 @@ class SchemaRetrievalService:
             stats["bridge_identification"] = {
                 "bridges": bridge_tables,
             }
-        
-        # Create must-keep list: original tables + bridge tables
+
         must_keep_tables = list(original_tables)
         for bridge in bridge_tables:
             if bridge not in must_keep_tables:
                 must_keep_tables.append(bridge)
-            # IMPORTANT: Also add bridge tables to expanded_tables so they are
-            # available for the filter chain to preserve
             if bridge not in expanded_tables:
                 expanded_tables.append(bridge)
-        
-        # Step 4: Apply filter chain
+
         context = FilterContext(
             question=question,
             db_name=db_name,
-            original_tables=must_keep_tables,  # Now includes bridge tables
+            original_tables=must_keep_tables,
             table_scores=table_scores,
             table_metadata=table_metadata,
         )
-        
+
         filter_result = self._filter_chain.execute(expanded_tables, context)
         final_tables = filter_result.tables
         stats["filters"] = filter_result.stats
-        
-        # Step 5: Get complete table columns from Neo4j
+
         table_columns = {}
         if final_tables:
-            table_columns = self.neo4j.get_table_columns(
+            table_columns = self._neo4j.get_table_columns(
                 table_names=final_tables,
                 db_name=db_name,
             )
-        
-        # Step 6: Get semantically relevant columns from Milvus (for highlighting)
+
         semantic_columns = []
         if final_tables:
-            column_results = self.milvus.search_columns(
+            column_results = self._milvus.search_columns(
                 query=question,
                 top_k=20,
                 table_filter=final_tables,
             )
             semantic_columns = column_results
-        
-        # Step 7: Get JOIN paths
+
         join_paths = []
         if len(final_tables) >= 2:
-            join_paths = self.neo4j.find_join_paths_for_tables(
+            join_paths = self._neo4j.find_join_paths_for_tables(
                 tables=final_tables,
                 max_hops=5,
                 db_name=db_name,
             )
-        
+
         stats["final"] = {
             "tables": len(final_tables),
             "table_columns": sum(len(cols) for cols in table_columns.values()),
             "semantic_columns": len(semantic_columns),
             "join_paths": len(join_paths),
         }
-        
+
         return RetrievalResult(
             tables=final_tables,
             table_columns=table_columns,
@@ -357,4 +292,3 @@ class SchemaRetrievalService:
             join_paths=join_paths,
             stats=stats,
         )
-

@@ -7,9 +7,8 @@ creating nodes for databases, tables, columns and their relationships.
 
 from typing import Any
 
-from neo4j import GraphDatabase, Driver
-
 from easysql.models.schema import DatabaseMeta, ForeignKeyMeta, TableMeta
+from easysql.repositories.neo4j_repository import Neo4jRepository
 from easysql.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -23,128 +22,36 @@ class Neo4jSchemaWriter:
     - Database nodes connected to Table nodes
     - Table nodes connected to Column nodes
     - Foreign key relationships between tables
-
-    Usage:
-        writer = Neo4jSchemaWriter(uri, user, password)
-        writer.write_database(db_meta)
-        writer.close()
     """
 
-    def __init__(self, uri: str, user: str, password: str, database: str = "neo4j"):
-        """
-        Initialize Neo4j writer.
-
-        Args:
-            uri: Neo4j connection URI (e.g., bolt://localhost:7687)
-            user: Neo4j username
-            password: Neo4j password
-            database: Neo4j database name (default: neo4j)
-        """
-        self.uri = uri
-        self.user = user
-        self.password = password
-        self.database = database
-        self._driver: Driver | None = None
-
-    def connect(self) -> None:
-        """Establish connection to Neo4j."""
-        try:
-            self._driver = GraphDatabase.driver(
-                self.uri, auth=(self.user, self.password)
-            )
-            # Verify connectivity
-            self._driver.verify_connectivity()
-            logger.info(f"Connected to Neo4j: {self.uri}")
-            
-            # Auto-create database if not default and not exists
-            if self.database != "neo4j":
-                self._ensure_database_exists()
-                
-        except Exception as e:
-            logger.error(f"Failed to connect to Neo4j: {e}")
-            raise ConnectionError(f"Neo4j connection failed: {e}") from e
-
-    def _ensure_database_exists(self) -> None:
-        """Create the database if it doesn't exist (Neo4j Enterprise/AuraDB only)."""
-        if self._driver is None:
-            return
-        try:
-            # Connect to system database to manage databases
-            with self._driver.session(database="system") as session:
-                # Check if database exists
-                result = session.run(
-                    "SHOW DATABASES WHERE name = $name",
-                    name=self.database
-                )
-                exists = result.single() is not None
-                
-                if not exists:
-                    logger.info(f"Creating Neo4j database: {self.database}")
-                    session.run(f"CREATE DATABASE {self.database} IF NOT EXISTS")
-                    logger.info(f"Database '{self.database}' created successfully")
-                else:
-                    logger.debug(f"Database '{self.database}' already exists")
-                    
-        except Exception as e:
-            # Community edition doesn't support multi-database
-            error_msg = str(e).lower()
-            if "unsupported" in error_msg or "not supported" in error_msg or "does not exist" in error_msg:
-                logger.warning(
-                    f"Multi-database not supported (Neo4j Community Edition). "
-                    f"Falling back to default 'neo4j' database."
-                )
-                self.database = "neo4j"  # Fallback to default database
-            else:
-                logger.warning(f"Could not ensure database exists: {e}. Falling back to 'neo4j'.")
-                self.database = "neo4j"  # Fallback to default database
-
-    def close(self) -> None:
-        """Close Neo4j connection."""
-        if self._driver:
-            self._driver.close()
-            self._driver = None
-            logger.debug("Neo4j connection closed")
+    def __init__(self, repository: Neo4jRepository):
+        self._repo = repository
 
     @property
-    def driver(self) -> Driver:
-        """Get the Neo4j driver, connecting if necessary."""
-        if not self._driver:
-            self.connect()
-        assert self._driver is not None
-        return self._driver
+    def driver(self):
+        return self._repo.driver
+
+    @property
+    def database(self) -> str:
+        return self._repo.database
 
     def write_database(self, db_meta: DatabaseMeta) -> dict[str, int]:
-        """
-        Write complete database metadata to Neo4j.
-
-        Args:
-            db_meta: Database metadata to write
-
-        Returns:
-            Statistics dictionary with counts of created nodes/relationships
-        """
+        """Write complete database metadata to Neo4j."""
         logger.info(f"Writing database '{db_meta.name}' to Neo4j")
 
         stats = {"databases": 0, "tables": 0, "columns": 0, "foreign_keys": 0}
 
         with self.driver.session(database=self.database) as session:
-            # Create database node
             session.execute_write(self._create_database_node, db_meta)
             stats["databases"] = 1
 
-            # Create tables with columns
             for table in db_meta.tables:
-                session.execute_write(
-                    self._create_table_with_columns, db_meta.name, table
-                )
+                session.execute_write(self._create_table_with_columns, db_meta.name, table)
                 stats["tables"] += 1
                 stats["columns"] += len(table.columns)
 
-            # Create foreign key relationships
             for fk in db_meta.foreign_keys:
-                session.execute_write(
-                    self._create_foreign_key_relationship, db_meta.name, fk
-                )
+                session.execute_write(self._create_foreign_key_relationship, db_meta.name, fk)
                 stats["foreign_keys"] += 1
 
         logger.info(
@@ -155,7 +62,6 @@ class Neo4jSchemaWriter:
 
     @staticmethod
     def _create_database_node(tx: Any, db_meta: DatabaseMeta) -> None:
-        """Create or update a Database node."""
         tx.run(
             """
             MERGE (db:Database {name: $name})
@@ -176,10 +82,8 @@ class Neo4jSchemaWriter:
 
     @staticmethod
     def _create_table_with_columns(tx: Any, db_name: str, table: TableMeta) -> None:
-        """Create a Table node with its Column nodes."""
         table_id = table.get_id(db_name)
 
-        # Create table node and link to database
         tx.run(
             """
             MATCH (db:Database {name: $db_name})
@@ -210,7 +114,6 @@ class Neo4jSchemaWriter:
             primary_key=table.primary_key,
         )
 
-        # Create column nodes
         for col in table.columns:
             col_id = col.get_id(db_name, table.schema_name, table.name)
             tx.run(
@@ -247,14 +150,10 @@ class Neo4jSchemaWriter:
             )
 
     @staticmethod
-    def _create_foreign_key_relationship(
-        tx: Any, db_name: str, fk: ForeignKeyMeta
-    ) -> None:
-        """Create a FOREIGN_KEY relationship between tables."""
-        # Use full table IDs to correctly match tables in multi-schema environments
+    def _create_foreign_key_relationship(tx: Any, db_name: str, fk: ForeignKeyMeta) -> None:
         from_table_id = fk.get_from_table_id(db_name)
         to_table_id = fk.get_to_table_id(db_name)
-        
+
         tx.run(
             """
             MATCH (t1:Table {id: $from_table_id})
@@ -280,15 +179,7 @@ class Neo4jSchemaWriter:
         )
 
     def clear_database(self, db_name: str) -> int:
-        """
-        Remove all nodes and relationships for a specific database.
-
-        Args:
-            db_name: Name of the database to clear
-
-        Returns:
-            Number of nodes deleted
-        """
+        """Remove all nodes and relationships for a specific database."""
         logger.warning(f"Clearing Neo4j data for database: {db_name}")
 
         with self.driver.session(database=self.database) as session:
@@ -311,369 +202,8 @@ class Neo4jSchemaWriter:
             logger.info(f"Cleared {deleted} nodes for database: {db_name}")
             return deleted
 
-    def get_table_columns(
-        self,
-        table_names: list[str],
-        db_name: str | None = None,
-    ) -> dict[str, list[dict]]:
-        """
-        Get complete column information for specified tables.
-        
-        Args:
-            table_names: List of table names to get columns for.
-            db_name: Optional database name filter for isolation.
-            
-        Returns:
-            Dictionary mapping table name to list of column info dicts.
-            Each column dict contains: name, chinese_name, data_type, 
-            is_pk, is_fk, is_nullable, description, ordinal_position.
-            
-        Example:
-            >>> columns = neo4j.get_table_columns(['patient', 'prescription'])
-            >>> columns['patient']
-            [
-                {'name': 'patient_id', 'chinese_name': '患者ID', 'data_type': 'int', 'is_pk': True, ...},
-                {'name': 'name', 'chinese_name': '姓名', 'data_type': 'varchar(50)', ...},
-            ]
-        """
-        if not table_names:
-            return {}
-        
-        with self.driver.session(database=self.database) as session:
-            if db_name:
-                query = """
-                UNWIND $tables AS table_name
-                MATCH (t:Table {name: table_name, database: $db_name})-[r:HAS_COLUMN]->(c:Column)
-                RETURN t.name AS table_name, 
-                       t.chinese_name AS table_chinese_name,
-                       c.name AS name,
-                       c.chinese_name AS chinese_name,
-                       c.data_type AS data_type,
-                       c.base_type AS base_type,
-                       c.is_pk AS is_pk,
-                       c.is_fk AS is_fk,
-                       c.is_nullable AS is_nullable,
-                       c.is_indexed AS is_indexed,
-                       c.is_unique AS is_unique,
-                       c.description AS description,
-                       c.ordinal_position AS ordinal_position
-                ORDER BY table_name, c.ordinal_position
-                """
-                result = session.run(query, tables=table_names, db_name=db_name)
-            else:
-                query = """
-                UNWIND $tables AS table_name
-                MATCH (t:Table {name: table_name})-[r:HAS_COLUMN]->(c:Column)
-                RETURN t.name AS table_name,
-                       t.chinese_name AS table_chinese_name,
-                       c.name AS name,
-                       c.chinese_name AS chinese_name,
-                       c.data_type AS data_type,
-                       c.base_type AS base_type,
-                       c.is_pk AS is_pk,
-                       c.is_fk AS is_fk,
-                       c.is_nullable AS is_nullable,
-                       c.is_indexed AS is_indexed,
-                       c.is_unique AS is_unique,
-                       c.description AS description,
-                       c.ordinal_position AS ordinal_position
-                ORDER BY table_name, c.ordinal_position
-                """
-                result = session.run(query, tables=table_names)
-            
-            # Group columns by table name
-            table_columns: dict[str, list[dict]] = {}
-            table_metadata: dict[str, dict] = {}
-            
-            for record in result:
-                table_name = record["table_name"]
-                if table_name not in table_columns:
-                    table_columns[table_name] = []
-                    table_metadata[table_name] = {
-                        "chinese_name": record["table_chinese_name"]
-                    }
-                
-                table_columns[table_name].append({
-                    "name": record["name"],
-                    "chinese_name": record["chinese_name"],
-                    "data_type": record["data_type"],
-                    "base_type": record["base_type"],
-                    "is_pk": record["is_pk"],
-                    "is_fk": record["is_fk"],
-                    "is_nullable": record["is_nullable"],
-                    "is_indexed": record["is_indexed"],
-                    "is_unique": record["is_unique"],
-                    "description": record["description"],
-                    "ordinal_position": record["ordinal_position"],
-                })
-            
-            logger.debug(
-                f"Retrieved columns for {len(table_columns)} tables: "
-                f"{list(table_columns.keys())}"
-            )
-            
-            return table_columns
-
-    def get_table_count(self) -> int:
-        """Get total number of tables in Neo4j."""
-        with self.driver.session(database=self.database) as session:
-            result = session.run("MATCH (t:Table) RETURN count(t) as count")
-            record = result.single()
-            return record["count"] if record else 0
-
-    def expand_with_related_tables(
-        self,
-        table_names: list[str],
-        max_depth: int = 1,
-        db_name: str | None = None,
-    ) -> list[str]:
-        """
-        Expand table list with FK-related tables.
-
-        Automatically discovers tables connected via foreign key relationships
-        to the input tables. This helps complete schema context for queries
-        that involve implicit relationships (e.g., patient table when querying
-        prescriptions).
-
-        Args:
-            table_names: Initial list of table names from semantic search.
-            max_depth: How many FK hops to expand (1 = direct FKs only).
-            db_name: Optional database name filter for multi-project isolation.
-
-        Returns:
-            Expanded list of table names including related tables.
-
-        Example:
-            Input: ['prescription', 'fee_record']
-            Output: ['prescription', 'fee_record', 'patient', 'outpatient_visit', ...]
-        """
-        if not table_names:
-            return []
-
-        with self.driver.session(database=self.database) as session:
-            # Build query with optional database filter
-            if db_name:
-                query = f"""
-                UNWIND $tables AS t
-                MATCH (table:Table {{name: t, database: $db_name}})
-                MATCH (table)-[:FOREIGN_KEY*1..{max_depth}]-(related:Table {{database: $db_name}})
-                RETURN DISTINCT related.name as related_table
-                """
-                result = session.run(query, tables=table_names, db_name=db_name)
-            else:
-                query = f"""
-                UNWIND $tables AS t
-                MATCH (table:Table {{name: t}})
-                MATCH (table)-[:FOREIGN_KEY*1..{max_depth}]-(related:Table)
-                RETURN DISTINCT related.name as related_table
-                """
-                result = session.run(query, tables=table_names)
-
-            related = [r["related_table"] for r in result]
-            
-            # Merge original tables with related tables, preserve order
-            expanded = list(table_names)  # Start with original order
-            for table in related:
-                if table not in expanded:
-                    expanded.append(table)
-            
-            logger.debug(
-                f"Expanded {len(table_names)} tables to {len(expanded)} "
-                f"(+{len(expanded) - len(table_names)} related)"
-            )
-            return expanded
-
-    def find_bridge_tables(
-        self,
-        high_score_tables: list[str],
-        max_hops: int = 3,
-        db_name: str | None = None,
-    ) -> list[str]:
-        """
-        Find bridge tables that connect high-score tables.
-
-        Bridge tables are intermediate tables on the shortest path between
-        two high-score tables. Even if they have low semantic similarity,
-        they are essential for JOIN operations.
-
-        Args:
-            high_score_tables: Tables with high semantic scores.
-            max_hops: Maximum FK hops to consider (default 3).
-            db_name: Optional database name filter.
-
-        Returns:
-            List of bridge table names (not including the input tables).
-
-        Example:
-            Input: ['patient', 'prescription']
-            Output: ['outpatient_visit']  # connects patient to prescription
-        """
-        if len(high_score_tables) < 2:
-            return []
-
-        with self.driver.session(database=self.database) as session:
-            if db_name:
-                query = f"""
-                UNWIND $tables AS t1
-                UNWIND $tables AS t2
-                WITH t1, t2 WHERE t1 < t2
-                
-                MATCH (table1:Table {{name: t1, database: $db_name}}),
-                      (table2:Table {{name: t2, database: $db_name}})
-                MATCH path = shortestPath(
-                    (table1)-[:FOREIGN_KEY*1..{max_hops}]-(table2)
-                )
-                
-                UNWIND nodes(path) AS node
-                WITH node.name AS bridge_table
-                WHERE NOT bridge_table IN $tables
-                
-                RETURN DISTINCT bridge_table
-                """
-                result = session.run(
-                    query, tables=high_score_tables, db_name=db_name
-                )
-            else:
-                query = f"""
-                UNWIND $tables AS t1
-                UNWIND $tables AS t2
-                WITH t1, t2 WHERE t1 < t2
-                
-                MATCH (table1:Table {{name: t1}}), (table2:Table {{name: t2}})
-                MATCH path = shortestPath(
-                    (table1)-[:FOREIGN_KEY*1..{max_hops}]-(table2)
-                )
-                
-                UNWIND nodes(path) AS node
-                WITH node.name AS bridge_table
-                WHERE NOT bridge_table IN $tables
-                
-                RETURN DISTINCT bridge_table
-                """
-                result = session.run(query, tables=high_score_tables)
-
-            bridges = [r["bridge_table"] for r in result]
-            
-            if bridges:
-                logger.debug(
-                    f"Found {len(bridges)} bridge tables for {high_score_tables}: {bridges}"
-                )
-            
-            return bridges
-
-    def find_join_path(
-        self, table1: str, table2: str, max_hops: int = 5, db_name: str | None = None
-    ) -> dict[str, list] | None:
-        """
-        Find the shortest join path between two tables.
-
-        Args:
-            table1: First table name
-            table2: Second table name
-            max_hops: Maximum number of hops
-            db_name: Optional database name filter for isolation
-
-        Returns:
-            List of path nodes/relationships or None if no path found
-        """
-        with self.driver.session(database=self.database) as session:
-            # Build query with optional database filter
-            if db_name:
-                query = f"""
-                MATCH path = shortestPath(
-                    (t1:Table {{name: $table1, database: $db_name}})-[:FOREIGN_KEY*1..{max_hops}]-(t2:Table {{name: $table2, database: $db_name}})
-                )
-                RETURN [node IN nodes(path) | node.name] as tables,
-                       [rel IN relationships(path) | {{
-                           fk_column: rel.fk_column, 
-                           pk_column: rel.pk_column
-                       }}] as relationships
-                """
-                result = session.run(query, table1=table1, table2=table2, db_name=db_name)
-            else:
-                query = f"""
-                MATCH path = shortestPath(
-                    (t1:Table {{name: $table1}})-[:FOREIGN_KEY*1..{max_hops}]-(t2:Table {{name: $table2}})
-                )
-                RETURN [node IN nodes(path) | node.name] as tables,
-                       [rel IN relationships(path) | {{
-                           fk_column: rel.fk_column, 
-                           pk_column: rel.pk_column
-                       }}] as relationships
-                """
-                result = session.run(query, table1=table1, table2=table2)
-            
-            record = result.single()
-            if record:
-                return {
-                    "tables": record["tables"],
-                    "relationships": record["relationships"],
-                }
-            return None
-
-    # 找到连接多个表的所有必要路径
-    def find_join_paths_for_tables(
-        self, tables: list[str], max_hops: int = 5, db_name: str | None = None
-    ) -> list[dict]:
-        """
-        Find the unique join edges needed to connect all given tables.
-
-        Args:
-            tables: List of table names
-            max_hops: Maximum number of hops
-            db_name: Optional database name filter for isolation
-        """
-        with self.driver.session(database=self.database) as session:
-            # Build query with optional database filter
-            if db_name:
-                query = f"""
-                UNWIND $tables AS t1
-                UNWIND $tables AS t2
-                WITH t1, t2 WHERE t1 < t2
-                MATCH (table1:Table {{name: t1, database: $db_name}}), (table2:Table {{name: t2, database: $db_name}})
-                MATCH path = shortestPath((table1)-[:FOREIGN_KEY*..{max_hops}]-(table2))
-                UNWIND relationships(path) AS rel
-                WITH DISTINCT 
-                    startNode(rel).name AS fk_table, 
-                    endNode(rel).name AS pk_table,
-                    rel.fk_column AS fk_column,
-                    rel.pk_column AS pk_column
-                RETURN fk_table, pk_table, fk_column, pk_column
-                """
-                result = session.run(query, tables=tables, db_name=db_name)
-            else:
-                query = f"""
-                UNWIND $tables AS t1
-                UNWIND $tables AS t2
-                WITH t1, t2 WHERE t1 < t2
-                MATCH (table1:Table {{name: t1}}), (table2:Table {{name: t2}})
-                MATCH path = shortestPath((table1)-[:FOREIGN_KEY*..{max_hops}]-(table2))
-                UNWIND relationships(path) AS rel
-                WITH DISTINCT 
-                    startNode(rel).name AS fk_table, 
-                    endNode(rel).name AS pk_table,
-                    rel.fk_column AS fk_column,
-                    rel.pk_column AS pk_column
-                RETURN fk_table, pk_table, fk_column, pk_column
-                """
-                result = session.run(query, tables=tables)
-
-            # 去重（不同路径可能包含相同的边）
-            seen = set()
-            edges = []
-            for record in result:
-                edge_key = (record["fk_table"], record["pk_table"], record["fk_column"])
-                if edge_key not in seen:
-                    seen.add(edge_key)
-                    edges.append(dict(record))
-            
-            return edges
-
     def __enter__(self) -> "Neo4jSchemaWriter":
-        """Context manager entry."""
-        self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit."""
-        self.close()
+        pass

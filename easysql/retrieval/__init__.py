@@ -13,25 +13,25 @@ Main components:
 """
 
 from .base import (
-    TableFilter,
+    FilterChain,
     FilterContext,
     FilterResult,
-    FilterChain,
     NoOpFilter,
+    TableFilter,
 )
-from .semantic_filter import SemanticFilter, DEFAULT_CORE_TABLES
 from .bridge_filter import BridgeFilter
 from .llm_filter import LLMFilter
 from .schema_retrieval import (
-    SchemaRetrievalService,
     RetrievalConfig,
     RetrievalResult,
+    SchemaRetrievalService,
 )
+from .semantic_filter import DEFAULT_CORE_TABLES, SemanticFilter
 
 __all__ = [
     # Base classes
     "TableFilter",
-    "FilterContext", 
+    "FilterContext",
     "FilterResult",
     "FilterChain",
     "NoOpFilter",

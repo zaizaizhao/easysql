@@ -27,24 +27,14 @@ console = Console()
 @app.callback(invoke_without_command=True)
 def main_callback(
     ctx: typer.Context,
-    env_file: Optional[Path] = typer.Option(
-        None, "--env", "-e", help="Path to .env file"
-    ),
-    extract: bool = typer.Option(
-        True, "--extract/--no-extract", help="Extract database schemas"
-    ),
-    neo4j: bool = typer.Option(
-        True, "--neo4j/--no-neo4j", help="Write to Neo4j"
-    ),
-    milvus: bool = typer.Option(
-        True, "--milvus/--no-milvus", help="Write to Milvus"
-    ),
+    env_file: Optional[Path] = typer.Option(None, "--env", "-e", help="Path to .env file"),
+    extract: bool = typer.Option(True, "--extract/--no-extract", help="Extract database schemas"),
+    neo4j: bool = typer.Option(True, "--neo4j/--no-neo4j", help="Write to Neo4j"),
+    milvus: bool = typer.Option(True, "--milvus/--no-milvus", help="Write to Milvus"),
     drop_existing: bool = typer.Option(
         False, "--drop-existing", "-d", help="Drop existing data before writing"
     ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Enable verbose logging"
-    ),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose logging"),
 ):
     """
     EasySql - Database schema to Neo4j/Milvus pipeline.
@@ -103,7 +93,7 @@ def _run_pipeline(
     table.add_column("Host", style="yellow")
     table.add_column("Database", style="magenta")
 
-    for db in settings.databases:
+    for db in settings.databases.values():
         table.add_row(db.name, db.db_type, f"{db.host}:{db.port}", db.database)
 
     console.print(table)
@@ -147,9 +137,7 @@ def _run_pipeline(
 
 @app.command()
 def config(
-    env_file: Optional[Path] = typer.Option(
-        None, "--env", "-e", help="Path to .env file"
-    ),
+    env_file: Optional[Path] = typer.Option(None, "--env", "-e", help="Path to .env file"),
 ):
     """
     Show current configuration.
@@ -175,10 +163,8 @@ def config(
 
     console.print("\n[cyan]Databases:[/cyan]")
     if settings.databases:
-        for db in settings.databases:
-            console.print(
-                f"  - {db.name}: {db.db_type} @ {db.host}:{db.port}/{db.database}"
-            )
+        for db in settings.databases.values():
+            console.print(f"  - {db.name}: {db.db_type} @ {db.host}:{db.port}/{db.database}")
     else:
         console.print("  [yellow]No databases configured[/yellow]")
 

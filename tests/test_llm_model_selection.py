@@ -1,18 +1,19 @@
 
-import unittest
-import sys
 import os
-from unittest.mock import MagicMock, patch
+import sys
+import unittest
+from unittest.mock import patch
 
 # Add parent dir to path to allow imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from easysql.config import LLMConfig
 from easysql.llm.models import get_llm
-from easysql.llm.nodes.generate_sql import GenerateSQLNode
-from easysql.llm.nodes.repair_sql import RepairSQLNode
 from easysql.llm.nodes.analyze import AnalyzeQueryNode
 from easysql.llm.nodes.clarify import ClarifyNode
+from easysql.llm.nodes.generate_sql import GenerateSQLNode
+from easysql.llm.nodes.repair_sql import RepairSQLNode
+
 
 class TestLLMModelSelection(unittest.TestCase):
     """Verify correct model selection based on purpose and config."""
@@ -24,17 +25,17 @@ class TestLLMModelSelection(unittest.TestCase):
             model_planning="gpt-3.5",
             openai_api_key="fake-key"
         )
-        
+
         # We need to mock _init_openai to avoid actual API warnings/imports if not installed
         with patch("easysql.llm.models._init_openai") as mock_init:
             # 1. Purpose = "generation" -> Should use config.get_model() (gpt-4)
             get_llm(config, "generation")
             mock_init.assert_called_with(config, "gpt-4")
-            
+
             # 2. Purpose = "planning" -> Should use config.model_planning (gpt-3.5)
             get_llm(config, "planning")
             mock_init.assert_called_with(config, "gpt-3.5")
-            
+
             # 3. Purpose = "planning" but model_planning is None -> Should fallback to get_model()
             config_no_plan = LLMConfig(
                 openai_llm_model="gpt-4",
@@ -53,7 +54,7 @@ class TestLLMModelSelection(unittest.TestCase):
         )
         self.assertEqual(config_openai.get_provider(), "openai")
         self.assertEqual(config_openai.get_model(), "gpt-4o")
-        
+
         # Anthropic configured with API key -> should use Anthropic
         config_anthropic = LLMConfig(
             openai_llm_model="gpt-4o",
@@ -62,7 +63,7 @@ class TestLLMModelSelection(unittest.TestCase):
         )
         self.assertEqual(config_anthropic.get_provider(), "anthropic")
         self.assertEqual(config_anthropic.get_model(), "claude-3")
-        
+
         # Google configured with API key -> should use Google (highest priority)
         config_google = LLMConfig(
             openai_llm_model="gpt-4o",
@@ -82,7 +83,7 @@ class TestLLMModelSelection(unittest.TestCase):
         node = GenerateSQLNode(config=config_plan)
         node._get_llm() # Trigger lazy init
         mock_get_llm.assert_called_with(config_plan, "generation")
-        
+
         # Case 2: query_mode = 'fast'
         config_fast = LLMConfig(query_mode="fast", openai_llm_model="gpt-4")
         node2 = GenerateSQLNode(config=config_fast)
