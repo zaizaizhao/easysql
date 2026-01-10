@@ -3,52 +3,64 @@ Base Node Class.
 
 Provides a base class for all LangGraph nodes with common utilities.
 """
+
 import re
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from langchain_core.language_models import BaseChatModel
+from pydantic import BaseModel, Field
 
 from easysql.llm.state import EasySQLState
 
 
+class SQLResponse(BaseModel):
+    """Structured output schema for SQL generation.
+
+    Used with LLM's with_structured_output() to directly extract SQL
+    without manual regex parsing.
+    """
+
+    sql: str = Field(description="生成的 SQL 语句，不包含 markdown 代码块标记")
+    explanation: str | None = Field(default=None, description="SQL 逻辑的简要说明（可选）")
+
+
 class BaseNode(ABC):
     """Abstract base class for all EasySQL LangGraph nodes.
-    
+
     Provides common utilities and enforces the callable interface.
     """
-    
+
     @abstractmethod
     def __call__(self, state: EasySQLState) -> dict:
         """Process state and return updates.
-        
+
         Args:
             state: Current graph state.
-            
+
         Returns:
             Dictionary of state updates.
         """
         pass
-    
+
+    @staticmethod
+    def get_structured_llm(llm: BaseChatModel) -> BaseChatModel:
+        """Wrap LLM with structured output for SQL extraction."""
+        return llm.with_structured_output(SQLResponse)
+
     @staticmethod
     def extract_sql(content: str) -> str:
-        """Extract SQL from markdown code blocks.
-        
-        Args:
-            content: Raw LLM response content.
-            
-        Returns:
-            Extracted SQL string.
+        """Fallback: Extract SQL from markdown code blocks via regex.
+
+        Only used when structured output is not available.
         """
-        # Try ```sql ... ```
+        # ```sql ... ``` pattern
         match = re.search(r"```sql\s*(.*?)\s*```", content, re.DOTALL | re.IGNORECASE)
         if match:
             return match.group(1).strip()
-        
-        # Try just ``` ... ```
+
+        # ``` ... ``` pattern
         match = re.search(r"```\s*(.*?)\s*```", content, re.DOTALL)
         if match:
             return match.group(1).strip()
-            
-        # Assume entire content is SQL if no blocks
+
         return content.strip()
