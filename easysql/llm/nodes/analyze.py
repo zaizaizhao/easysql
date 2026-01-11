@@ -183,9 +183,15 @@ class AnalyzeQueryNode(BaseNode):
         structured_llm = self.llm.with_structured_output(AnalysisResult)
 
         try:
-            result: AnalysisResult = structured_llm.invoke(
+            response = structured_llm.invoke(
                 [SystemMessage(content=ANALYZE_SYSTEM_PROMPT), HumanMessage(content=user_prompt)]
             )
+            if not isinstance(response, AnalysisResult):
+                return {
+                    "clarified_query": state["raw_query"],
+                    "clarification_questions": None,
+                }
+            result = response
 
             is_clear = result.is_clear
             questions = result.clarification_questions

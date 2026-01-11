@@ -70,7 +70,9 @@ class GenerateSQLNode(BaseNode):
 
         try:
             structured_llm = self.get_structured_llm(llm)
-            response: SQLResponse = structured_llm.invoke(messages)
+            response = structured_llm.invoke(messages)
+            if not isinstance(response, SQLResponse):
+                return {"error": "Invalid response type", "generated_sql": None}
             sql = response.sql
 
             return {

@@ -40,16 +40,17 @@ DEFAULT_USER_PROMPT_TEMPLATE = """{sections}
 class PromptTemplate:
     """
     Prompt template configuration.
-    
+
     Attributes:
         system_template: System prompt template.
         user_template: User prompt template with {sections} and {question} placeholders.
         section_separator: Separator between sections.
     """
+
     system_template: str
     user_template: str
     section_separator: str = "\n\n"
-    
+
     @classmethod
     def default(cls) -> "PromptTemplate":
         """Create default Text2SQL template. factory mode"""
@@ -57,45 +58,45 @@ class PromptTemplate:
             system_template=DEFAULT_SYSTEM_PROMPT,
             user_template=DEFAULT_USER_PROMPT_TEMPLATE,
         )
-    
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> "PromptTemplate":
         """
         Load template from YAML file.
-        
+
         Args:
             path: Path to YAML template file.
-            
+
         Returns:
             PromptTemplate instance.
-            
+
         YAML format:
             system_template: |
               You are a SQL expert...
             user_template: |
               {sections}
-              
+
               Question: {question}
             section_separator: "\\n\\n"
         """
-        import yaml
-        
+        import yaml  # type: ignore[import-untyped]
+
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
-        
+
         return cls(
             system_template=data.get("system_template", DEFAULT_SYSTEM_PROMPT),
             user_template=data.get("user_template", DEFAULT_USER_PROMPT_TEMPLATE),
             section_separator=data.get("section_separator", "\n\n"),
         )
-    
+
     def render_system(self, **kwargs) -> str:
         """
         Render system prompt.
-        
+
         Args:
             **kwargs: Optional variables for template substitution.
-            
+
         Returns:
             Rendered system prompt.
         """
@@ -103,7 +104,7 @@ class PromptTemplate:
         for key, value in kwargs.items():
             template = template.replace(f"{{{key}}}", str(value))
         return template
-    
+
     def render_user(
         self,
         sections: List[SectionContent],
@@ -112,24 +113,24 @@ class PromptTemplate:
     ) -> str:
         """
         Render user prompt with sections.
-        
+
         Args:
             sections: List of rendered section contents.
             question: User's question.
             **kwargs: Optional additional variables.
-            
+
         Returns:
             Rendered user prompt.
         """
         # Join non-empty sections
         section_contents = [s.content for s in sections if s.content.strip()]
         sections_text = self.section_separator.join(section_contents)
-        
+
         # Render template
         result = self.user_template.format(
             sections=sections_text,
             question=question,
             **kwargs,
         )
-        
+
         return result

@@ -5,7 +5,7 @@ Uses LLM to repair failed SQL based on error feedback.
 """
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from easysql.config import LLMConfig, get_settings
 from easysql.llm.models import get_llm
@@ -71,7 +71,7 @@ class RepairSQLNode(BaseNode):
 
 请基于错误信息修复SQL，只输出修正后的SQL。"""
 
-        messages = []
+        messages: list[BaseMessage] = []
         if context and context.get("system_prompt"):
             messages.append(SystemMessage(content=context["system_prompt"]))
         else:
@@ -80,7 +80,12 @@ class RepairSQLNode(BaseNode):
 
         try:
             structured_llm = self.get_structured_llm(self.llm)
-            response: SQLResponse = structured_llm.invoke(messages)
+            response = structured_llm.invoke(messages)
+            if not isinstance(response, SQLResponse):
+                return {
+                    "error": "Invalid response type",
+                    "retry_count": state.get("retry_count", 0) + 1,
+                }
             sql = response.sql
 
             return {

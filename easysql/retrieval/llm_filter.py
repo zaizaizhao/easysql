@@ -153,7 +153,12 @@ class LLMFilter(TableFilter):
             )
 
             # Parse response
-            content = response.choices[0].message.content.strip()
+            content = response.choices[0].message.content
+            if content is None:
+                return FilterResult(
+                    tables=tables, stats={"action": "error", "error": "Empty LLM response"}
+                )
+            content = content.strip()
 
             # Try to extract JSON from the response
             try:

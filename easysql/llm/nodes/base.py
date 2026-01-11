@@ -6,8 +6,10 @@ Provides a base class for all LangGraph nodes with common utilities.
 
 import re
 from abc import ABC, abstractmethod
+from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import Runnable
 from pydantic import BaseModel, Field
 
 from easysql.llm.state import EasySQLState
@@ -43,7 +45,7 @@ class BaseNode(ABC):
         pass
 
     @staticmethod
-    def get_structured_llm(llm: BaseChatModel) -> BaseChatModel:
+    def get_structured_llm(llm: BaseChatModel) -> Runnable[Any, Any]:
         """Wrap LLM with structured output for SQL extraction."""
         return llm.with_structured_output(SQLResponse)
 

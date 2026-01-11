@@ -5,8 +5,10 @@ Uses SQLAlchemy Inspector to extract schema metadata from any supported database
 delegating database-specific tasks (like comments) to metadata providers.
 """
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, Inspector
 
 from easysql.config import DatabaseConfig
 from easysql.extractors.base import BaseSchemaExtractor
@@ -20,6 +22,9 @@ from easysql.models.schema import (
     TableMeta,
 )
 from easysql.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from easysql.extractors.metadata_providers.base import DBMetadataProvider
 
 logger = get_logger(__name__)
 
@@ -37,9 +42,23 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
     def __init__(self, config: DatabaseConfig):
         super().__init__(config)
         self._engine: Engine | None = None
-        self._inspector = None
-        self._metadata_provider = None
+        self._inspector: Inspector | None = None
+        self._metadata_provider: "DBMetadataProvider | None" = None
         self._schema: str | None = None
+
+    @property
+    def inspector(self) -> Inspector:
+        """Get inspector, raising if not connected."""
+        if self._inspector is None:
+            raise RuntimeError("Not connected. Call connect() first.")
+        return self._inspector
+
+    @property
+    def metadata_provider(self) -> "DBMetadataProvider":
+        """Get metadata provider, raising if not connected."""
+        if self._metadata_provider is None:
+            raise RuntimeError("Not connected. Call connect() first.")
+        return self._metadata_provider
 
     @property
     def db_type(self) -> DatabaseType:
@@ -66,11 +85,11 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
         """Resolve the schema to use for extraction."""
         # Use config schema if provided
         schema = self.config.get_default_schema()
-        
+
         # Validate schema exists (for non-MySQL databases)
         if self.config.db_type != "mysql":
             try:
-                available_schemas = self._inspector.get_schema_names()
+                available_schemas = self.inspector.get_schema_names()
                 if schema not in available_schemas:
                     logger.warning(
                         f"Schema '{schema}' not found, available: {available_schemas}. "
@@ -85,7 +104,7 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
                         schema = available_schemas[0]
             except Exception as e:
                 logger.debug(f"Could not validate schema: {e}")
-        
+
         return schema
 
     def disconnect(self) -> None:
@@ -101,14 +120,14 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
     def extract_tables(self) -> list[TableMeta]:
         """Extract all tables using SQLAlchemy Inspector."""
         tables = []
-        schema = self._schema
-        
+        schema = self._schema or ""
+
         # Get table names
         try:
-            table_names = self._inspector.get_table_names(schema=schema)
+            table_names = self.inspector.get_table_names(schema=schema or None)
         except Exception as e:
             logger.warning(f"Failed to get tables for schema {schema}: {e}")
-            table_names = self._inspector.get_table_names()
+            table_names = self.inspector.get_table_names()
 
         logger.debug(f"Found {len(table_names)} tables in schema {schema}")
 
@@ -122,7 +141,7 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
 
         # Extract views
         try:
-            view_names = self._inspector.get_view_names(schema=schema)
+            view_names = self.inspector.get_view_names(schema=schema or None)
             logger.debug(f"Found {len(view_names)} views in schema {schema}")
             for view_name in view_names:
                 try:
@@ -139,9 +158,9 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
     def _extract_single_table(self, schema: str, table_name: str, is_view: bool) -> TableMeta:
         """Extract metadata for a single table or view."""
         # 1. Basic Metadata from provider
-        table_comment = self._metadata_provider.get_table_comment(schema, table_name)
-        chinese_name, description = self._metadata_provider.parse_comment(table_comment)
-        row_count = 0 if is_view else self._metadata_provider.get_row_count(schema, table_name)
+        table_comment = self.metadata_provider.get_table_comment(schema, table_name)
+        chinese_name, description = self.metadata_provider.parse_comment(table_comment)
+        row_count = 0 if is_view else self.metadata_provider.get_row_count(schema, table_name)
 
         # 2. Indexes (before columns, to mark is_indexed)
         indexes = [] if is_view else self._extract_indexes(schema, table_name)
@@ -154,7 +173,7 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
         single_col_unique = set()
         if not is_view:
             try:
-                uc_list = self._inspector.get_unique_constraints(table_name, schema=schema)
+                uc_list = self.inspector.get_unique_constraints(table_name, schema=schema)
                 for uc in uc_list:
                     cols = uc.get("column_names", [])
                     if cols:
@@ -168,7 +187,7 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
         pk_columns = []
         if not is_view:
             try:
-                pk_constraint = self._inspector.get_pk_constraint(table_name, schema=schema)
+                pk_constraint = self.inspector.get_pk_constraint(table_name, schema=schema)
                 pk_columns = pk_constraint.get("constrained_columns", [])
             except Exception as e:
                 logger.debug(f"Failed to get PK for {table_name}: {e}")
@@ -200,17 +219,15 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
         pk_columns: set[str],
     ) -> list[ColumnMeta]:
         """Extract columns using Inspector and Provider."""
-        sa_columns = self._inspector.get_columns(table_name, schema=schema)
+        sa_columns = self.inspector.get_columns(table_name, schema=schema)
 
         # Batch get column metadata (comments + types) if supported
         column_metadata = {}
-        if hasattr(self._metadata_provider, "batch_get_column_metadata"):
-            column_metadata = self._metadata_provider.batch_get_column_metadata(
-                schema, table_name
-            )
-        elif hasattr(self._metadata_provider, "batch_get_column_comments"):
+        if hasattr(self.metadata_provider, "batch_get_column_metadata"):
+            column_metadata = self.metadata_provider.batch_get_column_metadata(schema, table_name)
+        elif hasattr(self.metadata_provider, "batch_get_column_comments"):
             # Fallback to just comments
-            comments = self._metadata_provider.batch_get_column_comments(schema, table_name)
+            comments = self.metadata_provider.batch_get_column_comments(schema, table_name)
             column_metadata = {name: {"comment": c} for name, c in comments.items()}
 
         columns = []
@@ -224,23 +241,23 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
             col_meta = column_metadata.get(name, {})
             comment = col_meta.get("comment")
             if comment is None:
-                comment = self._metadata_provider.get_column_comment(schema, table_name, name)
+                comment = self.metadata_provider.get_column_comment(schema, table_name, name)
 
-            chinese_name, col_description = self._metadata_provider.parse_comment(comment)
+            chinese_name, col_description = self.metadata_provider.parse_comment(comment)
 
             # Data type: prefer provider's exact type if available (for MySQL enum)
             data_type_str = col_meta.get("column_type") or str(sa_type).lower()
             base_type = data_type_str.split("(")[0].strip()
 
             # Enum values
-            enum_values = []
-            if getattr(sa_type, "enums", None):
-                enum_values = list(sa_type.enums)
+            enum_values: list[str] = []
+            enums_attr = getattr(sa_type, "enums", None)
+            if enums_attr:
+                enum_values = list(enums_attr)
             else:
                 # Try provider for enum values
-                enum_values = self._metadata_provider.get_enum_values(
-                    data_type_str,
-                    udt_name=getattr(sa_type, "name", None)
+                enum_values = self.metadata_provider.get_enum_values(
+                    data_type_str, udt_name=getattr(sa_type, "name", None)
                 )
 
             # Length/Precision/Scale
@@ -272,7 +289,7 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
     def _extract_indexes(self, schema: str, table_name: str) -> list[IndexMeta]:
         """Extract indexes using Inspector."""
         try:
-            sa_indexes = self._inspector.get_indexes(table_name, schema=schema)
+            sa_indexes = self.inspector.get_indexes(table_name, schema=schema)
         except Exception as e:
             logger.debug(f"Failed to get indexes for {table_name}: {e}")
             return []
@@ -287,10 +304,13 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
             elif "postgresql_using" in dialect_opts:
                 index_type = dialect_opts["postgresql_using"].upper()
 
+            # Filter out None values from column_names
+            column_names = [c for c in idx.get("column_names", []) if c is not None]
+
             indexes.append(
                 IndexMeta(
                     name=idx["name"] or f"idx_{table_name}",
-                    columns=idx.get("column_names", []),
+                    columns=column_names,
                     is_unique=idx.get("unique", False),
                     is_primary=False,
                     index_type=index_type,
@@ -304,13 +324,13 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
         schema = self._schema
 
         try:
-            table_names = self._inspector.get_table_names(schema=schema)
+            table_names = self.inspector.get_table_names(schema=schema)
         except Exception:
-            table_names = self._inspector.get_table_names()
+            table_names = self.inspector.get_table_names()
 
         for table_name in table_names:
             try:
-                fks = self._inspector.get_foreign_keys(table_name, schema=schema)
+                fks = self.inspector.get_foreign_keys(table_name, schema=schema)
                 for fk in fks:
                     constrained_columns = fk.get("constrained_columns", [])
                     referred_columns = fk.get("referred_columns", [])
@@ -325,10 +345,10 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
                         foreign_keys.append(
                             ForeignKeyMeta(
                                 constraint_name=fk.get("name") or f"fk_{table_name}_{col_name}",
-                                from_schema=schema,
+                                from_schema=schema or "",
                                 from_table=table_name,
                                 from_column=col_name,
-                                to_schema=referred_schema,
+                                to_schema=str(referred_schema) if referred_schema else "",
                                 to_table=referred_table,
                                 to_column=ref_col_name,
                                 on_delete=fk.get("options", {}).get("ondelete", "RESTRICT"),

@@ -93,9 +93,11 @@ class ClarifyNode(BaseNode):
 3. 保持问题的业务语义，只补充澄清的信息"""
 
         response = self.llm.invoke([HumanMessage(content=rewrite_prompt)])
+        content = response.content
+        clarified = content.strip() if isinstance(content, str) else str(content)
 
         return {
-            "clarified_query": response.content.strip(),
+            "clarified_query": clarified,
             "clarification_questions": None,
             "messages": [
                 AIMessage(content=f"已确认：{user_response}\n正在为您生成SQL..."),
