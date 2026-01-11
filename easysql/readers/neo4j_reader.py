@@ -293,3 +293,38 @@ class Neo4jSchemaReader:
                     edges.append(dict(record))
 
             return edges
+
+    def get_fk_target_tables(
+        self,
+        table_names: list[str],
+        db_name: str | None = None,
+    ) -> list[str]:
+        """Get tables that are FK targets of the given tables.
+
+        For each table in table_names, finds the tables that its FK columns point to.
+        """
+        if not table_names:
+            return []
+
+        with self.driver.session(database=self.database) as session:
+            if db_name:
+                query = """
+                UNWIND $tables AS t
+                MATCH (fk_table:Table {name: t, database: $db_name})-[r:FOREIGN_KEY]->(pk_table:Table {database: $db_name})
+                RETURN DISTINCT pk_table.name AS target_table
+                """
+                result = session.run(query, tables=table_names, db_name=db_name)
+            else:
+                query = """
+                UNWIND $tables AS t
+                MATCH (fk_table:Table {name: t})-[r:FOREIGN_KEY]->(pk_table:Table)
+                RETURN DISTINCT pk_table.name AS target_table
+                """
+                result = session.run(query, tables=table_names)
+
+            targets = [r["target_table"] for r in result]
+
+            if targets:
+                logger.debug(f"Found {len(targets)} FK target tables for {table_names}: {targets}")
+
+            return targets

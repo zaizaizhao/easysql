@@ -245,3 +245,59 @@ SELECT
     4,
     admission_date
 FROM admission;
+
+-- ============================================================================
+-- 6. 检查检验数据 (Inspection)
+-- ============================================================================
+
+-- 6.1 门诊检查申请 (item_id: 4-12 是检验检查项目, 11 是头颅CT平扫)
+INSERT INTO inspection_request (patient_id, visit_id, admission_id, req_doctor_id, req_dept_id, exec_dept_id, item_id, req_time, clinical_diag, status)
+SELECT 
+    v.patient_id,
+    v.visit_id,
+    NULL,
+    v.doctor_id,
+    1,
+    CASE WHEN i <= 5 THEN 8 ELSE 9 END,
+    CASE 
+        WHEN i = 1 THEN 4
+        WHEN i = 2 THEN 5
+        WHEN i = 3 THEN 6
+        WHEN i = 4 THEN 11
+        ELSE 12
+    END,
+    v.visit_date + (i || ' hours')::interval,
+    '门诊检查',
+    'REPORTED'
+FROM outpatient_visit v
+CROSS JOIN generate_series(1, 5) i
+WHERE v.visit_id <= 10;
+
+-- 6.2 住院检查申请 (住院患者做CT)
+INSERT INTO inspection_request (patient_id, visit_id, admission_id, req_doctor_id, req_dept_id, exec_dept_id, item_id, req_time, clinical_diag, status)
+SELECT 
+    a.patient_id,
+    NULL,
+    a.admission_id,
+    a.attending_doctor_id,
+    1,
+    9,
+    11,
+    a.admission_date + '1 day'::interval,
+    '住院CT检查',
+    'REPORTED'
+FROM admission a;
+
+-- 6.3 检查结果
+INSERT INTO inspection_result (request_id, report_doctor_id, audit_doctor_id, report_time, finding, conclusion, is_abnormal, device_name)
+SELECT 
+    ir.request_id,
+    (ir.request_id % 10) + 1,
+    (ir.request_id % 10) + 2,
+    ir.req_time + '2 hours'::interval,
+    CASE WHEN ci.item_name LIKE '%CT%' THEN '颅脑CT平扫未见明显异常' ELSE '检查结果正常' END,
+    CASE WHEN ci.item_name LIKE '%CT%' THEN '颅脑CT平扫未见明显异常' ELSE '未见异常' END,
+    FALSE,
+    CASE WHEN ci.item_name LIKE '%CT%' THEN 'GE 128排CT' ELSE NULL END
+FROM inspection_request ir
+JOIN charge_item ci ON ir.item_id = ci.item_id;

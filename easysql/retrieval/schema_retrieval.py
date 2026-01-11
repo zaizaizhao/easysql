@@ -282,6 +282,18 @@ class SchemaRetrievalService:
         final_tables = filter_result.tables
         stats["filters"] = filter_result.stats
 
+        fk_targets = self._neo4j.get_fk_target_tables(
+            table_names=final_tables,
+            db_name=db_name,
+        )
+        added_fk_targets = []
+        for target in fk_targets:
+            if target not in final_tables:
+                final_tables.append(target)
+                added_fk_targets.append(target)
+        if added_fk_targets:
+            stats["fk_target_protection"] = {"added": added_fk_targets}
+
         table_columns = {}
         if final_tables:
             table_columns = self._neo4j.get_table_columns(
