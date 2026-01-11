@@ -98,9 +98,7 @@ class SchemaPipeline:
     @property
     def embedding_service(self) -> EmbeddingService:
         if self._embedding_service is None:
-            self._embedding_service = EmbeddingService(
-                model_name=self.settings.embedding_model,
-            )
+            self._embedding_service = EmbeddingService.from_settings(self.settings)
         return self._embedding_service
 
     @property

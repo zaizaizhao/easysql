@@ -22,9 +22,7 @@ def get_retrieval_service() -> SchemaRetrievalService:
     """Get singleton SchemaRetrievalService instance."""
     settings = get_settings()
 
-    embedding_service = EmbeddingService(
-        model_name=settings.embedding_model,
-    )
+    embedding_service = EmbeddingService.from_settings(settings)
 
     milvus_repo = MilvusRepository(
         uri=settings.milvus_uri,

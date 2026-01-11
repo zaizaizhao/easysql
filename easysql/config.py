@@ -9,7 +9,7 @@ import os
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -84,47 +84,48 @@ class LLMConfig(BaseSettings):
     """
     Configuration for the LLM layer.
     """
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore"
-    )
-    
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
     # Query Mode: 'plan' (HITL enabled) or 'fast' (direct execution)
     query_mode: str = Field(default="plan", description="Query execution mode")
-    
+
     # Model Provider: openai, google_genai, anthropic, etc.
     llm_provider: str = Field(default="openai", description="LLM provider")
-    
+
     # API Keys & Endpoints (Provider-specific)
     # OpenAI
     openai_api_key: str | None = None
-    openai_api_base: str | None = Field(default="https://api.openai.com/v1", description="OpenAI API Base URL")
-    
+    openai_api_base: str | None = Field(
+        default="https://api.openai.com/v1", description="OpenAI API Base URL"
+    )
+
     # Google Gemini
     google_api_key: str | None = None
-    
+
     # Anthropic
     anthropic_api_key: str | None = None
-    
+
     # MCP
     mcp_dbhub_url: str | None = Field(default=None, description="DBHub MCP Server URL")
-    
+
     # Provider-specific Models (Priority: Google > Anthropic > OpenAI)
     google_llm_model: str | None = Field(default=None, description="Google Gemini model name")
     anthropic_llm_model: str | None = Field(default=None, description="Anthropic Claude model name")
     openai_llm_model: str = Field(default="gpt-4o", description="OpenAI model name (fallback)")
-    
+
     # Optional: Model for planning/analyze phase (query analysis, clarification)
     # If not specified, falls back to the resolved primary model
-    model_planning: str | None = Field(default=None, description="Optional model for analyze/clarify phase")
-    
+    model_planning: str | None = Field(
+        default=None, description="Optional model for analyze/clarify phase"
+    )
+
     # Retry Configuration
     max_sql_retries: int = Field(default=3, description="Max SQL generation retries")
-    
+
     def get_model(self) -> str:
         """Get the primary model based on priority: Google > Anthropic > OpenAI.
-        
+
         Also auto-selects the provider based on which model is configured.
         """
         if self.google_llm_model and self.google_api_key:
@@ -132,7 +133,7 @@ class LLMConfig(BaseSettings):
         if self.anthropic_llm_model and self.anthropic_api_key:
             return self.anthropic_llm_model
         return self.openai_llm_model
-    
+
     def get_provider(self) -> str:
         """Get the provider based on model priority: Google > Anthropic > OpenAI."""
         if self.google_llm_model and self.google_api_key:
@@ -140,7 +141,7 @@ class LLMConfig(BaseSettings):
         if self.anthropic_llm_model and self.anthropic_api_key:
             return "anthropic"
         return "openai"
-    
+
     @field_validator("query_mode")
     @classmethod
     def validate_query_mode(cls, v: str) -> str:
@@ -156,6 +157,7 @@ class Settings(BaseSettings):
     All settings can be overridden via environment variables.
     Database configurations are dynamically parsed from DB_<NAME>_* variables.
     """
+
     # Default .env file, can be overridden by Settings(_env_file=...)
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -168,18 +170,38 @@ class Settings(BaseSettings):
     neo4j_uri: str = Field(default="bolt://localhost:7687", description="Neo4j connection URI")
     neo4j_user: str = Field(default="neo4j", description="Neo4j username")
     neo4j_password: str = Field(default="", description="Neo4j password")
-    neo4j_database: str = Field(default="neo4j", description="Neo4j database name (requires Neo4j 4.0+)")
+    neo4j_database: str = Field(
+        default="neo4j", description="Neo4j database name (requires Neo4j 4.0+)"
+    )
 
     # Milvus Configuration
     milvus_uri: str = Field(default="http://localhost:19530", description="Milvus connection URI")
     milvus_token: str | None = Field(default=None, description="Milvus authentication token")
-    milvus_collection_prefix: str = Field(default="", description="Prefix for Milvus collection names")
+    milvus_collection_prefix: str = Field(
+        default="", description="Prefix for Milvus collection names"
+    )
 
     # Embedding Configuration
+    embedding_provider: str = Field(
+        default="local", description="Embedding provider: local, openai_api, tei"
+    )
     embedding_model: str = Field(
-        default="BAAI/bge-large-zh-v1.5", description="Sentence transformer model name"
+        default="BAAI/bge-large-zh-v1.5", description="Embedding model name/identifier"
     )
     embedding_dimension: int = Field(default=1024, description="Embedding vector dimension")
+    embedding_api_base: str | None = Field(
+        default=None, description="API base URL for openai_api/tei providers"
+    )
+    embedding_api_key: str | None = Field(
+        default=None, description="API key for embedding service (if required)"
+    )
+    embedding_device: str | None = Field(
+        default=None, description="Device for local inference: cpu, cuda, or None (auto)"
+    )
+    embedding_cache_dir: str | None = Field(
+        default=None, description="Cache directory for local models"
+    )
+    embedding_timeout: float = Field(default=60.0, description="Request timeout for API providers")
 
     # Pipeline Configuration
     batch_size: int = Field(default=1000, description="Batch size for database operations")
@@ -192,27 +214,33 @@ class Settings(BaseSettings):
     log_file: str | None = Field(default=None, description="Log file path")
 
     # ===== Retrieval Configuration =====
-    
+
     # Search settings
-    retrieval_search_top_k: int = Field(default=5, description="Number of tables from Milvus search")
-    retrieval_expand_fk: bool = Field(default=True, description="Expand tables via FK relationships")
+    retrieval_search_top_k: int = Field(
+        default=5, description="Number of tables from Milvus search"
+    )
+    retrieval_expand_fk: bool = Field(
+        default=True, description="Expand tables via FK relationships"
+    )
     retrieval_expand_max_depth: int = Field(default=1, description="FK expansion depth")
-    
+
     # Semantic filter settings
     semantic_filter_enabled: bool = Field(default=True, description="Enable semantic filtering")
-    semantic_filter_threshold: float = Field(default=0.4, description="Minimum score for semantic filter")
+    semantic_filter_threshold: float = Field(
+        default=0.4, description="Minimum score for semantic filter"
+    )
     semantic_filter_min_tables: int = Field(default=3, description="Minimum tables to keep")
-    
+
     # Core tables that should never be filtered
     core_tables: str = Field(
         default="patient,employee,department,drug_dictionary,diagnosis_dictionary",
-        description="Comma-separated core tables that won't be filtered"
+        description="Comma-separated core tables that won't be filtered",
     )
-    
+
     # Bridge table protection
     bridge_protection_enabled: bool = Field(default=True, description="Protect bridge tables")
     bridge_max_hops: int = Field(default=3, description="Max hops for bridge detection")
-    
+
     # LLM filter settings (Legacy/Retrieval layer)
     llm_filter_enabled: bool = Field(default=False, description="Enable LLM-based table filtering")
     llm_filter_max_tables: int = Field(default=8, description="Max tables after LLM filtering")
@@ -280,6 +308,14 @@ class Settings(BaseSettings):
         """Get all configured database connections."""
         return getattr(self, "_parsed_databases", {})
 
+    @field_validator("embedding_provider")
+    @classmethod
+    def validate_embedding_provider(cls, v: str) -> str:
+        valid_providers = {"local", "openai_api", "tei"}
+        if v.lower() not in valid_providers:
+            raise ValueError(f"EMBEDDING_PROVIDER must be one of {valid_providers}")
+        return v.lower()
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -291,7 +327,7 @@ class Settings(BaseSettings):
         return upper_v
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """
     Get cached application settings.
@@ -314,7 +350,7 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
     """
     # Clear cache to ensure fresh settings
     get_settings.cache_clear()
-    
+
     if env_file:
         # Use pydantic-settings native _env_file parameter
         # Note: we ignore type error here because _env_file is handled by BaseSettings __init__

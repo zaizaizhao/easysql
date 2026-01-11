@@ -1,158 +1,121 @@
 """
-Embedding service for EasySql.
+Embedding Service Facade.
 
-Provides text vectorization using sentence transformers.
-Supports batch processing and caching for efficiency.
+Provides a unified interface for embedding operations,
+delegating to the configured provider (local or API-based).
+Maintains backward compatibility with the original EmbeddingService API.
 """
 
-from typing import List, Union
-import numpy as np
+from typing import TYPE_CHECKING
 
 from easysql.utils.logger import get_logger
+
+from .base import BaseEmbeddingProvider
+from .factory import EmbeddingProviderFactory
+
+if TYPE_CHECKING:
+    from easysql.config import Settings
 
 logger = get_logger(__name__)
 
 
 class EmbeddingService:
     """
-    Text embedding service using sentence transformers.
+    Unified embedding service facade.
 
-    Encapsulates the embedding model and provides methods for
-    single and batch text vectorization.
+    Wraps the underlying provider and exposes a consistent API.
 
     Usage:
-        service = EmbeddingService(model_name="BAAI/bge-large-zh-v1.5")
-        vector = service.encode("患者信息表")
-        vectors = service.encode_batch(["患者", "处方", "医嘱"])
+        # From settings (recommended)
+        service = EmbeddingService.from_settings()
+
+        # Direct provider injection
+        provider = SentenceTransformerProvider(model_name="BAAI/bge-large-zh-v1.5")
+        service = EmbeddingService(provider)
+
+        # Helper method for local
+        service = EmbeddingService.create_local(model_name="BAAI/bge-large-zh-v1.5")
     """
 
-    def __init__(
-        self,
+    def __init__(self, provider: BaseEmbeddingProvider):
+        """
+        Initialize with a specific provider.
+
+        Args:
+            provider: Concrete implementation of BaseEmbeddingProvider
+        """
+        self._provider = provider
+
+    @classmethod
+    def from_settings(cls, settings: "Settings | None" = None) -> "EmbeddingService":
+        if settings is None:
+            from easysql.config import get_settings
+
+            settings = get_settings()
+
+        provider = EmbeddingProviderFactory.from_settings(settings)
+        return cls(provider=provider)
+
+    @classmethod
+    def create_local(
+        cls,
         model_name: str = "BAAI/bge-large-zh-v1.5",
         device: str | None = None,
         normalize: bool = True,
-    ):
+        cache_dir: str | None = None,
+    ) -> "EmbeddingService":
         """
-        Initialize the embedding service.
+        Helper to create a local SentenceTransformer service.
 
-        Args:
-            model_name: Name of the sentence transformer model
-            device: Device to use ('cpu', 'cuda', or None for auto)
-            normalize: Whether to normalize embeddings to unit length
+        Useful for tests or scripts that don't use full configuration.
         """
-        self.model_name = model_name
-        self.device = device
-        self.normalize = normalize
-        self._model = None
-        self._dimension: int | None = None
+        from .sentence_transformer_provider import SentenceTransformerProvider
+
+        provider = SentenceTransformerProvider(
+            model_name=model_name,
+            device=device,
+            normalize=normalize,
+            cache_dir=cache_dir,
+        )
+        return cls(provider=provider)
 
     @property
-    def model(self):
-        """Lazy load the embedding model."""
-        if self._model is None:
-            logger.info(f"Loading embedding model: {self.model_name}")
-            try:
-                from sentence_transformers import SentenceTransformer
+    def provider(self) -> BaseEmbeddingProvider:
+        return self._provider
 
-                self._model = SentenceTransformer(self.model_name, device=self.device)
-                self._dimension = self._model.get_sentence_embedding_dimension()
-                logger.info(
-                    f"Model loaded: dimension={self._dimension}, device={self._model.device}"
-                )
-            except Exception as e:
-                logger.error(f"Failed to load embedding model: {e}")
-                raise RuntimeError(f"Failed to load model {self.model_name}: {e}") from e
-        return self._model
+    @property
+    def model_name(self) -> str:
+        return self._provider.model_name
 
     @property
     def dimension(self) -> int:
-        """Get the embedding dimension."""
-        if self._dimension is None:
-            # Trigger model loading
-            _ = self.model
-        return self._dimension
+        return self._provider.dimension
 
-    def encode(self, text: str) -> List[float]:
-        """
-        Encode a single text into a vector.
-
-        Args:
-            text: Text to encode
-
-        Returns:
-            List of floats representing the embedding
-        """
-        if not text or not text.strip():
-            # Return zero vector for empty text
-            return [0.0] * self.dimension
-
-        embedding = self.model.encode(
-            text,
-            normalize_embeddings=self.normalize,
-            show_progress_bar=False,
-        )
-        return embedding.tolist()
+    def encode(self, text: str) -> list[float]:
+        return self._provider.encode(text)
 
     def encode_batch(
         self,
-        texts: List[str],
+        texts: list[str],
         batch_size: int = 32,
         show_progress: bool = False,
-    ) -> List[List[float]]:
-        """
-        Encode multiple texts into vectors.
+    ) -> list[list[float]]:
+        return self._provider.encode_batch(texts, batch_size, show_progress)
 
-        Args:
-            texts: List of texts to encode
-            batch_size: Batch size for processing
-            show_progress: Whether to show progress bar
+    def compute_similarity(self, text1: str, text2: str) -> float:
+        """Compute cosine similarity between two texts."""
+        import numpy as np
 
-        Returns:
-            List of embedding vectors
-        """
-        if not texts:
-            return []
-
-        # Handle empty strings
-        processed_texts = [t if t and t.strip() else " " for t in texts]
-
-        embeddings = self.model.encode(
-            processed_texts,
-            batch_size=batch_size,
-            normalize_embeddings=self.normalize,
-            show_progress_bar=show_progress,
-        )
-
-        return embeddings.tolist()
-
-    # Compute cosine similarity between two texts.（not used）
-    def compute_similarity(
-        self,
-        text1: str,
-        text2: str,
-    ) -> float:
-        """
-        Compute cosine similarity between two texts.
-
-        Args:
-            text1: First text
-            text2: Second text
-
-        Returns:
-            Cosine similarity score (0-1)
-        """
         vec1 = np.array(self.encode(text1))
         vec2 = np.array(self.encode(text2))
 
-        # Cosine similarity (vectors are already normalized if normalize=True)
-        if self.normalize:
-            return float(np.dot(vec1, vec2))
-        else:
-            norm1 = np.linalg.norm(vec1)
-            norm2 = np.linalg.norm(vec2)
-            if norm1 == 0 or norm2 == 0:
-                return 0.0
-            return float(np.dot(vec1, vec2) / (norm1 * norm2))
+        norm1 = np.linalg.norm(vec1)
+        norm2 = np.linalg.norm(vec2)
+
+        if norm1 == 0 or norm2 == 0:
+            return 0.0
+
+        return float(np.dot(vec1, vec2) / (norm1 * norm2))
 
     def __repr__(self) -> str:
-        return f"EmbeddingService(model={self.model_name}, dim={self._dimension})"
+        return f"EmbeddingService(provider={self._provider})"

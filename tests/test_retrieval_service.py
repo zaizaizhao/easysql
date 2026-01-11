@@ -52,7 +52,7 @@ def main():
     # 1. 初始化服务
     print("\n[1] 初始化服务...")
 
-    embedding_service = EmbeddingService(model_name="BAAI/bge-large-zh-v1.5")
+    embedding_service = EmbeddingService.create_local(model_name="BAAI/bge-large-zh-v1.5")
 
     milvus_repo = MilvusRepository(
         uri=MILVUS_URI,

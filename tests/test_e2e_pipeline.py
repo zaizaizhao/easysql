@@ -167,7 +167,7 @@ def test_milvus_write(db_meta):
 
     # 初始化 Embedding 服务
     print("加载 Embedding 模型...")
-    embedding_service = EmbeddingService(model_name="BAAI/bge-large-zh-v1.5")
+    embedding_service = EmbeddingService.create_local(model_name="BAAI/bge-large-zh-v1.5")
     print(f"✅ Embedding 模型加载完成, 维度: {embedding_service.dimension}")
 
     repo = MilvusRepository(uri=MILVUS_CONFIG["uri"])
