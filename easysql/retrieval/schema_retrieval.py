@@ -170,31 +170,60 @@ class SchemaRetrievalService:
         self,
         question: str,
         db_name: str | None = None,
+        initial_tables: list[dict[str, Any]] | None = None,
     ) -> RetrievalResult:
-        """Retrieve relevant schema for a question."""
+        """Retrieve relevant schema for a question.
+
+        Args:
+            question: The user question for semantic search.
+            db_name: Optional database name filter.
+            initial_tables: Optional pre-retrieved tables from schema_hint.
+                If provided, skips Milvus table search (reuses these tables).
+                Each dict should have: name, score, chinese_name, description.
+        """
         stats: dict[str, Any] = {}
 
-        search_results = self._milvus.search_tables(
-            query=question,
-            top_k=self.config.search_top_k,
-        )
-
-        original_tables = [r["table_name"] for r in search_results]
-        table_scores = {r["table_name"]: r["score"] for r in search_results}
-        table_metadata = {
-            r["table_name"]: {
-                "chinese_name": r.get("chinese_name"),
-                "description": r.get("description"),
-                "database_name": r.get("database_name"),
+        if initial_tables is not None:
+            # Reuse tables from schema_hint (skip Milvus search)
+            original_tables = [t["name"] for t in initial_tables]
+            table_scores = {t["name"]: t["score"] for t in initial_tables}
+            table_metadata = {
+                t["name"]: {
+                    "chinese_name": t.get("chinese_name"),
+                    "description": t.get("description"),
+                    "database_name": db_name,
+                }
+                for t in initial_tables
             }
-            for r in search_results
-        }
+            stats["milvus_search"] = {
+                "count": len(original_tables),
+                "tables": original_tables,
+                "scores": table_scores,
+                "reused_from_hint": True,
+            }
+        else:
+            # Normal Milvus search
+            search_results = self._milvus.search_tables(
+                query=question,
+                top_k=self.config.search_top_k,
+            )
 
-        stats["milvus_search"] = {
-            "count": len(original_tables),
-            "tables": original_tables,
-            "scores": table_scores,
-        }
+            original_tables = [r["table_name"] for r in search_results]
+            table_scores = {r["table_name"]: r["score"] for r in search_results}
+            table_metadata = {
+                r["table_name"]: {
+                    "chinese_name": r.get("chinese_name"),
+                    "description": r.get("description"),
+                    "database_name": r.get("database_name"),
+                }
+                for r in search_results
+            }
+
+            stats["milvus_search"] = {
+                "count": len(original_tables),
+                "tables": original_tables,
+                "scores": table_scores,
+            }
 
         if self.config.expand_fk:
             expanded_tables = self._neo4j.expand_with_related_tables(

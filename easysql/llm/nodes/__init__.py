@@ -6,9 +6,10 @@ Each node is a callable that takes EasySQLState and returns state updates.
 
 Main components:
 - BaseNode: Abstract base class for all nodes
-- analyze_query_node: Analyzes query ambiguity
+- retrieve_hint_node: Lightweight schema retrieval for analyze context (plan mode)
+- analyze_query_node: Analyzes query ambiguity with schema context
 - clarify_node: HITL clarification via interrupt
-- retrieve_node: Schema retrieval wrapper
+- retrieve_node: Full schema retrieval wrapper
 - build_context_node: Context construction
 - generate_sql_node: SQL generation via LLM
 - validate_sql_node: SQL syntax validation
@@ -16,6 +17,7 @@ Main components:
 """
 
 from easysql.llm.nodes.base import BaseNode
+from easysql.llm.nodes.retrieve_hint import RetrieveHintNode, retrieve_hint_node
 from easysql.llm.nodes.analyze import AnalyzeQueryNode, analyze_query_node
 from easysql.llm.nodes.clarify import ClarifyNode, clarify_node
 from easysql.llm.nodes.retrieve import RetrieveNode, retrieve_node
@@ -25,9 +27,8 @@ from easysql.llm.nodes.validate_sql import ValidateSQLNode, validate_sql_node
 from easysql.llm.nodes.repair_sql import RepairSQLNode, repair_sql_node
 
 __all__ = [
-    # Base
     "BaseNode",
-    # Node Classes (for DI/testing)
+    "RetrieveHintNode",
     "AnalyzeQueryNode",
     "ClarifyNode",
     "RetrieveNode",
@@ -35,7 +36,7 @@ __all__ = [
     "GenerateSQLNode",
     "ValidateSQLNode",
     "RepairSQLNode",
-    # Factory functions (for graph building)
+    "retrieve_hint_node",
     "analyze_query_node",
     "clarify_node",
     "retrieve_node",

@@ -66,9 +66,27 @@ class RetrieveNode(BaseNode):
         return self._service
 
     def __call__(self, state: EasySQLState) -> dict:
-        query = state["clarified_query"] or state["raw_query"]
+        clarified_query = state.get("clarified_query")
+        query = clarified_query or state["raw_query"]
 
-        result = self.service.retrieve(question=query, db_name=state.get("db_name"))
+        initial_tables = None
+        schema_hint = state.get("schema_hint")
+        if schema_hint and not clarified_query:
+            initial_tables = [
+                {
+                    "name": t["name"],
+                    "score": t["score"],
+                    "chinese_name": t.get("chinese_name"),
+                    "description": t.get("description"),
+                }
+                for t in schema_hint["tables"]
+            ]
+
+        result = self.service.retrieve(
+            question=query,
+            db_name=state.get("db_name"),
+            initial_tables=initial_tables,
+        )
 
         return {"retrieval_result": result.__dict__}
 
