@@ -269,6 +269,10 @@ class Settings(BaseSettings):
         default="csharp,python,java,javascript,typescript",
         description="Comma-separated list of supported languages",
     )
+    code_context_collection_prefix: str = Field(
+        default="",
+        description="Prefix for code context Milvus collection names",
+    )
 
     @property
     def code_context_languages_list(self) -> list[str]:

@@ -28,16 +28,32 @@ from easysql.code_context.utils import FileTracker
 
 class CodeContextFactory:
     @staticmethod
-    def create_milvus_config(database_name: str | None = None) -> CodeMilvusConfig:
-        return CodeMilvusConfig(database_prefix=database_name or "")
+    def create_milvus_config(
+        database_name: str | None = None,
+        settings: "Settings | None" = None,
+    ) -> CodeMilvusConfig:
+        """Create Milvus config with prefix from settings or explicit parameter.
+
+        Priority: database_name > settings.code_context_collection_prefix
+        """
+        if database_name:
+            return CodeMilvusConfig(database_prefix=database_name)
+
+        if settings is None:
+            from easysql.config import get_settings
+
+            settings = get_settings()
+
+        return CodeMilvusConfig(database_prefix=settings.code_context_collection_prefix)
 
     @staticmethod
     def create_writer(
         client: "MilvusClient",
         embedding_service: "EmbeddingService",
         database_name: str | None = None,
+        settings: "Settings | None" = None,
     ) -> CodeMilvusWriter:
-        config = CodeContextFactory.create_milvus_config(database_name)
+        config = CodeContextFactory.create_milvus_config(database_name, settings)
         return CodeMilvusWriter(
             client=client,
             embedding_service=embedding_service,
@@ -49,8 +65,9 @@ class CodeContextFactory:
         client: "MilvusClient",
         embedding_service: "EmbeddingService",
         database_name: str | None = None,
+        settings: "Settings | None" = None,
     ) -> CodeMilvusReader:
-        config = CodeContextFactory.create_milvus_config(database_name)
+        config = CodeContextFactory.create_milvus_config(database_name, settings)
         return CodeMilvusReader(
             client=client,
             embedding_service=embedding_service,
@@ -80,6 +97,7 @@ class CodeContextFactory:
             client=client,
             embedding_service=embedding_service,
             database_name=database_name,
+            settings=settings,
         )
 
         config = CodeRetrievalConfig()
@@ -129,12 +147,14 @@ class CodeContextFactory:
             client=client,
             embedding_service=embedding_service,
             database_name=database_name,
+            settings=settings,
         )
 
         reader = CodeContextFactory.create_reader(
             client=client,
             embedding_service=embedding_service,
             database_name=database_name,
+            settings=settings,
         )
 
         retrieval_service = CodeContextFactory.create_retrieval_service(
