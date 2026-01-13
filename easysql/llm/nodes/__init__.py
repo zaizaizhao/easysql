@@ -22,6 +22,7 @@ from easysql.llm.nodes.analyze import AnalyzeQueryNode, analyze_query_node
 from easysql.llm.nodes.clarify import ClarifyNode, clarify_node
 from easysql.llm.nodes.retrieve import RetrieveNode, retrieve_node
 from easysql.llm.nodes.build_context import BuildContextNode, build_context_node
+from easysql.llm.nodes.retrieve_code import RetrieveCodeNode, retrieve_code_node
 from easysql.llm.nodes.generate_sql import GenerateSQLNode, generate_sql_node
 from easysql.llm.nodes.validate_sql import ValidateSQLNode, validate_sql_node
 from easysql.llm.nodes.repair_sql import RepairSQLNode, repair_sql_node
@@ -33,6 +34,7 @@ __all__ = [
     "ClarifyNode",
     "RetrieveNode",
     "BuildContextNode",
+    "RetrieveCodeNode",
     "GenerateSQLNode",
     "ValidateSQLNode",
     "RepairSQLNode",
@@ -41,6 +43,7 @@ __all__ = [
     "clarify_node",
     "retrieve_node",
     "build_context_node",
+    "retrieve_code_node",
     "generate_sql_node",
     "validate_sql_node",
     "repair_sql_node",

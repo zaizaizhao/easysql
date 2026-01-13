@@ -4,8 +4,8 @@ EasySQL Agent Graph Assembly.
 Constructs the LangGraph state machine connecting all nodes.
 
 Graph Flow:
-- Fast mode: START -> retrieve -> build_context -> generate_sql -> validate_sql -> [END | repair_sql]
-- Plan mode: START -> retrieve_hint -> analyze -> [clarify] -> retrieve -> build_context -> generate_sql -> validate_sql -> [END | repair_sql]
+- Fast mode: START -> retrieve -> build_context -> retrieve_code -> generate_sql -> validate_sql -> [END | repair_sql]
+- Plan mode: START -> retrieve_hint -> analyze -> [clarify] -> retrieve -> build_context -> retrieve_code -> generate_sql -> validate_sql -> [END | repair_sql]
 """
 
 from langgraph.graph import StateGraph, START, END
@@ -18,6 +18,7 @@ from easysql.llm.nodes.analyze import analyze_query_node
 from easysql.llm.nodes.clarify import clarify_node
 from easysql.llm.nodes.retrieve import retrieve_node
 from easysql.llm.nodes.build_context import build_context_node
+from easysql.llm.nodes.retrieve_code import retrieve_code_node
 from easysql.llm.nodes.generate_sql import generate_sql_node
 from easysql.llm.nodes.validate_sql import validate_sql_node
 from easysql.llm.nodes.repair_sql import repair_sql_node
@@ -76,6 +77,7 @@ def build_graph():
     builder.add_node("clarify", clarify_node)
     builder.add_node("retrieve", retrieve_node)
     builder.add_node("build_context", build_context_node)
+    builder.add_node("retrieve_code", retrieve_code_node)
     builder.add_node("generate_sql", generate_sql_node)
     builder.add_node("validate_sql", validate_sql_node)
     builder.add_node("repair_sql", repair_sql_node)
@@ -93,7 +95,8 @@ def build_graph():
     builder.add_edge("clarify", "retrieve")
 
     builder.add_edge("retrieve", "build_context")
-    builder.add_edge("build_context", "generate_sql")
+    builder.add_edge("build_context", "retrieve_code")
+    builder.add_edge("retrieve_code", "generate_sql")
     builder.add_edge("generate_sql", "validate_sql")
 
     builder.add_conditional_edges(

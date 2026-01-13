@@ -248,6 +248,39 @@ class Settings(BaseSettings):
     llm_api_key: str | None = Field(default=None, description="LLM API key")
     llm_api_base: str | None = Field(default=None, description="LLM API base URL")
 
+    # ===== Code Context Configuration =====
+    code_context_enabled: bool = Field(
+        default=False, description="Enable code context retrieval for Text2SQL"
+    )
+    code_context_search_top_k: int = Field(
+        default=5, description="Number of code entities to retrieve"
+    )
+    code_context_enum_top_k: int = Field(default=10, description="Number of enums to retrieve")
+    code_context_score_threshold: float = Field(
+        default=0.3, description="Minimum relevance score for code retrieval"
+    )
+    code_context_max_snippets: int = Field(
+        default=3, description="Maximum code snippets to include in context"
+    )
+    code_context_cache_dir: str = Field(
+        default=".code_context_cache", description="Directory for file hash cache"
+    )
+    code_context_supported_languages: str = Field(
+        default="csharp,python,java,javascript,typescript",
+        description="Comma-separated list of supported languages",
+    )
+
+    @property
+    def code_context_languages_list(self) -> list[str]:
+        """Parse supported languages into list."""
+        if not self.code_context_supported_languages:
+            return []
+        return [
+            lang.strip()
+            for lang in self.code_context_supported_languages.split(",")
+            if lang.strip()
+        ]
+
     # --- LLM Layer Configs (New) ---
     llm: LLMConfig = Field(default_factory=LLMConfig)
 

@@ -1,8 +1,4 @@
-"""
-Retrieve Schema Node.
-
-Wraps the existing SchemaRetrievalService.
-"""
+from __future__ import annotations
 
 from functools import lru_cache
 
@@ -15,11 +11,13 @@ from easysql.readers.neo4j_reader import Neo4jSchemaReader
 from easysql.repositories.milvus_repository import MilvusRepository
 from easysql.repositories.neo4j_repository import Neo4jRepository
 from easysql.retrieval.schema_retrieval import SchemaRetrievalService
+from easysql.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @lru_cache(maxsize=1)
 def get_retrieval_service() -> SchemaRetrievalService:
-    """Get singleton SchemaRetrievalService instance."""
     settings = get_settings()
 
     embedding_service = EmbeddingService.from_settings(settings)
@@ -54,8 +52,6 @@ def get_retrieval_service() -> SchemaRetrievalService:
 
 
 class RetrieveNode(BaseNode):
-    """Node to retrieve schema based on query."""
-
     def __init__(self, service: SchemaRetrievalService | None = None):
         self._service = service
 
@@ -92,6 +88,5 @@ class RetrieveNode(BaseNode):
 
 
 def retrieve_node(state: EasySQLState) -> dict:
-    """Legacy function wrapper for RetrieveNode."""
     node = RetrieveNode()
     return node(state)

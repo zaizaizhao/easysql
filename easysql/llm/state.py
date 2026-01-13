@@ -91,6 +91,8 @@ class EasySQLState(TypedDict):
     # Full retrieval result (serialized RetrievalResult for JSON compatibility)
     retrieval_result: Optional[dict]
     context_output: Optional[ContextOutputDict]
+    # Code context: formatted code snippets for context (from retrieve_code node)
+    code_context: Optional[str]
 
     # --- Execution Layer Data ---
     generated_sql: Optional[str]
