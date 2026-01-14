@@ -253,9 +253,8 @@ class Settings(BaseSettings):
         default=False, description="Enable code context retrieval for Text2SQL"
     )
     code_context_search_top_k: int = Field(
-        default=5, description="Number of code entities to retrieve"
+        default=5, description="Number of code chunks to retrieve"
     )
-    code_context_enum_top_k: int = Field(default=10, description="Number of enums to retrieve")
     code_context_score_threshold: float = Field(
         default=0.3, description="Minimum relevance score for code retrieval"
     )

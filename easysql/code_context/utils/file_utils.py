@@ -4,10 +4,6 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from easysql.code_context.models import LanguageType
 
 EXTENSION_MAP: dict[str, str] = {
     ".cs": "csharp",
