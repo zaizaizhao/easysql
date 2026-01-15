@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasySQL Interface Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/languages/sql.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .step-card {
+            transition: all 0.3s ease;
+        }
+        .step-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        .typing-indicator span {
+            animation: blink 1.4s infinite both;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blink {
+            0% { opacity: 0.2; }
+            20% { opacity: 1; }
+            100% { opacity: 0.2; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen py-10 px-4 sm:px-6 lg:px-8">
+
+    <div class="max-w-4xl mx-auto">
+        <div class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold text-slate-900 tracking-tight sm:text-5xl mb-2">
+                EasySQL <span class="text-indigo-600">Interface</span>
+            </h1>
+            <p class="text-lg text-slate-600 max-w-2xl mx-auto">
+                Test the Text2SQL pipeline with real-time streaming feedback and step-by-step visualization.
+            </p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-lg border border-slate-100 overflow-hidden mb-8">
+            <div class="p-6 sm:p-8">
+                <form id="queryForm" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div class="col-span-1">
+                            <label for="dbName" class="block text-sm font-medium text-slate-700 mb-2">Database Name</label>
+                            <input type="text" id="dbName" name="dbName" value="medical" 
+                                class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-3 px-4 border text-slate-900 bg-slate-50 transition-colors"
+                                placeholder="e.g. medical">
+                        </div>
+                        <div class="col-span-3">
+                            <label for="question" class="block text-sm font-medium text-slate-700 mb-2">Natural Language Question</label>
+                            <textarea id="question" name="question" rows="3" 
+                                class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-3 px-4 border text-slate-900 bg-slate-50 transition-colors"
+                                placeholder="e.g. Find the top 10 departments with the most registrations today"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="flex items-center justify-between pt-2">
+                        <div class="flex items-center">
+                            <input id="streamToggle" name="streamToggle" type="checkbox" checked
+                                class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                            <label for="streamToggle" class="ml-2 block text-sm text-slate-900">
+                                Enable Streaming Mode
+                            </label>
+                        </div>
+                        <div class="flex space-x-3">
+                            <button type="button" id="clearBtn" 
+                                class="inline-flex items-center px-4 py-2 border border-slate-300 shadow-sm text-sm font-medium rounded-lg text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all">
+                                Clear Log
+                            </button>
+                            <button type="submit" id="submitBtn" 
+                                class="inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all transform hover:scale-105">
+                                <i class="fas fa-magic mr-2"></i> Generate SQL
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            
+            <div id="progressBarContainer" class="hidden h-1 w-full bg-slate-100">
+                <div class="h-full bg-indigo-500 animate-pulse w-full"></div>
+            </div>
+        </div>
+
+        <div id="resultsArea" class="space-y-6 relative pb-12">
+            <div class="absolute left-6 top-0 bottom-0 w-0.5 bg-slate-200 hidden" id="timelineLine"></div>
+        </div>
+        
+        <div id="loadingIndicator" class="hidden flex justify-center py-8">
+            <div class="typing-indicator bg-white px-4 py-2 rounded-full shadow-md border border-slate-100 flex space-x-1">
+                <span class="w-2 h-2 bg-indigo-400 rounded-full"></span>
+                <span class="w-2 h-2 bg-indigo-600 rounded-full"></span>
+                <span class="w-2 h-2 bg-indigo-800 rounded-full"></span>
+            </div>
+        </div>
+    </div>
+
+    <template id="nodeTemplate">
+        <div class="relative pl-16 opacity-0 translate-y-4 transition-all duration-500 ease-out">
+            <div class="absolute left-0 top-0 h-12 w-12 rounded-full border-4 border-slate-50 bg-white shadow flex items-center justify-center z-10 step-icon-container">
+                <i class="step-icon fas fa-circle-notch text-slate-400"></i>
+            </div>
+            
+            <div class="step-card bg-white rounded-lg shadow-sm border border-slate-200 p-5">
+                <div class="flex justify-between items-start mb-2">
+                    <h3 class="text-lg font-semibold text-slate-900 step-title">Node Name</h3>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 step-badge">
+                        Processing
+                    </span>
+                </div>
+                <div class="text-sm text-slate-600 step-content space-y-3">
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api/v1/query';
+        const form = document.getElementById('queryForm');
+        const resultsArea = document.getElementById('resultsArea');
+        const timelineLine = document.getElementById('timelineLine');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const nodeTemplate = document.getElementById('nodeTemplate');
+        const submitBtn = document.getElementById('submitBtn');
+        const progressBar = document.getElementById('progressBarContainer');
+
+        let isProcessing = false;
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            resultsArea.innerHTML = '';
+            timelineLine.classList.add('hidden');
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (isProcessing) return;
+
+            const dbName = document.getElementById('dbName').value.trim();
+            const question = document.getElementById('question').value.trim();
+            const stream = document.getElementById('streamToggle').checked;
+
+            if (!question) {
+                alert('Please enter a question');
+                return;
+            }
+
+            resultsArea.innerHTML = '';
+            timelineLine.classList.remove('hidden');
+            loadingIndicator.classList.remove('hidden');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Processing...';
+            progressBar.classList.remove('hidden');
+            isProcessing = true;
+
+            try {
+                addEventNode('System', 'start', { 
+                    message: 'Initializing session...', 
+                    db: dbName 
+                });
+
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, db_name: dbName, stream })
+                });
+
+                if (!stream) {
+                    const data = await response.json();
+                    handleComplete(data);
+                } else {
+                    const reader = response.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n\n');
+                        buffer = lines.pop();
+
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const jsonStr = line.substring(6);
+                                    const event = JSON.parse(jsonStr);
+                                    handleEvent(event);
+                                } catch (err) {
+                                    console.error('Error parsing event:', err);
+                                }
+                            }
+                        }
+                    }
+                }
+
+            } catch (error) {
+                addEventNode('Error', 'error', { error: error.message });
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fas fa-magic mr-2"></i> Generate SQL';
+                progressBar.classList.add('hidden');
+                isProcessing = false;
+            }
+        });
+
+        function handleEvent(payload) {
+            const { event, data } = payload;
+            
+            switch(event) {
+                case 'start':
+                    addEventNode('Session', 'info', { 
+                        message: `Session ID: ${data.session_id}`, 
+                        timestamp: new Date().toLocaleTimeString() 
+                    });
+                    break;
+                case 'state_update':
+                    if (data.retrieval_summary) {
+                        addEventNode('Schema Retrieval', 'node', {
+                            message: `Found ${data.retrieval_summary.tables_count} tables: ${data.retrieval_summary.tables.join(', ')}`
+                        }, { icon: 'fa-database', color: 'text-blue-500' });
+                    }
+                    if (data.context_summary) {
+                        addEventNode('Context Building', 'node', {
+                            message: `Tokens: ${data.context_summary.total_tokens || 'N/A'}`
+                        }, { icon: 'fa-file-alt', color: 'text-purple-500' });
+                    }
+                    if (data.schema_hint) {
+                        addEventNode('Schema Hint', 'node', {
+                            message: `Hint tables: ${data.schema_hint.tables?.length || 0}`
+                        }, { icon: 'fa-lightbulb', color: 'text-yellow-500' });
+                    }
+                    if (data.clarified_query) {
+                        addEventNode('Query Clarified', 'node', {
+                            message: data.clarified_query
+                        }, { icon: 'fa-edit', color: 'text-cyan-500' });
+                    }
+                    if (data.generated_sql) {
+                        addEventNode('SQL Generation', 'node', data, { icon: 'fa-code', color: 'text-indigo-500' });
+                    }
+                    if (data.validation_passed !== undefined) {
+                        addEventNode('SQL Validation', 'node', data, { icon: 'fa-check-double', color: 'text-teal-500' });
+                    }
+                    if (data.clarification_questions && data.clarification_questions.length > 0) {
+                        addEventNode('Clarification Needed', 'node', data, { icon: 'fa-question-circle', color: 'text-amber-500' });
+                    }
+                    if (data.error) {
+                        addEventNode('Error', 'error', data);
+                    }
+                    break;
+                case 'complete':
+                    addEventNode('Process Completed', 'success', data);
+                    break;
+                case 'error':
+                    addEventNode('System Error', 'error', data);
+                    break;
+            }
+        }
+
+        function handleComplete(data) {
+             addEventNode('Result', 'success', data);
+        }
+
+        function addEventNode(title, type, content, meta = {}) {
+            const clone = nodeTemplate.content.cloneNode(true);
+            const container = clone.querySelector('div');
+            const iconContainer = clone.querySelector('.step-icon-container');
+            const icon = clone.querySelector('.step-icon');
+            const titleEl = clone.querySelector('.step-title');
+            const badge = clone.querySelector('.step-badge');
+            const contentBox = clone.querySelector('.step-content');
+
+            titleEl.textContent = title;
+
+            icon.className = `step-icon fas ${meta.icon || 'fa-info-circle'} ${meta.color || 'text-indigo-600'} text-xl`;
+            if (type === 'error') icon.className = 'step-icon fas fa-exclamation-triangle text-red-500 text-xl';
+            if (type === 'success') icon.className = 'step-icon fas fa-flag-checkered text-green-500 text-xl';
+
+            if (type === 'error') {
+                badge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800';
+                badge.textContent = 'Failed';
+            } else if (type === 'success') {
+                badge.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800';
+                badge.textContent = 'Completed';
+            } else {
+                 badge.textContent = 'Completed';
+            }
+
+            let html = '';
+            
+            if (content.error) {
+                html += `<div class="bg-red-50 p-3 rounded-md border border-red-100 text-red-700 font-mono text-xs overflow-x-auto">${content.error}</div>`;
+            }
+            
+            if (content.generated_sql) {
+                html += `<div class="mt-2 relative group">
+                            <div class="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button class="text-xs bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded" onclick="navigator.clipboard.writeText(this.parentElement.nextElementSibling.innerText)">Copy</button>
+                            </div>
+                            <pre><code class="language-sql rounded-md shadow-sm">${content.generated_sql}</code></pre>
+                         </div>`;
+            }
+
+            if (content.validation_passed !== undefined) {
+                 const status = content.validation_passed ? 
+                    '<span class="text-green-600 font-bold"><i class="fas fa-check mr-1"></i> Passed</span>' : 
+                    '<span class="text-red-600 font-bold"><i class="fas fa-times mr-1"></i> Failed</span>';
+                 html += `<div class="flex items-center mt-2 text-sm">${status}</div>`;
+            }
+
+            if (content.clarification_questions && content.clarification_questions.length > 0) {
+                html += `<div class="bg-amber-50 p-4 rounded-md border border-amber-100">
+                            <p class="font-medium text-amber-800 mb-2">Please clarify:</p>
+                            <ul class="list-disc pl-5 space-y-1 text-amber-700">
+                                ${content.clarification_questions.map(q => `<li>${q}</li>`).join('')}
+                            </ul>
+                         </div>`;
+            }
+
+            if (content.message) {
+                html += `<p>${content.message}</p>`;
+            }
+
+            if (html === '' && !content.message) {
+                html = `<p class="text-slate-400 italic text-xs">Step completed successfully. Internal data processed.</p>`;
+            }
+
+            contentBox.innerHTML = html;
+
+            resultsArea.appendChild(clone);
+            
+            resultsArea.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+
+            setTimeout(() => {
+                const addedElement = resultsArea.lastElementChild;
+                if(addedElement) {
+                     resultsArea.lastElementChild.classList.remove('opacity-0', 'translate-y-4');
+                }
+            }, 50);
+
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

@@ -179,6 +179,47 @@ def version():
     console.print(f"EasySql version: [green]{__version__}[/green]")
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("0.0.0.0", "--host", "-h", help="Host to bind"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to bind"),
+    reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload"),
+    workers: int = typer.Option(1, "--workers", "-w", help="Number of workers"),
+):
+    """
+    Start the EasySQL API server.
+
+    Examples:
+        easysql serve                    # Start on 0.0.0.0:8000
+        easysql serve -p 8080            # Start on port 8080
+        easysql serve --reload           # Start with auto-reload (dev mode)
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[red]Error: uvicorn not installed![/red]")
+        console.print("Install with: pip install uvicorn")
+        raise typer.Exit(1)
+
+    console.print("\n[bold blue]EasySQL API Server[/bold blue]")
+    console.print("-" * 40)
+    console.print(f"  Host: {host}")
+    console.print(f"  Port: {port}")
+    console.print(f"  Reload: {reload}")
+    console.print(f"  Workers: {workers}")
+    console.print(f"\n  OpenAPI docs: http://{host}:{port}/docs")
+    console.print(f"  Health check: http://{host}:{port}/api/v1/health")
+    console.print("-" * 40 + "\n")
+
+    uvicorn.run(
+        "easysql_api.app:app",
+        host=host,
+        port=port,
+        reload=reload,
+        workers=workers if not reload else 1,
+    )
+
+
 def main():
     """Main entry point."""
     app()

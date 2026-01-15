@@ -42,6 +42,10 @@ typer>=0.9.0
 rich>=13.0.0
 loguru>=0.7.0
 
+# API Server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
 # Development
 pytest>=7.0.0
 pytest-cov>=4.0.0
