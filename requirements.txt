@@ -34,6 +34,9 @@ langchain-mcp-adapters>=0.1.0
 # Optional:
 # langchain-anthropic>=0.2.0
 
+# LLM Observability
+langfuse>=2.0.0
+
 # Legacy LLM (Optional - for LLMFilter)
 openai>=1.0.0
 

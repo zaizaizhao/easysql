@@ -66,6 +66,7 @@ class ClarifyNode(BaseNode):
         user_response = interrupt(
             {
                 "type": "clarification",
+                "questions": questions,
                 "question": f"为了更准确地为您生成SQL，请确认以下信息：\n{question_text}",
                 "raw_query": state["raw_query"],
             }

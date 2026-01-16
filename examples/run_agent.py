@@ -21,6 +21,8 @@ def run_agent_demo():
     print(f"    Model: {settings.llm.get_model()}")
     if settings.llm.model_planning:
         print(f"    Planning Model: {settings.llm.model_planning}")
+    if settings.langfuse.is_configured():
+        print("    LangFuse: Enabled ✓")
 
     # Show available databases
     if settings.databases:

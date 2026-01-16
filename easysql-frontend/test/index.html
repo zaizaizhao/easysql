@@ -135,6 +135,7 @@
         const progressBar = document.getElementById('progressBarContainer');
 
         let isProcessing = false;
+        let currentSessionId = null;  // Store session ID for continue calls
 
         document.getElementById('clearBtn').addEventListener('click', () => {
             resultsArea.innerHTML = '';
@@ -220,6 +221,7 @@
             
             switch(event) {
                 case 'start':
+                    currentSessionId = data.session_id;  // Store for continue calls
                     addEventNode('Session', 'info', { 
                         message: `Session ID: ${data.session_id}`, 
                         timestamp: new Date().toLocaleTimeString() 
@@ -260,7 +262,17 @@
                     }
                     break;
                 case 'complete':
-                    addEventNode('Process Completed', 'success', data);
+                    if (data.status === 'awaiting_clarification' && data.clarification) {
+                        addEventNode('Clarification Needed', 'node', { 
+                            clarification_questions: data.clarification.questions 
+                        }, { icon: 'fa-question-circle', color: 'text-amber-500' });
+                    } else {
+                        addEventNode('Process Completed', 'success', {
+                            generated_sql: data.sql,
+                            validation_passed: data.validation_passed,
+                            validation_error: data.validation_error
+                        });
+                    }
                     break;
                 case 'error':
                     addEventNode('System Error', 'error', data);
@@ -269,7 +281,20 @@
         }
 
         function handleComplete(data) {
-             addEventNode('Result', 'success', data);
+            if (data.session_id) {
+                currentSessionId = data.session_id;
+            }
+            if (data.status === 'awaiting_clarification' && data.clarification) {
+                addEventNode('Clarification Needed', 'node', { 
+                    clarification_questions: data.clarification.questions 
+                }, { icon: 'fa-question-circle', color: 'text-amber-500' });
+            } else {
+                addEventNode('Result', 'success', {
+                    generated_sql: data.sql,
+                    validation_passed: data.validation_passed,
+                    validation_error: data.validation_error
+                });
+            }
         }
 
         function addEventNode(title, type, content, meta = {}) {
@@ -322,9 +347,18 @@
             if (content.clarification_questions && content.clarification_questions.length > 0) {
                 html += `<div class="bg-amber-50 p-4 rounded-md border border-amber-100">
                             <p class="font-medium text-amber-800 mb-2">Please clarify:</p>
-                            <ul class="list-disc pl-5 space-y-1 text-amber-700">
+                            <ul class="list-disc pl-5 space-y-1 text-amber-700 mb-4">
                                 ${content.clarification_questions.map(q => `<li>${q}</li>`).join('')}
                             </ul>
+                            <div class="mt-4">
+                                <textarea id="clarificationAnswer" rows="2" 
+                                    class="w-full rounded-lg border-amber-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 py-2 px-3 border text-slate-900 bg-white"
+                                    placeholder="Enter your answer here..."></textarea>
+                                <button onclick="submitClarification()" 
+                                    class="mt-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg shadow-sm text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all">
+                                    <i class="fas fa-reply mr-2"></i>Submit Answer
+                                </button>
+                            </div>
                          </div>`;
             }
 
@@ -352,6 +386,68 @@
             }, 50);
 
             window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+
+        async function submitClarification() {
+            const answerInput = document.getElementById('clarificationAnswer');
+            if (!answerInput) return;
+
+            const answer = answerInput.value.trim();
+            if (!answer) {
+                alert('Please enter your answer');
+                return;
+            }
+
+            if (!currentSessionId) {
+                addEventNode('Error', 'error', { error: 'No active session. Please start a new query.' });
+                return;
+            }
+
+            // Disable the input while processing
+            answerInput.disabled = true;
+            const submitButton = answerInput.parentElement.querySelector('button');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
+            }
+
+            loadingIndicator.classList.remove('hidden');
+            progressBar.classList.remove('hidden');
+
+            try {
+                addEventNode('User Answer', 'node', { message: answer }, { icon: 'fa-user', color: 'text-blue-600' });
+
+                const response = await fetch(`${API_URL}/${currentSessionId}/continue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ answer })
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'awaiting_clarification' && result.clarification) {
+                    // More clarification needed
+                    addEventNode('Clarification Needed', 'node', { 
+                        clarification_questions: result.clarification.questions 
+                    }, { icon: 'fa-question-circle', color: 'text-amber-500' });
+                } else if (result.status === 'completed') {
+                    addEventNode('SQL Generation', 'node', { 
+                        generated_sql: result.sql,
+                        validation_passed: result.validation_passed 
+                    }, { icon: 'fa-code', color: 'text-indigo-500' });
+                    addEventNode('Process Completed', 'success', result);
+                } else if (result.status === 'failed') {
+                    addEventNode('Error', 'error', { error: result.error || 'Unknown error' });
+                } else {
+                    addEventNode('Result', 'success', result);
+                }
+
+            } catch (error) {
+                addEventNode('Error', 'error', { error: error.message });
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                progressBar.classList.add('hidden');
+            }
         }
     </script>
 </body>

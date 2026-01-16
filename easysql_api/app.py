@@ -12,6 +12,7 @@ from easysql_api.routers import (
     config_router,
     health_router,
 )
+from easysql.config import get_settings
 from easysql.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -19,7 +20,12 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
     logger.info("EasySQL API starting up...")
+    logger.info(f"  LLM Provider: {settings.llm.get_provider()}")
+    logger.info(f"  LLM Model: {settings.llm.get_model()}")
+    if settings.langfuse.is_configured():
+        logger.info("  LangFuse: Enabled")
     yield
     logger.info("EasySQL API shutting down...")
 

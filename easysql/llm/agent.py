@@ -8,6 +8,8 @@ Graph Flow:
 - Plan mode: START -> retrieve_hint -> analyze -> [clarify] -> retrieve -> build_context -> retrieve_code -> generate_sql -> validate_sql -> [END | repair_sql]
 """
 
+from typing import TYPE_CHECKING
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -22,6 +24,9 @@ from easysql.llm.nodes.retrieve_code import retrieve_code_node
 from easysql.llm.nodes.generate_sql import generate_sql_node
 from easysql.llm.nodes.validate_sql import validate_sql_node
 from easysql.llm.nodes.repair_sql import repair_sql_node
+
+if TYPE_CHECKING:
+    from langgraph.graph.state import CompiledStateGraph
 
 
 def route_start(state: EasySQLState) -> str:
@@ -67,8 +72,15 @@ def route_validate(state: EasySQLState) -> str:
     return "repair_sql"
 
 
-def build_graph():
-    """Builds and compiles the EasySQL Agent Graph."""
+def build_graph(enable_tracing: bool | None = None) -> "CompiledStateGraph":
+    """Builds and compiles the EasySQL Agent Graph.
+
+    Args:
+        enable_tracing: Enable LangFuse tracing. If None, uses config setting.
+
+    Returns:
+        Compiled LangGraph with optional tracing enabled.
+    """
 
     builder = StateGraph(EasySQLState)
 
@@ -107,4 +119,20 @@ def build_graph():
 
     checkpointer = MemorySaver()
 
-    return builder.compile(checkpointer=checkpointer)
+    compiled = builder.compile(checkpointer=checkpointer)
+
+    should_trace = enable_tracing
+    if should_trace is None:
+        settings = get_settings()
+        should_trace = settings.langfuse.is_configured()
+
+    if should_trace:
+        try:
+            from langfuse.langchain import CallbackHandler
+
+            langfuse_handler = CallbackHandler()
+            return compiled.with_config({"callbacks": [langfuse_handler]})
+        except ImportError:
+            pass
+
+    return compiled

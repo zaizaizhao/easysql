@@ -80,6 +80,36 @@ class DatabaseConfig:
         return f"DatabaseConfig(name={self.name}, type={self.db_type}, database={self.database}, schema={self.get_default_schema()})"
 
 
+class LangfuseConfig(BaseSettings):
+    """
+    Configuration for LangFuse observability.
+
+    LangFuse provides tracing and monitoring for LLM applications.
+    All settings can be overridden via LANGFUSE_* environment variables.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    enabled: bool = Field(
+        default=False, alias="langfuse_enabled", description="Enable LangFuse tracing"
+    )
+    public_key: str | None = Field(
+        default=None, alias="langfuse_public_key", description="LangFuse public key"
+    )
+    secret_key: str | None = Field(
+        default=None, alias="langfuse_secret_key", description="LangFuse secret key"
+    )
+    host: str = Field(
+        default="https://cloud.langfuse.com",
+        alias="langfuse_host",
+        description="LangFuse host URL (cloud or self-hosted)",
+    )
+
+    def is_configured(self) -> bool:
+        """Check if LangFuse is properly configured with required credentials."""
+        return bool(self.enabled and self.public_key and self.secret_key)
+
+
 class LLMConfig(BaseSettings):
     """
     Configuration for the LLM layer.
@@ -286,6 +316,9 @@ class Settings(BaseSettings):
 
     # --- LLM Layer Configs (New) ---
     llm: LLMConfig = Field(default_factory=LLMConfig)
+
+    # --- Observability ---
+    langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)
 
     @property
     def core_tables_list(self) -> list[str]:
