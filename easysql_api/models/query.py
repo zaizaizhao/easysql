@@ -22,6 +22,7 @@ class QueryRequest(BaseModel):
 
 class ContinueRequest(BaseModel):
     answer: str = Field(..., min_length=1, max_length=1000)
+    stream: bool = Field(default=False)
 
 
 class ClarificationInfo(BaseModel):

@@ -49,10 +49,16 @@ async def continue_query(
     session_id: str,
     request: ContinueRequest,
     service: Annotated[QueryService, Depends(get_query_service_dep)],
-) -> QueryResponse:
+) -> QueryResponse | StreamingResponse:
     session = service.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    if request.stream:
+        return StreamingResponse(
+            _stream_continue_generator(service, session, request.answer),
+            media_type="text/event-stream",
+        )
 
     result = service.continue_conversation(session, request.answer)
 
@@ -69,4 +75,9 @@ async def continue_query(
 
 async def _stream_generator(service: QueryService, session, question: str):
     for event in service.stream_query(session, question):
+        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+async def _stream_continue_generator(service: QueryService, session, answer: str):
+    for event in service.stream_continue_conversation(session, answer):
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"

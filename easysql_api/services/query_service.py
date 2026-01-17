@@ -104,6 +104,52 @@ class QueryService:
                 "error": str(e),
             }
 
+    def stream_continue_conversation(
+        self,
+        session: Session,
+        answer: str,
+    ) -> Generator[dict[str, Any], None, None]:
+        if session.status != QueryStatus.AWAITING_CLARIFICATION:
+            yield {"event": "error", "data": {"error": "Session is not awaiting clarification"}}
+            return
+
+        session.status = QueryStatus.PROCESSING
+        session.messages.append({"role": "user", "content": answer})
+        session.touch()
+
+        config = {"configurable": {"thread_id": session.session_id}}
+
+        try:
+            yield {"event": "start", "data": {"session_id": session.session_id}}
+
+            last_state: dict[str, Any] = {}
+            for state_snapshot in self.graph.stream(Command(resume=answer), config):
+                # state_snapshot is {node_name: updates}
+                for node_name, updates in state_snapshot.items():
+                    if not isinstance(updates, dict):
+                        continue
+
+                    last_state.update(updates)
+                    sanitized_updates = self._sanitize_output(updates)
+
+                    # Yield node-specific event for visualization
+                    yield {
+                        "event": "state_update",
+                        "data": {"node": node_name, **sanitized_updates},
+                    }
+
+            snapshot = self.graph.get_state(config)
+            final_state = snapshot.values if snapshot else last_state
+
+            final_result = self._process_result(session, dict(final_state), config)
+            yield {"event": "complete", "data": final_result}
+
+        except Exception as e:
+            logger.error(f"Stream continue conversation failed: {e}")
+            session.status = QueryStatus.FAILED
+            session.touch()
+            yield {"event": "error", "data": {"error": str(e)}}
+
     def _process_result(
         self,
         session: Session,
@@ -198,11 +244,19 @@ class QueryService:
 
             last_state: dict[str, Any] = {}
             for state_snapshot in self.graph.stream(input_state, config):
-                last_state = state_snapshot
-                yield {
-                    "event": "state_update",
-                    "data": self._sanitize_output(state_snapshot),
-                }
+                # state_snapshot is {node_name: updates}
+                for node_name, updates in state_snapshot.items():
+                    if not isinstance(updates, dict):
+                        continue
+
+                    last_state.update(updates)
+                    sanitized_updates = self._sanitize_output(updates)
+
+                    # Yield node-specific event for visualization
+                    yield {
+                        "event": "state_update",
+                        "data": {"node": node_name, **sanitized_updates},
+                    }
 
             snapshot = self.graph.get_state(config)
             final_state = snapshot.values if snapshot else last_state

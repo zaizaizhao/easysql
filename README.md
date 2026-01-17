@@ -11,7 +11,7 @@
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![LangGraph](https://img.shields.io/badge/Agent-LangGraph-orange)](https://github.com/langchain-ai/langgraph)
 
-[特性](#-核心特性) • [架构](#-系统架构) • [快速开始](#-快速开始) • [API 文档](#-api-服务) • [配置](#-配置指南)
+[特性](#-核心特性) • [理念](#-设计理念) • [快速开始](#-快速开始) • [API 文档](#-api-服务) • [配置](#-配置指南)
 
 </div>
 
@@ -42,25 +42,15 @@
 
 ---
 
-## 🏗 系统架构 | Architecture
+## 🏗 设计理念 | Philosophy
 
-```mermaid
-graph TD
-    User[用户提问] --> API[FastAPI Gateway]
-    API --> Agent[SQL Agent (LangGraph)]
-    
-    subgraph "Context Retrieval Layer"
-        Agent -->|语义搜索| Milvus[Milvus (Vectors)]
-        Agent -->|图谱遍历| Neo4j[Neo4j (Schema Graph)]
-        Agent -->|业务逻辑| Code[Code Context (DDD)]
-    end
-    
-    subgraph "Execution Layer"
-        Agent -->|生成 SQL| Validator[语法校验器]
-        Validator -->|执行| DB[(目标数据库)]
-        DB -->|结果| Agent
-    end
-```
+> *"The gap between natural language and SQL is not a translation problem — it's a context problem."*
+
+EasySQL 的核心洞察：**传统 Text2SQL 失败的根源不在于 LLM 能力不足，而在于上下文的缺失与碎片化。** 
+
+我们构建了一套 **Context-First** 的检索增强架构——将数据库 Schema 编织成知识图谱，将业务逻辑沉淀为向量语义，将代码上下文注入推理链路。当用户提出一个模糊的业务问题时，系统不是在"猜测"SQL，而是在"理解"意图、"召回"知识、"推演"路径。
+
+这不是又一个 Prompt Wrapper，这是 **Semantic Infrastructure for Enterprise Data**。
 
 ---
 

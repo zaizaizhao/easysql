@@ -90,8 +90,7 @@ def generate_sql(
         content = response.choices[0].message.content
 
         # 提取 SQL（处理 markdown 代码块）
-        sql = content.strip()
-
+        sql = (content or "").strip()
         # 如果返回的是 markdown 代码块，提取其中的 SQL
         if "```sql" in sql.lower():
             match = re.search(r"```sql\s*(.*?)\s*```", sql, re.DOTALL | re.IGNORECASE)
@@ -351,6 +350,7 @@ def main():
     # 5. 关闭连接
     milvus_repo.close()
     neo4j_repo.close()
+
 
 if __name__ == "__main__":
     main()
