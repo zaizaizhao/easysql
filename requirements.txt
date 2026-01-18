@@ -26,6 +26,7 @@ sentence-transformers>=2.2.0
 
 # LLM Framework & Providers
 langgraph>=0.2.0
+langgraph-checkpoint-postgres>=2.0.0
 langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-openai>=0.2.0
@@ -33,6 +34,9 @@ langchain-google-genai>=2.0.0
 langchain-mcp-adapters>=0.1.0
 # Optional:
 # langchain-anthropic>=0.2.0
+
+# PostgreSQL async driver for LangGraph checkpointer
+psycopg[binary,pool]>=3.1.0
 
 # LLM Observability
 langfuse>=2.0.0

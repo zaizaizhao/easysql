@@ -80,6 +80,69 @@ class DatabaseConfig:
         return f"DatabaseConfig(name={self.name}, type={self.db_type}, database={self.database}, schema={self.get_default_schema()})"
 
 
+class CheckpointerConfig(BaseSettings):
+    """
+    Configuration for LangGraph state persistence.
+
+    Supports PostgreSQL for production or in-memory for development.
+    All settings can be overridden via CHECKPOINTER_* environment variables.
+    """
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    # Storage backend: "memory" or "postgres"
+    backend: str = Field(
+        default="memory",
+        alias="checkpointer_backend",
+        description="Checkpointer backend: memory or postgres",
+    )
+
+    # PostgreSQL connection settings
+    postgres_host: str = Field(
+        default="localhost", alias="checkpointer_postgres_host", description="PostgreSQL host"
+    )
+    postgres_port: int = Field(
+        default=5432, alias="checkpointer_postgres_port", description="PostgreSQL port"
+    )
+    postgres_user: str = Field(
+        default="postgres", alias="checkpointer_postgres_user", description="PostgreSQL user"
+    )
+    postgres_password: str = Field(
+        default="", alias="checkpointer_postgres_password", description="PostgreSQL password"
+    )
+    postgres_database: str = Field(
+        default="easysql", alias="checkpointer_postgres_database", description="PostgreSQL database"
+    )
+
+    # Connection pool settings
+    pool_min_size: int = Field(
+        default=1, alias="checkpointer_pool_min_size", description="Minimum pool connections"
+    )
+    pool_max_size: int = Field(
+        default=10, alias="checkpointer_pool_max_size", description="Maximum pool connections"
+    )
+
+    @property
+    def postgres_uri(self) -> str:
+        """Build PostgreSQL connection URI."""
+        return (
+            f"postgresql://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_database}"
+        )
+
+    def is_postgres(self) -> bool:
+        """Check if using PostgreSQL backend."""
+        return self.backend.lower() == "postgres"
+
+    @field_validator("backend")
+    @classmethod
+    def validate_backend(cls, v: str) -> str:
+        valid_backends = {"memory", "postgres"}
+        if v.lower() not in valid_backends:
+            raise ValueError(f"CHECKPOINTER_BACKEND must be one of {valid_backends}")
+        return v.lower()
+
+
 class LangfuseConfig(BaseSettings):
     """
     Configuration for LangFuse observability.
@@ -316,6 +379,9 @@ class Settings(BaseSettings):
 
     # --- LLM Layer Configs (New) ---
     llm: LLMConfig = Field(default_factory=LLMConfig)
+
+    # --- Checkpointer (State Persistence) ---
+    checkpointer: CheckpointerConfig = Field(default_factory=CheckpointerConfig)
 
     # --- Observability ---
     langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)

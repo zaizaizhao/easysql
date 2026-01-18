@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 
 from easysql_api.deps import get_session_store_dep
 from easysql_api.models.session import (
@@ -12,7 +13,9 @@ from easysql_api.models.session import (
     SessionDetail,
     MessageInfo,
 )
+from easysql_api.models.query import MessageRequest, BranchRequest
 from easysql_api.services.session_store import SessionStore
+from easysql_api.services.query_service import get_query_service
 
 router = APIRouter()
 
@@ -82,3 +85,61 @@ async def delete_session(
         raise HTTPException(status_code=404, detail="Session not found")
 
     return {"message": "Session deleted", "session_id": session_id}
+
+
+@router.post("/sessions/{session_id}/message")
+async def send_message(
+    session_id: str,
+    request: MessageRequest,
+    store: Annotated[SessionStore, Depends(get_session_store_dep)],
+):
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    service = get_query_service()
+
+    if request.stream:
+
+        def generate():
+            import json
+
+            for event in service.stream_follow_up_query(
+                session, request.question, parent_message_id=None
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+
+        return StreamingResponse(generate(), media_type="text/event-stream")
+
+    result = service.follow_up_query(session, request.question, parent_message_id=None)
+    return {"session_id": session_id, **result}
+
+
+@router.post("/sessions/{session_id}/branch")
+async def create_branch(
+    session_id: str,
+    request: BranchRequest,
+    store: Annotated[SessionStore, Depends(get_session_store_dep)],
+):
+    session = store.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    service = get_query_service()
+
+    if request.stream:
+
+        def generate():
+            import json
+
+            for event in service.stream_follow_up_query(
+                session, request.question, parent_message_id=request.from_message_id
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+
+        return StreamingResponse(generate(), media_type="text/event-stream")
+
+    result = service.follow_up_query(
+        session, request.question, parent_message_id=request.from_message_id
+    )
+    return {"session_id": session_id, "from_message_id": request.from_message_id, **result}

@@ -2,9 +2,10 @@
 LangGraph State Definition for EasySQL Agent.
 """
 
-from typing import Annotated, List, Optional, TypedDict
-from langgraph.graph.message import add_messages
+from typing import Annotated, TypedDict
+
 from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
 
 
 class ContextOutputDict(TypedDict):
@@ -19,8 +20,8 @@ class ValidationResultDict(TypedDict):
     """Structured validation result."""
 
     valid: bool
-    details: Optional[str]
-    error: Optional[str]
+    details: str | None
+    error: str | None
 
 
 class SchemaHintColumn(TypedDict):
@@ -28,7 +29,7 @@ class SchemaHintColumn(TypedDict):
 
     table_name: str
     column_name: str
-    chinese_name: Optional[str]
+    chinese_name: str | None
     data_type: str
     is_pk: bool
     is_fk: bool
@@ -39,17 +40,27 @@ class SchemaHintTable(TypedDict):
     """Schema hint for a single table."""
 
     name: str
-    chinese_name: Optional[str]
-    description: Optional[str]
+    chinese_name: str | None
+    description: str | None
     score: float
-    key_columns: List[SchemaHintColumn]
+    key_columns: list[SchemaHintColumn]
 
 
 class SchemaHintDict(TypedDict):
     """Schema hint with tables and semantic columns for analyze context."""
 
-    tables: List[SchemaHintTable]
-    semantic_columns: List[SchemaHintColumn]
+    tables: list[SchemaHintTable]
+    semantic_columns: list[SchemaHintColumn]
+
+
+class ConversationTurn(TypedDict):
+    """Single conversation turn for history tracking."""
+
+    message_id: str
+    question: str
+    sql: str | None
+    tables_used: list[str]
+    token_count: int
 
 
 class EasySQLState(TypedDict):
@@ -81,27 +92,36 @@ class EasySQLState(TypedDict):
 
     # --- Input & Conversation ---
     raw_query: str
-    clarified_query: Optional[str]
-    clarification_questions: Optional[List[str]]
-    messages: Annotated[List[BaseMessage], add_messages]
+    clarified_query: str | None
+    clarification_questions: list[str] | None
+    messages: Annotated[list[BaseMessage], add_messages]
 
     # --- Context Layer Data ---
     # Schema hint: lightweight schema for analyze node (plan mode)
-    schema_hint: Optional[SchemaHintDict]
+    schema_hint: SchemaHintDict | None
     # Full retrieval result (serialized RetrievalResult for JSON compatibility)
-    retrieval_result: Optional[dict]
-    context_output: Optional[ContextOutputDict]
+    retrieval_result: dict | None
+    context_output: ContextOutputDict | None
     # Code context: formatted code snippets for context (from retrieve_code node)
-    code_context: Optional[str]
+    code_context: str | None
 
     # --- Execution Layer Data ---
-    generated_sql: Optional[str]
-    validation_result: Optional[ValidationResultDict]
+    generated_sql: str | None
+    validation_result: ValidationResultDict | None
     validation_passed: bool
 
     # --- Control Flow ---
     retry_count: int
-    error: Optional[str]
+    error: str | None
 
     # --- Options ---
-    db_name: Optional[str]
+    db_name: str | None
+
+    # --- Multi-turn Conversation ---
+    conversation_history: list[ConversationTurn] | None
+    cached_context: ContextOutputDict | None
+    current_message_id: str | None
+    parent_message_id: str | None
+    needs_new_retrieval: bool
+    shift_reason: str | None
+    history_summary: str | None

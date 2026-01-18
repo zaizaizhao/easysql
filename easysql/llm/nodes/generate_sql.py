@@ -5,12 +5,13 @@ Calls LLM to generate SQL based on the constructed context.
 """
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from easysql.config import LLMConfig, get_settings
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode, SQLResponse
 from easysql.llm.state import EasySQLState
+from easysql.llm.utils.token_manager import get_token_manager
 
 
 class GenerateSQLNode(BaseNode):
@@ -49,24 +50,36 @@ class GenerateSQLNode(BaseNode):
         return get_llm(self.config, "generation")
 
     def __call__(self, state: EasySQLState) -> dict:
-        """Generate SQL using the configured LLM.
-
-        Args:
-            state: Current graph state.
-
-        Returns:
-            State updates with generated_sql.
-        """
-        context = state["context_output"]
+        """Generate SQL using the configured LLM."""
+        context = state.get("cached_context") or state.get("context_output")
         if not context:
             return {"error": "No context available for generation."}
 
         llm = self._get_llm()
+        messages: list[BaseMessage] = [SystemMessage(content=context["system_prompt"])]
 
-        messages = [
-            SystemMessage(content=context["system_prompt"]),
-            HumanMessage(content=context["user_prompt"]),
-        ]
+        history = state.get("conversation_history") or []
+        if history:
+            token_manager = get_token_manager()
+            schema_tokens = context.get("total_tokens", 0)
+            summary, recent = token_manager.prepare_history(history, schema_tokens)
+            history_messages = token_manager.build_history_messages(summary, recent)
+            messages.extend(history_messages)
+
+        current_query = state["raw_query"]
+        user_prompt = context["user_prompt"]
+
+        history = state.get("conversation_history") or []
+        is_follow_up = len(history) > 0
+        if is_follow_up and "**用户问题**:" in user_prompt:
+            parts = user_prompt.split("**用户问题**:")
+            if len(parts) == 2:
+                schema_part = parts[0]
+                user_prompt = (
+                    f"{schema_part}**用户问题**: {current_query}\n\n请生成正确的 SQL 查询语句："
+                )
+
+        messages.append(HumanMessage(content=user_prompt))
 
         try:
             structured_llm = self.get_structured_llm(llm)

@@ -26,6 +26,7 @@ from easysql.llm.nodes.retrieve_code import RetrieveCodeNode, retrieve_code_node
 from easysql.llm.nodes.generate_sql import GenerateSQLNode, generate_sql_node
 from easysql.llm.nodes.validate_sql import ValidateSQLNode, validate_sql_node
 from easysql.llm.nodes.repair_sql import RepairSQLNode, repair_sql_node
+from easysql.llm.nodes.shift_detect import ShiftDetectNode, shift_detect_node
 
 __all__ = [
     "BaseNode",
@@ -38,6 +39,7 @@ __all__ = [
     "GenerateSQLNode",
     "ValidateSQLNode",
     "RepairSQLNode",
+    "ShiftDetectNode",
     "retrieve_hint_node",
     "analyze_query_node",
     "clarify_node",
@@ -47,4 +49,5 @@ __all__ = [
     "generate_sql_node",
     "validate_sql_node",
     "repair_sql_node",
+    "shift_detect_node",
 ]

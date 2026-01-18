@@ -25,6 +25,17 @@ class ContinueRequest(BaseModel):
     stream: bool = Field(default=False)
 
 
+class MessageRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    stream: bool = Field(default=False)
+
+
+class BranchRequest(BaseModel):
+    from_message_id: str = Field(..., description="Message ID to branch from")
+    question: str = Field(..., min_length=1, max_length=2000)
+    stream: bool = Field(default=False)
+
+
 class ClarificationInfo(BaseModel):
     questions: list[str]
 

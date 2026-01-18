@@ -8,7 +8,7 @@ from langgraph.types import Command
 from easysql_api.models.query import QueryStatus, ClarificationInfo
 from easysql_api.services.session_store import Session, SessionStore, get_session_store
 from easysql.config import get_settings
-from easysql.llm import build_graph
+from easysql.llm import build_graph, get_langfuse_callbacks
 from easysql.llm.state import EasySQLState
 from easysql.utils.logger import get_logger
 
@@ -19,12 +19,26 @@ class QueryService:
     def __init__(self) -> None:
         self._graph: Any = None
         self._store: SessionStore = get_session_store()
+        self._callbacks: list[Any] | None = None
 
     @property
     def graph(self) -> Any:
         if self._graph is None:
             self._graph = build_graph()
         return self._graph
+
+    @property
+    def callbacks(self) -> list[Any]:
+        if self._callbacks is None:
+            self._callbacks = get_langfuse_callbacks()
+        return self._callbacks
+
+    def _make_config(self, session_id: str) -> dict[str, Any]:
+        config: dict[str, Any] = {"configurable": {"thread_id": session_id}}
+        if self.callbacks:
+            config["callbacks"] = self.callbacks
+            logger.debug(f"LangFuse callbacks attached: {len(self.callbacks)} handler(s)")
+        return config
 
     def create_session(self, db_name: str | None = None) -> Session:
         session_id = str(uuid.uuid4())
@@ -61,7 +75,7 @@ class QueryService:
             "db_name": session.db_name,
         }
 
-        config = {"configurable": {"thread_id": session.session_id}}
+        config = self._make_config(session.session_id)
 
         try:
             result = self.graph.invoke(input_state, config)
@@ -90,7 +104,7 @@ class QueryService:
         session.messages.append({"role": "user", "content": answer})
         session.touch()
 
-        config = {"configurable": {"thread_id": session.session_id}}
+        config = self._make_config(session.session_id)
 
         try:
             result = self.graph.invoke(Command(resume=answer), config)
@@ -117,7 +131,7 @@ class QueryService:
         session.messages.append({"role": "user", "content": answer})
         session.touch()
 
-        config = {"configurable": {"thread_id": session.session_id}}
+        config = self._make_config(session.session_id)
 
         try:
             yield {"event": "start", "data": {"session_id": session.session_id}}
@@ -237,7 +251,7 @@ class QueryService:
             "db_name": session.db_name,
         }
 
-        config = {"configurable": {"thread_id": session.session_id}}
+        config = self._make_config(session.session_id)
 
         try:
             yield {"event": "start", "data": {"session_id": session.session_id}}
@@ -302,6 +316,129 @@ class QueryService:
             }
 
         return result
+
+    def follow_up_query(
+        self,
+        session: Session,
+        question: str,
+        parent_message_id: str | None = None,
+    ) -> dict[str, Any]:
+        if session.status not in (QueryStatus.COMPLETED, QueryStatus.AWAITING_CLARIFICATION):
+            return {
+                "status": QueryStatus.FAILED,
+                "error": "Session must be completed or awaiting clarification for follow-up",
+            }
+
+        session.raw_query = question
+        session.status = QueryStatus.PROCESSING
+        session.touch()
+
+        config = self._make_config(session.session_id)
+
+        snapshot = self.graph.get_state(config)
+        prev_state = snapshot.values if snapshot else {}
+
+        conversation_history = prev_state.get("conversation_history", [])
+        if prev_state.get("generated_sql"):
+            conversation_history = conversation_history + [
+                {
+                    "message_id": parent_message_id or str(uuid.uuid4()),
+                    "question": prev_state.get("raw_query", ""),
+                    "sql": prev_state.get("generated_sql"),
+                    "tables_used": prev_state.get("retrieval_result", {}).get("tables", []),
+                    "token_count": prev_state.get("context_output", {}).get("total_tokens", 0),
+                }
+            ]
+
+        input_state: dict[str, Any] = {
+            "raw_query": question,
+            "parent_message_id": parent_message_id,
+            "conversation_history": conversation_history,
+            "generated_sql": None,
+            "validation_passed": False,
+            "validation_result": None,
+            "retry_count": 0,
+            "error": None,
+            "needs_new_retrieval": False,
+        }
+
+        try:
+            result = self.graph.invoke(input_state, config)
+            return self._process_result(session, result, config)
+        except Exception as e:
+            logger.error(f"Follow-up query failed: {e}")
+            session.status = QueryStatus.FAILED
+            session.touch()
+            return {"status": QueryStatus.FAILED, "error": str(e)}
+
+    def stream_follow_up_query(
+        self,
+        session: Session,
+        question: str,
+        parent_message_id: str | None = None,
+    ) -> Generator[dict[str, Any], None, None]:
+        if session.status not in (QueryStatus.COMPLETED, QueryStatus.AWAITING_CLARIFICATION):
+            yield {"event": "error", "data": {"error": "Invalid session status for follow-up"}}
+            return
+
+        session.raw_query = question
+        session.status = QueryStatus.PROCESSING
+        session.touch()
+
+        config = self._make_config(session.session_id)
+
+        snapshot = self.graph.get_state(config)
+        prev_state = snapshot.values if snapshot else {}
+
+        conversation_history = prev_state.get("conversation_history", [])
+        if prev_state.get("generated_sql"):
+            conversation_history = conversation_history + [
+                {
+                    "message_id": parent_message_id or str(uuid.uuid4()),
+                    "question": prev_state.get("raw_query", ""),
+                    "sql": prev_state.get("generated_sql"),
+                    "tables_used": prev_state.get("retrieval_result", {}).get("tables", []),
+                    "token_count": prev_state.get("context_output", {}).get("total_tokens", 0),
+                }
+            ]
+
+        input_state: dict[str, Any] = {
+            "raw_query": question,
+            "parent_message_id": parent_message_id,
+            "conversation_history": conversation_history,
+            "generated_sql": None,
+            "validation_passed": False,
+            "validation_result": None,
+            "retry_count": 0,
+            "error": None,
+            "needs_new_retrieval": False,
+        }
+
+        try:
+            yield {"event": "start", "data": {"session_id": session.session_id}}
+
+            last_state: dict[str, Any] = {}
+            for state_snapshot in self.graph.stream(input_state, config):
+                for node_name, updates in state_snapshot.items():
+                    if not isinstance(updates, dict):
+                        continue
+                    last_state.update(updates)
+                    sanitized_updates = self._sanitize_output(updates)
+                    yield {
+                        "event": "state_update",
+                        "data": {"node": node_name, **sanitized_updates},
+                    }
+
+            snapshot = self.graph.get_state(config)
+            final_state = snapshot.values if snapshot else last_state
+            final_result = self._process_result(session, dict(final_state), config)
+            yield {"event": "complete", "data": final_result}
+
+        except Exception as e:
+            logger.error(f"Stream follow-up query failed: {e}")
+            session.status = QueryStatus.FAILED
+            session.touch()
+            yield {"event": "error", "data": {"error": str(e)}}
 
 
 _default_service: QueryService | None = None
