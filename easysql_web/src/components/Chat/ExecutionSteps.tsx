@@ -10,6 +10,7 @@ import {
   BuildOutlined,
   LoadingOutlined,
   QuestionCircleOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import type { StepTrace } from '@/stores/chatStore';
 
@@ -21,6 +22,7 @@ interface ExecutionStepsProps {
 const { Text } = Typography;
 
 const STEP_ICONS: Record<string, React.ReactNode> = {
+  shift_detect: <SafetyCertificateOutlined />,
   retrieve_hint: <SearchOutlined />,
   analyze: <RobotOutlined />,
   clarify: <QuestionCircleOutlined />,
@@ -31,8 +33,38 @@ const STEP_ICONS: Record<string, React.ReactNode> = {
   validate_sql: <CheckCircleOutlined />,
 };
 
-const PIPELINE_ORDER = [
+// Full flow (Plan Mode)
+const PIPELINE_FULL = [
   'retrieve_hint',
+  'analyze',
+  'clarify',
+  'retrieve',
+  'build_context',
+  'retrieve_code',
+  'generate_sql',
+  'validate_sql'
+];
+
+// Fast flow (Fast Mode)
+const PIPELINE_FAST = [
+  'retrieve',
+  'build_context',
+  'retrieve_code',
+  'generate_sql',
+  'validate_sql'
+];
+
+// Follow-up flow (Short - No Shift)
+const PIPELINE_FOLLOWUP_SHORT = [
+  'shift_detect',
+  'generate_sql',
+  'validate_sql'
+];
+
+// Follow-up flow (Long - Shift Detected)
+const PIPELINE_FOLLOWUP_LONG = [
+  'shift_detect',
+  'retrieve_hint', // or retrieve depending on mode, but usually hint in plan mode
   'analyze',
   'clarify',
   'retrieve',
@@ -47,9 +79,33 @@ export function ExecutionSteps({ trace = [], isStreaming }: ExecutionStepsProps)
   const { token } = theme.useToken();
   
   const executedStepsMap = new Map(trace.map(step => [step.node, step]));
-  
+  const executedNodes = new Set(trace.map(s => s.node));
+
+  // Determine which pipeline to show
+  let currentPipeline = PIPELINE_FULL;
+
+  if (executedNodes.has('shift_detect')) {
+    if (executedNodes.has('retrieve') || executedNodes.has('retrieve_hint')) {
+      // Follow-up with shift detected (re-retrieval)
+      currentPipeline = PIPELINE_FOLLOWUP_LONG;
+      
+      // Special handling: if we jumped straight to retrieve (fast mode), filter out plan-mode steps
+      if (!executedNodes.has('retrieve_hint') && executedNodes.has('retrieve')) {
+         currentPipeline = ['shift_detect', ...PIPELINE_FAST];
+      }
+    } else {
+      // Follow-up without shift (direct generation)
+      currentPipeline = PIPELINE_FOLLOWUP_SHORT;
+    }
+  } else {
+    // Initial query
+    if (!executedNodes.has('retrieve_hint') && executedNodes.has('retrieve')) {
+      currentPipeline = PIPELINE_FAST;
+    }
+  }
+
   let lastActiveIndex = -1;
-  PIPELINE_ORDER.forEach((step, index) => {
+  currentPipeline.forEach((step, index) => {
     if (executedStepsMap.has(step)) {
       lastActiveIndex = index;
     }
@@ -108,7 +164,7 @@ export function ExecutionSteps({ trace = [], isStreaming }: ExecutionStepsProps)
     }}>
       <Steps
         size="small"
-        items={PIPELINE_ORDER.map((stepKey, index) => {
+        items={currentPipeline.map((stepKey, index) => {
           const status = getStepStatus(stepKey, index);
 
           const itemConfig = {

@@ -61,6 +61,8 @@ export function Sidebar() {
           flexDirection: 'column',
           height: '100%',
           padding: '8px',
+          overflowY: 'auto',
+          overflowX: 'hidden',
         }}
       >
         <div style={{ marginBottom: 16 }}>

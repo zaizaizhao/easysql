@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Avatar, Typography, Space, Spin, Tag } from 'antd';
+import { Avatar, Typography, Space, Spin, Tag, theme } from 'antd';
 import { UserOutlined, RobotOutlined, TableOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { SQLBlock } from './SQLBlock';
@@ -16,6 +16,7 @@ interface MessageItemProps {
 
 export function MessageItem({ message, onClarificationSelect }: MessageItemProps) {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
   const isUser = message.role === 'user';
   const [showAllTables, setShowAllTables] = useState(false);
 
@@ -31,7 +32,7 @@ export function MessageItem({ message, onClarificationSelect }: MessageItemProps
       <Avatar
         icon={isUser ? <UserOutlined /> : <RobotOutlined />}
         style={{
-          backgroundColor: isUser ? '#1677ff' : '#52c41a',
+          backgroundColor: isUser ? token.colorPrimary : '#52c41a',
           flexShrink: 0,
         }}
       />
@@ -47,18 +48,18 @@ export function MessageItem({ message, onClarificationSelect }: MessageItemProps
         {isUser ? (
           <div
             style={{
-              background: 'var(--user-message-bg)',
+              background: token.colorPrimaryBg,
               padding: '12px 16px',
               borderRadius: 12,
               borderTopRightRadius: 4,
             }}
           >
-            <Text>{message.content}</Text>
+            <Text style={{ color: token.colorText }}>{message.content}</Text>
           </div>
         ) : (
           <div
             style={{
-              background: 'var(--assistant-message-bg)',
+              background: token.colorFillQuaternary,
               padding: '12px 16px',
               borderRadius: 12,
               borderTopLeftRadius: 4,
@@ -75,7 +76,7 @@ export function MessageItem({ message, onClarificationSelect }: MessageItemProps
             {message.retrievalSummary && (
               <div style={{ marginBottom: 8 }}>
                 <Space size={4}>
-                  <TableOutlined style={{ color: '#1677ff' }} />
+                  <TableOutlined style={{ color: token.colorPrimary }} />
                   <Text type="secondary" style={{ fontSize: 12 }}>
                     {t('chat.retrievedTables', { count: message.retrievalSummary.tablesCount })}
                   </Text>
@@ -109,29 +110,35 @@ export function MessageItem({ message, onClarificationSelect }: MessageItemProps
             )}
 
             {message.content && (
-              <Paragraph style={{ marginBottom: message.sql ? 0 : undefined }}>
+              <Paragraph style={{ marginBottom: 8 }}>
                 {message.content}
               </Paragraph>
-            )}
-
-            {message.sql && (
-              <SQLBlock
-                sql={message.sql}
-                validationPassed={message.validationPassed}
-                validationError={message.validationError}
-              />
             )}
 
             {message.userAnswer && (
               <div style={{ 
                 marginTop: 12, 
-                padding: '8px 12px', 
-                background: 'rgba(22, 119, 255, 0.1)', 
+                marginBottom: 12,
+                padding: '12px', 
+                background: token.colorFillTertiary, 
                 borderRadius: 8,
-                borderLeft: '3px solid #1677ff'
+                borderLeft: `3px solid ${token.colorPrimary}`
               }}>
+                {message.clarificationQuestions && message.clarificationQuestions.length > 0 && (
+                   <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px dashed ${token.colorBorder}` }}>
+                     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                       {message.clarificationQuestions.length > 1 ? t('clarification.answerQuestions') : t('clarification.needConfirm')}
+                     </Text>
+                     <div style={{ fontSize: 13, color: token.colorTextSecondary }}>
+                       {message.clarificationQuestions.map((q, idx) => (
+                         <div key={idx}>{message.clarificationQuestions!.length > 1 ? `${idx + 1}. ${q}` : q}</div>
+                       ))}
+                     </div>
+                   </div>
+                )}
+                
                 <Text type="secondary" style={{ fontSize: 12 }}>{t('chat.yourAnswer')}</Text>
-                <div style={{ fontSize: 14 }}>{message.userAnswer}</div>
+                <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>{message.userAnswer}</div>
               </div>
             )}
 
@@ -141,6 +148,16 @@ export function MessageItem({ message, onClarificationSelect }: MessageItemProps
                 onSelect={(answer) => onClarificationSelect?.(answer)}
                 disabled={message.isStreaming}
               />
+            )}
+
+            {message.sql && (
+              <div style={{ marginTop: 12 }}>
+                <SQLBlock
+                  sql={message.sql}
+                  validationPassed={message.validationPassed}
+                  validationError={message.validationError}
+                />
+              </div>
             )}
           </div>
         )}

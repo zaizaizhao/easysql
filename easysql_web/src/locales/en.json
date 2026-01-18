@@ -64,6 +64,7 @@
     "retrieve_code": "Business Logic",
     "generate_sql": "Generate SQL",
     "validate_sql": "Validate SQL",
+    "shift_detect": "Analyze Intent",
     "validationPassed": "Validation passed",
     "validationFailed": "Validation failed"
   },

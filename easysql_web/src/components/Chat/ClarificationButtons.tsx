@@ -1,4 +1,4 @@
-import { Space, Button, Tag, Typography, Card } from 'antd';
+import { Space, Button, Tag, Typography, Card, theme } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 
@@ -12,6 +12,7 @@ interface ClarificationButtonsProps {
 
 export function ClarificationButtons({ questions, onSelect, disabled }: ClarificationButtonsProps) {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
   
   if (!questions || questions.length === 0) return null;
 
@@ -22,21 +23,21 @@ export function ClarificationButtons({ questions, onSelect, disabled }: Clarific
       size="small"
       style={{
         marginTop: 12,
-        background: 'var(--clarification-bg, #fffbe6)',
-        border: '1px solid #ffe58f',
+        background: token.colorWarningBg,
+        border: `1px solid ${token.colorWarningBorder}`,
       }}
     >
       <Space direction="vertical" style={{ width: '100%' }}>
         <Space>
-          <QuestionCircleOutlined style={{ color: '#faad14' }} />
-          <Text strong style={{ color: '#d48806' }}>
+          <QuestionCircleOutlined style={{ color: token.colorWarning }} />
+          <Text strong style={{ color: token.colorWarningText }}>
             {isSingleQuestion ? t('clarification.needConfirm') : t('clarification.answerQuestions')}
           </Text>
         </Space>
 
         {questions.map((question, index) => (
           <div key={index} style={{ paddingLeft: 20 }}>
-            <Text>
+            <Text style={{ color: token.colorText }}>
               {questions.length > 1 && `${index + 1}. `}
               {question}
             </Text>

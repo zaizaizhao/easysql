@@ -7,18 +7,22 @@ const { Content } = Layout;
 
 export function AppLayout() {
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
       <Sidebar />
       <Layout>
         <Header />
         <Content
           style={{
             padding: 24,
-            overflow: 'auto',
+            overflow: 'hidden',
             background: 'var(--content-bg)',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
-          <Outlet />
+          <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <Outlet />
+          </div>
         </Content>
       </Layout>
     </Layout>

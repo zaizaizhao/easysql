@@ -64,6 +64,7 @@
     "retrieve_code": "业务逻辑",
     "generate_sql": "生成SQL",
     "validate_sql": "验证SQL",
+    "shift_detect": "意图分析",
     "validationPassed": "验证通过",
     "validationFailed": "验证失败"
   },
