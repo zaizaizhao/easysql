@@ -18,7 +18,7 @@ export function Header() {
     >
       <Space>
         <Title level={4} style={{ margin: 0, color: 'var(--primary-color)' }}>
-          🚀 EasySQL
+          EasySQL
         </Title>
       </Space>
 
