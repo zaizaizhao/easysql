@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from easysql_api.deps import get_settings_dep
 from easysql.config import Settings
+from easysql_api.deps import get_settings_dep
 
 router = APIRouter()
 

@@ -1,6 +1,7 @@
 export interface QueryRequest {
   question: string;
   db_name?: string;
+  session_id?: string;
   stream?: boolean;
 }
 

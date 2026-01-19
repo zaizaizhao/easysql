@@ -12,9 +12,10 @@ const { Text, Paragraph } = Typography;
 interface MessageItemProps {
   message: ChatMessage;
   onClarificationSelect?: (answer: string) => void;
+  isLoading?: boolean;
 }
 
-export function MessageItem({ message, onClarificationSelect }: MessageItemProps) {
+export function MessageItem({ message, onClarificationSelect, isLoading }: MessageItemProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const isUser = message.role === 'user';
@@ -147,6 +148,7 @@ export function MessageItem({ message, onClarificationSelect }: MessageItemProps
                 questions={message.clarificationQuestions}
                 onSelect={(answer) => onClarificationSelect?.(answer)}
                 disabled={message.isStreaming}
+                isLoading={isLoading}
               />
             )}
 

@@ -1,22 +1,22 @@
 from __future__ import annotations
 
-import uuid
 import threading
+import uuid
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from easysql.config import Settings
+from easysql.utils.logger import get_logger
 from easysql_api.deps import get_settings_dep
 from easysql_api.models.pipeline import (
     PipelineRunRequest,
     PipelineRunResponse,
+    PipelineStats,
     PipelineStatus,
     PipelineStatusEnum,
-    PipelineStats,
 )
-from easysql.config import Settings
-from easysql.utils.logger import get_logger
 
 logger = get_logger(__name__)
 

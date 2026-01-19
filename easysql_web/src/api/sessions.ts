@@ -1,5 +1,14 @@
 import { apiClient, API_BASE_URL } from './client';
-import type { SessionList, SessionDetail, StreamEvent, MessageRequest, BranchRequest } from '@/types';
+import type { SessionList, SessionDetail, SessionInfo, StreamEvent, MessageRequest, BranchRequest } from '@/types';
+
+export interface CreateSessionRequest {
+  db_name?: string;
+}
+
+export async function createSession(dbName?: string): Promise<SessionInfo> {
+  const response = await apiClient.post<SessionInfo>('/sessions', { db_name: dbName });
+  return response.data;
+}
 
 export async function getSessions(limit = 100, offset = 0): Promise<SessionList> {
   const response = await apiClient.get<SessionList>('/sessions', {

@@ -24,6 +24,10 @@ class MessageInfo(BaseModel):
     role: str
     content: str
     timestamp: datetime
+    sql: str | None = None
+    validation_passed: bool | None = None
+    clarification_questions: list[str] | None = None
+    user_answer: str | None = None
 
 
 class SessionDetail(BaseModel):

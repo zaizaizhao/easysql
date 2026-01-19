@@ -1,7 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Tooltip } from 'antd';
+import { Layout, Menu, Button, Tooltip, Divider, message } from 'antd';
 import {
-  MessageOutlined,
   HistoryOutlined,
   SettingOutlined,
   MenuFoldOutlined,
@@ -10,6 +9,8 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, useChatStore } from '@/stores';
+import { SessionList } from './SessionList';
+import { createSession } from '@/api';
 
 const { Sider } = Layout;
 
@@ -18,14 +19,9 @@ export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar } = useAppStore();
-  const { clearChat } = useChatStore();
+  const { cacheCurrentSession, addNewSession } = useChatStore();
 
   const menuItems = [
-    {
-      key: '/chat',
-      icon: <MessageOutlined />,
-      label: t('nav.chat'),
-    },
     {
       key: '/history',
       icon: <HistoryOutlined />,
@@ -38,9 +34,16 @@ export function Sidebar() {
     },
   ];
 
-  const handleNewChat = () => {
-    clearChat();
-    navigate('/chat');
+  const handleNewChat = async () => {
+    cacheCurrentSession();
+    try {
+      const session = await createSession();
+      addNewSession(session);
+      navigate('/chat');
+    } catch (error) {
+      console.error('Failed to create session:', error);
+      message.error(t('session.createError', 'Failed to create session'));
+    }
   };
 
   return (
@@ -48,7 +51,7 @@ export function Sidebar() {
       trigger={null}
       collapsible
       collapsed={sidebarCollapsed}
-      width={200}
+      width={240}
       collapsedWidth={60}
       style={{
         background: 'var(--sider-bg)',
@@ -65,7 +68,7 @@ export function Sidebar() {
           overflowX: 'hidden',
         }}
       >
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 8 }}>
           <Tooltip title={sidebarCollapsed ? t('nav.newChat') : ''} placement="right">
             <Button
               type="primary"
@@ -78,6 +81,13 @@ export function Sidebar() {
           </Tooltip>
         </div>
 
+        {!sidebarCollapsed && (
+          <>
+            <SessionList collapsed={sidebarCollapsed} />
+            <Divider style={{ margin: '8px 0' }} />
+          </>
+        )}
+
         <Menu
           mode="inline"
           selectedKeys={[location.pathname]}
@@ -86,16 +96,18 @@ export function Sidebar() {
           style={{ 
             background: 'transparent',
             border: 'none',
-            flex: 1,
+            flex: sidebarCollapsed ? 1 : 0,
           }}
         />
 
-        <Button
-          type="text"
-          icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-          onClick={toggleSidebar}
-          style={{ marginTop: 'auto' }}
-        />
+        <div style={{ marginTop: 'auto' }}>
+          <Button
+            type="text"
+            icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            onClick={toggleSidebar}
+            block
+          />
+        </div>
       </div>
     </Sider>
   );

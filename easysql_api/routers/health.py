@@ -6,9 +6,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from easysql.config import Settings
 from easysql_api.deps import get_settings_dep
 from easysql_api.services.session_store import get_session_store
-from easysql.config import Settings
 
 router = APIRouter()
 

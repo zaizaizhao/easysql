@@ -42,6 +42,7 @@
     "needConfirm": "Need your confirmation:",
     "answerQuestions": "Please answer the following questions:",
     "inputHint": "You can type your answer below, or click a quick option",
+    "inputPlaceholder": "Type your answer...",
     "optionYes": "Yes",
     "optionNo": "No",
     "optionFirst": "First option",
@@ -54,6 +55,15 @@
     "copyFailed": "Copy failed",
     "validationPassed": "Syntax validation passed",
     "validationFailed": "Syntax validation failed"
+  },
+  "execute": {
+    "run": "Run",
+    "running": "Running...",
+    "error": "Execution Error",
+    "affectedRows": "Affected rows: {{count}}",
+    "noData": "No data returned",
+    "resultStats": "{{rows}} rows returned ({{time}}ms)",
+    "truncated": "Result truncated (showing first 1000 rows)"
   },
   "steps": {
     "retrieve_hint": "Analyze Schema",
@@ -119,5 +129,12 @@
   },
   "database": {
     "select": "Select database"
+  },
+  "session": {
+    "empty": "No sessions yet",
+    "history": "Recent Sessions",
+    "deleteConfirm": "Delete this session?",
+    "createError": "Failed to create session",
+    "loadError": "Failed to load session"
   }
 }

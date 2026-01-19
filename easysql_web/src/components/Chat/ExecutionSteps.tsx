@@ -177,7 +177,7 @@ export function ExecutionSteps({ trace = [], isStreaming }: ExecutionStepsProps)
           if (executedStepsMap.has(stepKey)) {
              return {
                  ...itemConfig,
-                 description: renderStepDescription(stepKey),
+                 subTitle: renderStepDescription(stepKey),
              };
           }
           

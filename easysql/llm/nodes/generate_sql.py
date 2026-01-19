@@ -49,7 +49,7 @@ class GenerateSQLNode(BaseNode):
         # Always use generation model for SQL generation
         return get_llm(self.config, "generation")
 
-    def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(self, state: EasySQLState) -> dict:
         """Generate SQL using the configured LLM."""
         context = state.get("cached_context") or state.get("context_output")
         if not context:
@@ -83,7 +83,7 @@ class GenerateSQLNode(BaseNode):
 
         try:
             structured_llm = self.get_structured_llm(llm)
-            response = structured_llm.invoke(messages)
+            response = await structured_llm.ainvoke(messages)
             if not isinstance(response, SQLResponse):
                 return {"error": "Invalid response type", "generated_sql": None}
             sql = response.sql
@@ -99,7 +99,7 @@ class GenerateSQLNode(BaseNode):
 
 
 # Factory function for backward compatibility
-def generate_sql_node(state: EasySQLState) -> dict:
+async def generate_sql_node(state: EasySQLState) -> dict:
     """Legacy function wrapper for GenerateSQLNode."""
     node = GenerateSQLNode()
-    return node(state)
+    return await node(state)

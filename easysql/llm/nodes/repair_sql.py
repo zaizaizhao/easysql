@@ -43,7 +43,7 @@ class RepairSQLNode(BaseNode):
             self._llm = get_llm(config, "generation")
         return self._llm
 
-    def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(self, state: EasySQLState) -> dict:
         """Repair failed SQL using error feedback.
 
         Args:
@@ -80,7 +80,7 @@ class RepairSQLNode(BaseNode):
 
         try:
             structured_llm = self.get_structured_llm(self.llm)
-            response = structured_llm.invoke(messages)
+            response = await structured_llm.ainvoke(messages)
             if not isinstance(response, SQLResponse):
                 return {
                     "error": "Invalid response type",
@@ -101,7 +101,7 @@ class RepairSQLNode(BaseNode):
 
 
 # Factory function for backward compatibility
-def repair_sql_node(state: EasySQLState) -> dict:
+async def repair_sql_node(state: EasySQLState) -> dict:
     """Legacy function wrapper for RepairSQLNode."""
     node = RepairSQLNode()
-    return node(state)
+    return await node(state)

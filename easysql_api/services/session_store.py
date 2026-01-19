@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import threading
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
-from dataclasses import dataclass, field
-import threading
 
 from easysql_api.models.query import QueryStatus
 

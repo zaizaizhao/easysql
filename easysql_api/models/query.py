@@ -17,6 +17,7 @@ class QueryStatus(str, Enum):
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     db_name: str | None = Field(default=None)
+    session_id: str | None = Field(default=None)
     stream: bool = Field(default=False)
 
 

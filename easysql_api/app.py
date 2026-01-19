@@ -5,15 +5,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from easysql_api.routers import (
-    query_router,
-    sessions_router,
-    pipeline_router,
-    config_router,
-    health_router,
-)
 from easysql.config import get_settings
 from easysql.utils.logger import get_logger
+from easysql_api.routers import (
+    config_router,
+    execute_router,
+    health_router,
+    pipeline_router,
+    query_router,
+    sessions_router,
+)
 
 logger = get_logger(__name__)
 
@@ -48,6 +49,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router, prefix="/api/v1", tags=["Health"])
     app.include_router(query_router, prefix="/api/v1", tags=["Query"])
+    app.include_router(execute_router, prefix="/api/v1", tags=["Execute"])
     app.include_router(sessions_router, prefix="/api/v1", tags=["Sessions"])
     app.include_router(pipeline_router, prefix="/api/v1", tags=["Pipeline"])
     app.include_router(config_router, prefix="/api/v1", tags=["Config"])

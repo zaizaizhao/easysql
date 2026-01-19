@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Input, Button, Space, Tooltip, Tag } from 'antd';
-import { SendOutlined, LoadingOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import { Input, Button, Space, Tooltip } from 'antd';
+import { SendOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useChatStore, useAppStore } from '@/stores';
 
@@ -8,26 +8,18 @@ const { TextArea } = Input;
 
 interface ChatInputProps {
   onSend: (message: string) => void;
-  onClarificationAnswer?: (answer: string) => void;
 }
 
-export function ChatInput({ onSend, onClarificationAnswer }: ChatInputProps) {
+export function ChatInput({ onSend }: ChatInputProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState('');
-  const { isLoading, status } = useChatStore();
+  const { isLoading } = useChatStore();
   const { currentDatabase } = useAppStore();
-
-  const isAwaitingClarification = status === 'awaiting_clarification';
 
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
-    
-    if (isAwaitingClarification && onClarificationAnswer) {
-      onClarificationAnswer(trimmed);
-    } else {
-      onSend(trimmed);
-    }
+    onSend(trimmed);
     setInput('');
   };
 
@@ -42,9 +34,6 @@ export function ChatInput({ onSend, onClarificationAnswer }: ChatInputProps) {
     if (!currentDatabase) {
       return t('chat.placeholderNoDb');
     }
-    if (isAwaitingClarification) {
-      return t('chat.placeholderClarification');
-    }
     return t('chat.placeholder', { database: currentDatabase.toUpperCase() });
   };
 
@@ -56,13 +45,6 @@ export function ChatInput({ onSend, onClarificationAnswer }: ChatInputProps) {
         background: 'var(--input-area-bg)',
       }}
     >
-      {isAwaitingClarification && (
-        <div style={{ marginBottom: 8 }}>
-          <Tag icon={<QuestionCircleOutlined />} color="warning">
-            {t('chat.awaitingAnswer')}
-          </Tag>
-        </div>
-      )}
       <Space.Compact style={{ width: '100%' }}>
         <TextArea
           value={input}

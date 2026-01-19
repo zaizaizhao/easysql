@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import json
-from typing import Annotated, Union
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from easysql_api.deps import get_query_service_dep
 from easysql_api.models.query import (
+    ContinueRequest,
     QueryRequest,
     QueryResponse,
     QueryStatus,
-    ContinueRequest,
 )
 from easysql_api.services.query_service import QueryService
 
@@ -23,7 +23,12 @@ async def create_query(
     request: QueryRequest,
     service: Annotated[QueryService, Depends(get_query_service_dep)],
 ) -> QueryResponse | StreamingResponse:
-    session = service.create_session(db_name=request.db_name)
+    if request.session_id:
+        session = service.get_session(request.session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+    else:
+        session = service.create_session(db_name=request.db_name)
 
     if request.stream:
         return StreamingResponse(
@@ -74,10 +79,10 @@ async def continue_query(
 
 
 async def _stream_generator(service: QueryService, session, question: str):
-    for event in service.stream_query(session, question):
+    async for event in service.stream_query(session, question):
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
 async def _stream_continue_generator(service: QueryService, session, answer: str):
-    for event in service.stream_continue_conversation(session, answer):
+    async for event in service.stream_continue_conversation(session, answer):
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"

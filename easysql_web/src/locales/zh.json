@@ -42,6 +42,7 @@
     "needConfirm": "需要您确认：",
     "answerQuestions": "请回答以下问题：",
     "inputHint": "您可以在下方输入框中回答，或点击快捷选项",
+    "inputPlaceholder": "输入您的回答...",
     "optionYes": "是",
     "optionNo": "否",
     "optionFirst": "按第一种方式",
@@ -54,6 +55,15 @@
     "copyFailed": "复制失败",
     "validationPassed": "语法验证通过",
     "validationFailed": "语法验证失败"
+  },
+  "execute": {
+    "run": "运行",
+    "running": "运行中...",
+    "error": "执行错误",
+    "affectedRows": "影响行数: {{count}}",
+    "noData": "无数据返回",
+    "resultStats": "返回 {{rows}} 行 (耗时 {{time}}ms)",
+    "truncated": "结果已截断 (显示前 1000 行)"
   },
   "steps": {
     "retrieve_hint": "分析Schema",
@@ -119,5 +129,12 @@
   },
   "database": {
     "select": "选择数据库"
+  },
+  "session": {
+    "empty": "暂无会话",
+    "history": "历史会话",
+    "deleteConfirm": "确定删除此会话？",
+    "createError": "创建会话失败",
+    "loadError": "加载会话失败"
   }
 }

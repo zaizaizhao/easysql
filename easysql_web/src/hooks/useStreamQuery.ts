@@ -46,6 +46,7 @@ export function useStreamQuery() {
         { 
           question, 
           db_name: currentDatabase || undefined,
+          session_id: sessionId || undefined,
         },
         handleStreamEvent
       );
@@ -58,7 +59,7 @@ export function useStreamQuery() {
       setError(errorMessage);
       setIsLoading(false);
     }
-  }, [isLoading, currentDatabase, addMessage, handleStreamEvent, setIsLoading, setError]);
+  }, [isLoading, currentDatabase, sessionId, addMessage, handleStreamEvent, setIsLoading, setError]);
 
   const continueStream = useCallback(async (answer: string) => {
     if (isLoading || !sessionId) return;

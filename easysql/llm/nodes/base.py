@@ -6,6 +6,7 @@ Provides a base class for all LangGraph nodes with common utilities.
 
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Coroutine
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -30,17 +31,18 @@ class BaseNode(ABC):
     """Abstract base class for all EasySQL LangGraph nodes.
 
     Provides common utilities and enforces the callable interface.
+    Supports both sync and async implementations.
     """
 
     @abstractmethod
-    def __call__(self, state: EasySQLState) -> dict:
+    def __call__(self, state: EasySQLState) -> dict[Any, Any] | Coroutine[Any, Any, dict[Any, Any]]:
         """Process state and return updates.
 
         Args:
             state: Current graph state.
 
         Returns:
-            Dictionary of state updates.
+            Dictionary of state updates (sync or async).
         """
         pass
 

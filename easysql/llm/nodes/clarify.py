@@ -55,7 +55,7 @@ class ClarifyNode(BaseNode):
 
         return "\n".join(lines)
 
-    def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(self, state: EasySQLState) -> dict:
         questions = state.get("clarification_questions") or []
 
         if not questions:
@@ -93,7 +93,7 @@ class ClarifyNode(BaseNode):
 2. 使用实际存在的表名和字段名
 3. 保持问题的业务语义，只补充澄清的信息"""
 
-        response = self.llm.invoke([HumanMessage(content=rewrite_prompt)])
+        response = await self.llm.ainvoke([HumanMessage(content=rewrite_prompt)])
         content = response.content
         clarified = content.strip() if isinstance(content, str) else str(content)
 
@@ -107,6 +107,6 @@ class ClarifyNode(BaseNode):
         }
 
 
-def clarify_node(state: EasySQLState) -> dict:
+async def clarify_node(state: EasySQLState) -> dict:
     node = ClarifyNode()
-    return node(state)
+    return await node(state)

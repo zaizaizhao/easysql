@@ -159,7 +159,7 @@ class AnalyzeQueryNode(BaseNode):
 
         return "\n".join(lines)
 
-    def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(self, state: EasySQLState) -> dict:
         """Analyze query with schema context and determine if clarification is needed."""
         if self.config.query_mode == "fast":
             return {
@@ -183,7 +183,7 @@ class AnalyzeQueryNode(BaseNode):
         structured_llm = self.llm.with_structured_output(AnalysisResult)
 
         try:
-            response = structured_llm.invoke(
+            response = await structured_llm.ainvoke(
                 [SystemMessage(content=ANALYZE_SYSTEM_PROMPT), HumanMessage(content=user_prompt)]
             )
             if not isinstance(response, AnalysisResult):
@@ -210,7 +210,7 @@ class AnalyzeQueryNode(BaseNode):
             }
 
 
-def analyze_query_node(state: EasySQLState) -> dict:
+async def analyze_query_node(state: EasySQLState) -> dict:
     """Factory function for AnalyzeQueryNode."""
     node = AnalyzeQueryNode()
-    return node(state)
+    return await node(state)

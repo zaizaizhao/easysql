@@ -6,7 +6,7 @@ import { useChatStore } from '@/stores';
 
 export default function ChatPage() {
   const { sendQuery, continueStream, sendFollowUp, createBranch } = useStreamQuery();
-  const { sessionId, status } = useChatStore();
+  const { sessionId } = useChatStore();
   
   const [branchModalVisible, setBranchModalVisible] = useState(false);
   const [branchFromMessageId, setBranchFromMessageId] = useState<string | null>(null);
@@ -21,7 +21,7 @@ export default function ChatPage() {
   };
 
   const handleClarificationAnswer = (answer: string) => {
-    if (!sessionId || status !== 'awaiting_clarification') return;
+    if (!sessionId) return;
     continueStream(answer);
   };
 
@@ -60,10 +60,7 @@ export default function ChatPage() {
         onClarificationSelect={handleClarificationAnswer}
         onBranchClick={handleBranchClick}
       />
-      <ChatInput 
-        onSend={handleSend} 
-        onClarificationAnswer={handleClarificationAnswer}
-      />
+      <ChatInput onSend={handleSend} />
       
       <Modal
         title="基于此消息追问"

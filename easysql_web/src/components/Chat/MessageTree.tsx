@@ -11,7 +11,7 @@ interface MessageTreeProps {
 }
 
 export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTreeProps) {
-  const { getVisibleMessages, messages, messageMap } = useChatStore();
+  const { getVisibleMessages, messages, messageMap, isLoading } = useChatStore();
   const listRef = useRef<HTMLDivElement>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
 
@@ -76,6 +76,7 @@ export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTre
             <MessageItem
               message={message}
               onClarificationSelect={onClarificationSelect}
+              isLoading={isLoading}
             />
             
             {hasBranches && (

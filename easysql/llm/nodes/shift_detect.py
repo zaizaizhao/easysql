@@ -40,7 +40,7 @@ class ShiftDetectNode(BaseNode):
 输出 JSON 格式：
 {{"needs_new_tables": true/false, "reason": "判断理由", "suggested_tables": ["表名"]}}"""
 
-    def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(self, state: EasySQLState) -> dict:
         cached_context = state.get("cached_context")
         if not cached_context:
             logger.info("No cached context, requires full retrieval")
@@ -61,7 +61,7 @@ class ShiftDetectNode(BaseNode):
             llm = get_llm(settings.llm, "generation")
             structured_llm = llm.with_structured_output(ShiftDetectResult)
 
-            response = structured_llm.invoke(
+            response = await structured_llm.ainvoke(
                 [
                     SystemMessage(
                         content="你是一个语义分析助手，负责判断追问是否需要检索新的数据库表。"
@@ -105,6 +105,6 @@ class ShiftDetectNode(BaseNode):
         return "\n---\n".join(summaries)
 
 
-def shift_detect_node(state: EasySQLState) -> dict:
+async def shift_detect_node(state: EasySQLState) -> dict:
     node = ShiftDetectNode()
-    return node(state)
+    return await node(state)

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { QueryStatus, StreamEvent } from '@/types';
+import type { QueryStatus, StreamEvent, SessionInfo } from '@/types';
 
 export interface StepTrace {
   node: string;
@@ -28,6 +28,16 @@ export interface ChatMessage {
   childIds?: string[];
 }
 
+export interface SessionCache {
+  sessionId: string;
+  messages: ChatMessage[];
+  messageMap: Map<string, ChatMessage>;
+  activeBranchPath: string[];
+  status: QueryStatus;
+  title: string;
+  updatedAt: Date;
+}
+
 interface ChatState {
   sessionId: string | null;
   messages: ChatMessage[];
@@ -36,6 +46,10 @@ interface ChatState {
   status: QueryStatus;
   isLoading: boolean;
   error: string | null;
+
+  sessions: SessionInfo[];
+  sessionCache: Map<string, SessionCache>;
+  isLoadingSessions: boolean;
 
   setSessionId: (id: string | null) => void;
   addMessage: (message: ChatMessage, parentId?: string) => void;
@@ -49,6 +63,14 @@ interface ChatState {
   getChildMessages: (parentId: string) => ChatMessage[];
   switchBranch: (messageId: string) => void;
   getVisibleMessages: () => ChatMessage[];
+
+  setSessions: (sessions: SessionInfo[]) => void;
+  setIsLoadingSessions: (loading: boolean) => void;
+  switchSession: (sessionId: string, messages?: ChatMessage[]) => void;
+  cacheCurrentSession: () => void;
+  removeSession: (sessionId: string) => void;
+  getSessionTitle: (sessionId: string) => string;
+  addNewSession: (session: SessionInfo) => void;
 }
 
 let messageIdCounter = 0;
@@ -62,6 +84,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   status: 'pending',
   isLoading: false,
   error: null,
+
+  sessions: [],
+  sessionCache: new Map(),
+  isLoadingSessions: false,
 
   setSessionId: (id) => set({ sessionId: id }),
   
@@ -173,122 +199,374 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   handleStreamEvent: (event) => {
     const state = get();
+    const eventSessionId = event.data?.session_id;
+    const targetSessionId = eventSessionId || state.sessionId;
     
+    if (!targetSessionId) return;
+
+    const isActive = targetSessionId === state.sessionId;
+
+    // Helper to update a session's state (either active or cached)
+    const updateSessionState = (
+      currentMessages: ChatMessage[],
+      currentMap: Map<string, ChatMessage>,
+      updates: Partial<ChatMessage>,
+    ) => {
+      const streamingMessage = currentMessages.find(
+        m => m.role === 'assistant' && m.isStreaming
+      );
+      
+      if (!streamingMessage) return null;
+
+      const newMessages = currentMessages.map((msg) =>
+        msg.id === streamingMessage.id ? { ...msg, ...updates } : msg
+      );
+      
+      const newMap = new Map(currentMap);
+      if (newMap.has(streamingMessage.id)) {
+        newMap.set(streamingMessage.id, { ...newMap.get(streamingMessage.id)!, ...updates });
+      }
+
+      return { messages: newMessages, messageMap: newMap };
+    };
+
     switch (event.event) {
-      case 'start':
-        set({ 
-          sessionId: event.data.session_id || null,
-          isLoading: true,
-          status: 'processing',
-        });
+      case 'start': {
+        if (isActive) {
+          set({ 
+            sessionId: targetSessionId,
+            isLoading: true,
+            status: 'processing',
+          });
+        } else {
+          const cached = state.sessionCache.get(targetSessionId);
+          if (cached) {
+            const newCache = new Map(state.sessionCache);
+            newCache.set(targetSessionId, { ...cached, status: 'processing' });
+            set({ sessionCache: newCache });
+          }
+        }
         break;
+      }
 
       case 'state_update': {
-        const lastMessage = state.messages[state.messages.length - 1];
-        if (lastMessage?.role === 'assistant' && lastMessage.isStreaming) {
-          const updates: Partial<ChatMessage> = {};
+        const updates: Partial<ChatMessage> = {};
+        
+        if (event.data.node) {
+          let currentTrace: StepTrace[] = [];
           
-          if (event.data.node) {
-            const currentTrace = lastMessage.trace || [];
-            const lastStep = currentTrace[currentTrace.length - 1];
-            
-            // Check if we are updating the existing last step or adding a new one
-            if (lastStep?.node === event.data.node) {
-                // Update existing step data
-                 const updatedTrace = [...currentTrace];
-                 updatedTrace[updatedTrace.length - 1] = {
-                     ...lastStep,
-                     data: { ...lastStep.data, ...event.data }
-                 };
-                 updates.trace = updatedTrace;
-            } else {
-                // Add new step
-                updates.trace = [
-                    ...currentTrace, 
-                    { 
-                        node: event.data.node, 
-                        data: event.data, 
-                        timestamp: Date.now() 
-                    }
-                ];
-            }
+          if (isActive) {
+             const msg = state.messages.find(m => m.role === 'assistant' && m.isStreaming);
+             currentTrace = msg?.trace || [];
+          } else {
+             const cached = state.sessionCache.get(targetSessionId);
+             const msg = cached?.messages.find(m => m.role === 'assistant' && m.isStreaming);
+             currentTrace = msg?.trace || [];
           }
 
-          if (event.data.generated_sql) {
-            updates.sql = event.data.generated_sql;
-          }
-          if (event.data.clarification_questions) {
-            updates.clarificationQuestions = event.data.clarification_questions;
-          }
-          if (event.data.retrieval_summary) {
-            updates.retrievalSummary = {
-              tablesCount: event.data.retrieval_summary.tables_count,
-              tables: event.data.retrieval_summary.tables,
+          const lastStep = currentTrace[currentTrace.length - 1];
+          let updatedTrace = [...currentTrace];
+
+          if (lastStep?.node === event.data.node) {
+            updatedTrace[updatedTrace.length - 1] = {
+              ...lastStep,
+              data: { ...lastStep.data, ...event.data }
             };
-          }
-          
-          if (Object.keys(updates).length > 0) {
-            set((s) => {
-              const newMessages = s.messages.map((msg) =>
-                msg.id === lastMessage.id ? { ...msg, ...updates } : msg
-              );
-              const newMap = new Map(s.messageMap);
-              if (newMap.has(lastMessage.id)) {
-                newMap.set(lastMessage.id, { ...newMap.get(lastMessage.id)!, ...updates });
-              }
-              return { messages: newMessages, messageMap: newMap };
+          } else {
+            updatedTrace.push({ 
+              node: event.data.node, 
+              data: event.data, 
+              timestamp: Date.now() 
             });
+          }
+          updates.trace = updatedTrace;
+        }
+
+        if (event.data.generated_sql) updates.sql = event.data.generated_sql;
+        if (event.data.clarification_questions) updates.clarificationQuestions = event.data.clarification_questions;
+        if (event.data.retrieval_summary) {
+          updates.retrievalSummary = {
+            tablesCount: event.data.retrieval_summary.tables_count,
+            tables: event.data.retrieval_summary.tables,
+          };
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          if (isActive) {
+            const result = updateSessionState(state.messages, state.messageMap, updates);
+            if (result) set({ messages: result.messages, messageMap: result.messageMap });
+          } else {
+            const cached = state.sessionCache.get(targetSessionId);
+            if (cached) {
+              const result = updateSessionState(cached.messages, cached.messageMap, updates);
+              if (result) {
+                const newCache = new Map(state.sessionCache);
+                newCache.set(targetSessionId, { 
+                  ...cached, 
+                  messages: result.messages, 
+                  messageMap: result.messageMap 
+                });
+                set({ sessionCache: newCache });
+              }
+            }
           }
         }
         break;
       }
 
       case 'complete': {
-        const lastMessage = state.messages[state.messages.length - 1];
-        if (lastMessage?.role === 'assistant') {
-          const updates: Partial<ChatMessage> = {
-            isStreaming: false,
-            sql: event.data.sql || lastMessage.sql,
-            validationPassed: event.data.validation_passed,
-          };
+        const updates: Partial<ChatMessage> = {
+          isStreaming: false,
+          sql: event.data.sql,
+          validationPassed: event.data.validation_passed,
+        };
 
-          // Fix: Handle nested clarification object from backend
-          const clarificationQuestions = 
-            event.data.clarification_questions || 
-            event.data.clarification?.questions;
+        const clarificationQuestions = 
+          event.data.clarification_questions || 
+          event.data.clarification?.questions;
 
-          if (clarificationQuestions) {
-            updates.clarificationQuestions = clarificationQuestions;
+        if (clarificationQuestions) {
+          updates.clarificationQuestions = clarificationQuestions;
+        }
+
+        const newStatus = (event.data.status === 'awaiting_clarification' || clarificationQuestions) 
+          ? 'awaiting_clarification' 
+          : 'completed';
+
+        if (isActive) {
+          const msg = state.messages.find(m => m.role === 'assistant' && m.isStreaming);
+          if (!msg) {
+             set({ isLoading: false, status: 'completed' });
+             break;
           }
+          if (!updates.sql) updates.sql = msg.sql;
 
-          set((s) => {
-            const newMessages = s.messages.map((msg) =>
-              msg.id === lastMessage.id ? { ...msg, ...updates } : msg
-            );
-            const newMap = new Map(s.messageMap);
-            if (newMap.has(lastMessage.id)) {
-              newMap.set(lastMessage.id, { ...newMap.get(lastMessage.id)!, ...updates });
-            }
-            return {
-              messages: newMessages,
-              messageMap: newMap,
+          const result = updateSessionState(state.messages, state.messageMap, updates);
+          if (result) {
+            set({
+              messages: result.messages,
+              messageMap: result.messageMap,
               isLoading: false,
-              status: (event.data.status === 'awaiting_clarification' || clarificationQuestions) 
-                ? 'awaiting_clarification' 
-                : 'completed',
-            };
-          });
+              status: newStatus as QueryStatus,
+            });
+          }
+        } else {
+          const cached = state.sessionCache.get(targetSessionId);
+          if (cached) {
+            const msg = cached.messages.find(m => m.role === 'assistant' && m.isStreaming);
+            if (msg && !updates.sql) updates.sql = msg.sql;
+
+            const result = updateSessionState(cached.messages, cached.messageMap, updates);
+            if (result) {
+              const newCache = new Map(state.sessionCache);
+              newCache.set(targetSessionId, {
+                ...cached,
+                messages: result.messages,
+                messageMap: result.messageMap,
+                status: newStatus as QueryStatus,
+              });
+              set({ sessionCache: newCache });
+            }
+          }
         }
         break;
       }
 
-      case 'error':
-        set({
-          isLoading: false,
-          status: 'failed',
-          error: event.data.error || 'Unknown error occurred',
-        });
+      case 'error': {
+        const errorMsg = event.data.error || 'Unknown error occurred';
+        if (isActive) {
+          set({
+            isLoading: false,
+            status: 'failed',
+            error: errorMsg,
+          });
+        } else {
+          const cached = state.sessionCache.get(targetSessionId);
+          if (cached) {
+            const newCache = new Map(state.sessionCache);
+            newCache.set(targetSessionId, { ...cached, status: 'failed' });
+            set({ sessionCache: newCache });
+          }
+        }
         break;
+      }
     }
   },
+
+  setSessions: (sessions) => set({ sessions }),
+  
+  setIsLoadingSessions: (loading) => set({ isLoadingSessions: loading }),
+
+  cacheCurrentSession: () => set((state) => {
+    if (!state.sessionId || state.messages.length === 0) return state;
+    
+    const firstUserMessage = state.messages.find(m => m.role === 'user');
+    const title = firstUserMessage?.content.slice(0, 50) || `Session ${state.sessionId.slice(0, 8)}`;
+    
+    const newCache = new Map(state.sessionCache);
+    newCache.set(state.sessionId, {
+      sessionId: state.sessionId,
+      messages: [...state.messages],
+      messageMap: new Map(state.messageMap),
+      activeBranchPath: [...state.activeBranchPath],
+      status: state.status,
+      title,
+      updatedAt: new Date(),
+    });
+    
+    return { sessionCache: newCache };
+  }),
+
+  switchSession: (sessionId, messages) => set((state) => {
+    if (state.sessionId) {
+      const firstUserMessage = state.messages.find(m => m.role === 'user');
+      const title = firstUserMessage?.content.slice(0, 50) || `Session ${state.sessionId.slice(0, 8)}`;
+      
+      const newCache = new Map(state.sessionCache);
+      newCache.set(state.sessionId, {
+        sessionId: state.sessionId,
+        messages: [...state.messages],
+        messageMap: new Map(state.messageMap),
+        activeBranchPath: [...state.activeBranchPath],
+        status: state.status,
+        title,
+        updatedAt: new Date(),
+      });
+      
+      const cached = newCache.get(sessionId);
+      if (cached) {
+        return {
+          sessionCache: newCache,
+          sessionId: cached.sessionId,
+          messages: cached.messages,
+          messageMap: cached.messageMap,
+          activeBranchPath: cached.activeBranchPath,
+          status: cached.status,
+          isLoading: cached.status === 'processing',
+          error: null,
+        };
+      }
+
+      if (messages) {
+        const messageMap = new Map<string, ChatMessage>();
+        messages.forEach(m => messageMap.set(m.id, m));
+        const branchPath = messages.map(m => m.id);
+        
+        return {
+          sessionCache: newCache,
+          sessionId,
+          messages,
+          messageMap,
+          activeBranchPath: branchPath,
+          status: 'completed',
+          isLoading: false,
+          error: null,
+        };
+      }
+
+      return {
+        sessionCache: newCache,
+        sessionId,
+        messages: [],
+        messageMap: new Map(),
+        activeBranchPath: [],
+        status: 'pending',
+        isLoading: false,
+        error: null,
+      };
+    }
+
+    const cached = state.sessionCache.get(sessionId);
+    if (cached) {
+      return {
+        sessionId: cached.sessionId,
+        messages: cached.messages,
+        messageMap: cached.messageMap,
+        activeBranchPath: cached.activeBranchPath,
+        status: cached.status,
+        isLoading: cached.status === 'processing',
+        error: null,
+      };
+    }
+
+    if (messages) {
+      const messageMap = new Map<string, ChatMessage>();
+      messages.forEach(m => messageMap.set(m.id, m));
+      const branchPath = messages.map(m => m.id);
+      
+      return {
+        sessionId,
+        messages,
+        messageMap,
+        activeBranchPath: branchPath,
+        status: 'completed',
+        isLoading: false,
+        error: null,
+      };
+    }
+
+    return {
+      sessionId,
+      messages: [],
+      messageMap: new Map(),
+      activeBranchPath: [],
+      status: 'pending',
+      isLoading: false,
+      error: null,
+    };
+  }),
+
+  removeSession: (sessionId) => set((state) => {
+    const newCache = new Map(state.sessionCache);
+    newCache.delete(sessionId);
+    
+    const newSessions = state.sessions.filter(s => s.session_id !== sessionId);
+    
+    if (state.sessionId === sessionId) {
+      return {
+        sessionCache: newCache,
+        sessions: newSessions,
+        sessionId: null,
+        messages: [],
+        messageMap: new Map(),
+        activeBranchPath: [],
+        status: 'pending',
+        isLoading: false,
+        error: null,
+      };
+    }
+    
+    return { sessionCache: newCache, sessions: newSessions };
+  }),
+
+  getSessionTitle: (sessionId) => {
+    const state = get();
+    const cached = state.sessionCache.get(sessionId);
+    if (cached) return cached.title;
+    
+    const session = state.sessions.find(s => s.session_id === sessionId);
+    if (session) {
+      return `Session ${session.session_id.slice(0, 8)}`;
+    }
+    
+    return `Session ${sessionId.slice(0, 8)}`;
+  },
+
+  addNewSession: (session) => set((state) => {
+    const existingIndex = state.sessions.findIndex(s => s.session_id === session.session_id);
+    const newSessions = existingIndex >= 0
+      ? state.sessions
+      : [session, ...state.sessions];
+    
+    return {
+      sessionId: session.session_id,
+      sessions: newSessions,
+      messages: [],
+      messageMap: new Map(),
+      activeBranchPath: [],
+      status: 'pending',
+      isLoading: false,
+      error: null,
+    };
+  }),
 }));
