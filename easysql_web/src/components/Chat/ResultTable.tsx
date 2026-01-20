@@ -1,4 +1,4 @@
-import { Table, Typography, Alert, Empty } from 'antd';
+import { Table, Typography, Alert, Empty, theme } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import type { ExecuteResponse } from '@/types';
@@ -12,10 +12,11 @@ interface ResultTableProps {
 
 export function ResultTable({ result, loading }: ResultTableProps) {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
 
   if (loading) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', background: 'var(--bg-color-1)', borderRadius: 8 }}>
+      <div style={{ padding: 24, textAlign: 'center', background: token.colorBgContainer, borderRadius: 8 }}>
         <Text type="secondary">{t('common.loading')}</Text>
       </div>
     );
@@ -40,9 +41,9 @@ export function ResultTable({ result, loading }: ResultTableProps) {
       <div style={{ 
         marginTop: 12, 
         padding: 24, 
-        border: '1px solid var(--border-color)', 
+        border: `1px solid ${token.colorBorder}`, 
         borderRadius: 8,
-        background: 'var(--bg-color-1)'
+        background: token.colorBgContainer
       }}>
         <Empty 
           image={Empty.PRESENTED_IMAGE_SIMPLE} 
@@ -96,7 +97,7 @@ export function ResultTable({ result, loading }: ResultTableProps) {
           hideOnSinglePage: true
         }}
         rowKey={(_, index) => (index ?? Math.random()).toString()}
-        style={{ border: '1px solid var(--border-color)', borderRadius: 8 }}
+        style={{ border: `1px solid ${token.colorBorder}`, borderRadius: 8 }}
       />
     </div>
   );

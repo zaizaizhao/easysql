@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Tooltip, message, Space } from 'antd';
+import { Button, Tooltip, message, Space, theme } from 'antd';
 import { CopyOutlined, CheckCircleOutlined, CloseCircleOutlined, PlayCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import Editor from '@monaco-editor/react';
@@ -16,9 +16,10 @@ interface SQLBlockProps {
 
 export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockProps) {
   const { t } = useTranslation();
-  const { theme, currentDatabase } = useAppStore();
+  const { theme: appTheme, currentDatabase } = useAppStore();
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ExecuteResponse | null>(null);
+  const { token } = theme.useToken();
 
   const handleCopy = async () => {
     try {
@@ -64,7 +65,7 @@ export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockPro
   return (
     <div
       style={{
-        border: '1px solid var(--border-color)',
+        border: `1px solid ${token.colorBorder}`,
         borderRadius: 8,
         overflow: 'hidden',
         marginTop: 12,
@@ -77,8 +78,8 @@ export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockPro
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '8px 12px',
-          background: 'var(--code-header-bg)',
-          borderBottom: '1px solid var(--border-color)',
+          background: token.colorFillQuaternary,
+          borderBottom: `1px solid ${token.colorBorder}`,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -120,7 +121,7 @@ export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockPro
         height={editorHeight}
         language="sql"
         value={sql}
-        theme={theme === 'dark' ? 'vs-dark' : 'light'}
+        theme={appTheme === 'dark' ? 'vs-dark' : 'light'}
         options={{
           readOnly: true,
           minimap: { enabled: false },
@@ -135,7 +136,7 @@ export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockPro
       />
       
       {(result || executing) && (
-        <div style={{ padding: '0 12px 12px 12px', borderTop: '1px solid var(--border-color)' }}>
+        <div style={{ padding: '0 12px 12px 12px', borderTop: `1px solid ${token.colorBorder}` }}>
           <ResultTable result={result} loading={executing} />
         </div>
       )}

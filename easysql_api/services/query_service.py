@@ -71,7 +71,7 @@ class QueryService:
         session.messages.append(message)
         session.touch()
 
-    def execute_query(
+    async def execute_query(
         self,
         session: Session,
         question: str,
@@ -100,8 +100,8 @@ class QueryService:
         config = self._make_config(session.session_id)
 
         try:
-            result = self.graph.invoke(input_state, config)
-            return self._process_result(session, result, config)
+            result = await self.graph.ainvoke(input_state, config)
+            return await self._process_result(session, result, config)
         except Exception as e:
             logger.error(f"Query execution failed: {e}")
             session.status = QueryStatus.FAILED
@@ -111,7 +111,7 @@ class QueryService:
                 "error": str(e),
             }
 
-    def continue_conversation(
+    async def continue_conversation(
         self,
         session: Session,
         answer: str,
@@ -128,8 +128,8 @@ class QueryService:
         config = self._make_config(session.session_id)
 
         try:
-            result = self.graph.invoke(Command(resume=answer), config)
-            processed_result = self._process_result(session, result, config)
+            result = await self.graph.ainvoke(Command(resume=answer), config)
+            processed_result = await self._process_result(session, result, config)
 
             if processed_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
                 self._append_message(
@@ -200,10 +200,10 @@ class QueryService:
                         },
                     }
 
-            snapshot = self.graph.get_state(config)
+            snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
 
-            final_result = self._process_result(session, dict(final_state), config)
+            final_result = await self._process_result(session, dict(final_state), config)
             final_result["session_id"] = session.session_id
 
             if final_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
@@ -230,13 +230,13 @@ class QueryService:
             session.touch()
             yield {"event": "error", "data": {"session_id": session.session_id, "error": str(e)}}
 
-    def _process_result(
+    async def _process_result(
         self,
         session: Session,
         result: dict[str, Any],
         config: dict[str, Any],
     ) -> dict[str, Any]:
-        snapshot = self.graph.get_state(config)
+        snapshot = await self.graph.aget_state(config)
 
         if snapshot.next and "clarify" in snapshot.next:
             questions = self._extract_clarification_questions(snapshot, result)
@@ -340,10 +340,10 @@ class QueryService:
                         },
                     }
 
-            snapshot = self.graph.get_state(config)
+            snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
 
-            final_result = self._process_result(session, dict(final_state), config)
+            final_result = await self._process_result(session, dict(final_state), config)
             final_result["session_id"] = session.session_id
 
             if final_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
@@ -365,10 +365,13 @@ class QueryService:
             yield {"event": "complete", "data": final_result}
 
         except Exception as e:
-            logger.error(f"Stream query failed: {e}")
+            logger.exception(f"Stream query failed: {type(e).__name__}: {e!r}")
             session.status = QueryStatus.FAILED
             session.touch()
-            yield {"event": "error", "data": {"session_id": session.session_id, "error": str(e)}}
+            yield {
+                "event": "error",
+                "data": {"session_id": session.session_id, "error": f"{type(e).__name__}: {e!r}"},
+            }
 
     def _sanitize_output(self, output: dict[str, Any] | None) -> dict[str, Any]:
         if output is None:
@@ -403,7 +406,7 @@ class QueryService:
 
         return result
 
-    def follow_up_query(
+    async def follow_up_query(
         self,
         session: Session,
         question: str,
@@ -421,7 +424,7 @@ class QueryService:
 
         config = self._make_config(session.session_id)
 
-        snapshot = self.graph.get_state(config)
+        snapshot = await self.graph.aget_state(config)
         prev_state = snapshot.values if snapshot else {}
 
         conversation_history = prev_state.get("conversation_history", [])
@@ -450,8 +453,8 @@ class QueryService:
         }
 
         try:
-            result = self.graph.invoke(input_state, config)
-            processed_result = self._process_result(session, result, config)
+            result = await self.graph.ainvoke(input_state, config)
+            processed_result = await self._process_result(session, result, config)
 
             if processed_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
                 self._append_message(
@@ -500,7 +503,7 @@ class QueryService:
 
         config = self._make_config(session.session_id)
 
-        snapshot = self.graph.get_state(config)
+        snapshot = await self.graph.aget_state(config)
         prev_state = snapshot.values if snapshot else {}
 
         conversation_history = prev_state.get("conversation_history", [])
@@ -547,9 +550,9 @@ class QueryService:
                         },
                     }
 
-            snapshot = self.graph.get_state(config)
+            snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
-            final_result = self._process_result(session, dict(final_state), config)
+            final_result = await self._process_result(session, dict(final_state), config)
             final_result["session_id"] = session.session_id
 
             if final_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:

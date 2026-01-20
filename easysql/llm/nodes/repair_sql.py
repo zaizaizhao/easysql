@@ -12,7 +12,12 @@ from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode, SQLResponse
 from easysql.llm.state import EasySQLState
 
-REPAIR_SYSTEM_PROMPT = """你是一个SQL专家。用户的SQL验证失败，请根据错误信息修复SQL。只输出修正后的SQL，不要输出其他内容。"""
+REPAIR_SYSTEM_PROMPT = """你是一个SQL专家。用户的SQL验证失败，请根据错误信息修复SQL。
+
+重要规则：
+- 只输出修正后的SQL，不要输出其他内容
+- 禁止使用参数占位符如 %(name)s、%s、:name、? 等，必须生成可直接执行的完整 SQL
+- 如果原SQL中包含参数占位符，请用合理的示例值替换"""
 
 
 class RepairSQLNode(BaseNode):

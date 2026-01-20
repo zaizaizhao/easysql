@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Avatar, Typography, Space, Spin, Tag, theme } from 'antd';
+import { Avatar, Typography, Space, Spin, Tag, theme, Flex } from 'antd';
 import { UserOutlined, RobotOutlined, TableOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { SQLBlock } from './SQLBlock';
@@ -22,10 +22,10 @@ export function MessageItem({ message, onClarificationSelect, isLoading }: Messa
   const [showAllTables, setShowAllTables] = useState(false);
 
   return (
-    <div
+    <Flex
+      gap={12}
+      vertical={false}
       style={{
-        display: 'flex',
-        gap: 12,
         padding: '16px 0',
         flexDirection: isUser ? 'row-reverse' : 'row',
       }}
@@ -38,13 +38,10 @@ export function MessageItem({ message, onClarificationSelect, isLoading }: Messa
         }}
       />
 
-      <div
-        style={{
-          maxWidth: '80%',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: isUser ? 'flex-end' : 'flex-start',
-        }}
+      <Flex
+        vertical
+        align={isUser ? 'flex-end' : 'flex-start'}
+        style={{ maxWidth: '80%' }}
       >
         {isUser ? (
           <div
@@ -170,7 +167,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading }: Messa
         >
           {message.timestamp.toLocaleTimeString()}
         </Text>
-      </div>
-    </div>
+      </Flex>
+    </Flex>
   );
 }

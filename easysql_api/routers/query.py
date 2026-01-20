@@ -36,7 +36,7 @@ async def create_query(
             media_type="text/event-stream",
         )
 
-    result = service.execute_query(session, request.question)
+    result = await service.execute_query(session, request.question)
 
     return QueryResponse(
         session_id=session.session_id,
@@ -65,7 +65,7 @@ async def continue_query(
             media_type="text/event-stream",
         )
 
-    result = service.continue_conversation(session, request.answer)
+    result = await service.continue_conversation(session, request.answer)
 
     return QueryResponse(
         session_id=session.session_id,

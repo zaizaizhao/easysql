@@ -1,10 +1,11 @@
-import { Layout, Space, Typography } from 'antd';
+import { Layout, Space, Typography, theme } from 'antd';
 import { DatabaseSwitcher, ThemeToggle, LanguageSwitcher } from '@/components/Common';
 
 const { Header: AntHeader } = Layout;
 const { Title } = Typography;
 
 export function Header() {
+  const { token } = theme.useToken();
   return (
     <AntHeader
       style={{
@@ -13,11 +14,11 @@ export function Header() {
         justifyContent: 'space-between',
         padding: '0 24px',
         background: 'transparent',
-        borderBottom: '1px solid var(--border-color)',
+        borderBottom: `1px solid ${token.colorBorder}`,
       }}
     >
       <Space>
-        <Title level={4} style={{ margin: 0, color: 'var(--primary-color)' }}>
+        <Title level={4} style={{ margin: 0, color: token.colorPrimary }}>
           EasySQL
         </Title>
       </Space>

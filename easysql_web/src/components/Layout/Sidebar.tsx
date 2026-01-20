@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Tooltip, Divider, message } from 'antd';
+import { Layout, Menu, Button, Tooltip, Divider, message, theme } from 'antd';
 import {
   HistoryOutlined,
   SettingOutlined,
@@ -20,6 +20,7 @@ export function Sidebar() {
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar } = useAppStore();
   const { cacheCurrentSession, addNewSession } = useChatStore();
+  const { token } = theme.useToken();
 
   const menuItems = [
     {
@@ -54,8 +55,8 @@ export function Sidebar() {
       width={240}
       collapsedWidth={60}
       style={{
-        background: 'var(--sider-bg)',
-        borderRight: '1px solid var(--border-color)',
+        background: token.colorBgContainer,
+        borderRight: `1px solid ${token.colorBorder}`,
       }}
     >
       <div

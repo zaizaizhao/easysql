@@ -148,9 +148,9 @@ async def send_message(
         return StreamingResponse(generate(), media_type="text/event-stream")
 
     if is_first_message:
-        result = service.execute_query(session, request.question)
+        result = await service.execute_query(session, request.question)
     else:
-        result = service.follow_up_query(session, request.question, parent_message_id=None)
+        result = await service.follow_up_query(session, request.question, parent_message_id=None)
     return {"session_id": session_id, **result}
 
 
@@ -177,7 +177,7 @@ async def create_branch(
 
         return StreamingResponse(generate(), media_type="text/event-stream")
 
-    result = service.follow_up_query(
+    result = await service.follow_up_query(
         session, request.question, parent_message_id=request.from_message_id
     )
     return {"session_id": session_id, "from_message_id": request.from_message_id, **result}

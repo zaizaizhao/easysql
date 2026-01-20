@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Input, Button, Space, Tooltip } from 'antd';
+import { Input, Button, Space, Tooltip, theme } from 'antd';
 import { SendOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useChatStore, useAppStore } from '@/stores';
@@ -15,6 +15,7 @@ export function ChatInput({ onSend }: ChatInputProps) {
   const [input, setInput] = useState('');
   const { isLoading } = useChatStore();
   const { currentDatabase } = useAppStore();
+  const { token } = theme.useToken();
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -41,8 +42,8 @@ export function ChatInput({ onSend }: ChatInputProps) {
     <div
       style={{
         padding: 16,
-        borderTop: '1px solid var(--border-color)',
-        background: 'var(--input-area-bg)',
+        borderTop: `1px solid ${token.colorBorder}`,
+        background: token.colorBgContainer,
       }}
     >
       <Space.Compact style={{ width: '100%' }}>

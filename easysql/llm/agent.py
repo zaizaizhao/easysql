@@ -89,7 +89,7 @@ def route_validate(state: EasySQLState) -> str:
 def _create_checkpointer() -> BaseCheckpointSaver | Any:
     """Create checkpointer for LangGraph state persistence.
 
-    Returns BaseCheckpointSaver (MemorySaver) or context manager (PostgresSaver.from_conn_string).
+    Uses AsyncPostgresSaver for async graph operations (astream/ainvoke).
     """
     settings = get_settings()
 
@@ -98,19 +98,75 @@ def _create_checkpointer() -> BaseCheckpointSaver | Any:
         return MemorySaver()
 
     try:
-        from langgraph.checkpoint.postgres import PostgresSaver
+        from psycopg_pool import AsyncConnectionPool
+
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
         logger.info(
             f"Connecting to PostgreSQL checkpointer at {settings.checkpointer.postgres_host}"
         )
-        saver = PostgresSaver.from_conn_string(settings.checkpointer.postgres_uri)
-        return saver
-    except ImportError:
-        logger.warning("langgraph-checkpoint-postgres not installed, falling back to memory")
+        # Use AsyncPostgresSaver for async graph operations (astream/ainvoke)
+        pool = AsyncConnectionPool(
+            settings.checkpointer.postgres_uri,
+            max_size=10,
+            kwargs={"autocommit": True, "prepare_threshold": 0},
+        )
+        checkpointer = AsyncPostgresSaver(pool)
+        return checkpointer
+    except ImportError as e:
+        logger.warning(
+            f"langgraph-checkpoint-postgres or psycopg_pool not installed: {e}, falling back to memory"
+        )
         return MemorySaver()
     except Exception as e:
         logger.error(f"Failed to connect to PostgreSQL: {e}, falling back to memory")
         return MemorySaver()
+
+
+def _ensure_database_exists(settings: "Settings") -> None:
+    """Create the checkpointer database if it doesn't exist."""
+    import psycopg
+
+    admin_uri = (
+        f"postgresql://{settings.checkpointer.postgres_user}:{settings.checkpointer.postgres_password}"
+        f"@{settings.checkpointer.postgres_host}:{settings.checkpointer.postgres_port}/postgres"
+    )
+    db_name = settings.checkpointer.postgres_database
+
+    with psycopg.connect(admin_uri, autocommit=True) as conn:
+        result = conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,)).fetchone()
+        if not result:
+            conn.execute(f'CREATE DATABASE "{db_name}"')
+            logger.info(f"Created database '{db_name}'")
+
+
+def setup_checkpointer() -> None:
+    """Initialize PostgreSQL checkpointer database and tables if configured.
+
+    Call this during application startup to ensure database/tables exist before handling requests.
+    Safe to call multiple times (idempotent).
+    """
+    settings = get_settings()
+
+    if not settings.checkpointer.is_postgres():
+        logger.debug("Checkpointer setup skipped: not using PostgreSQL backend")
+        return
+
+    try:
+        from langgraph.checkpoint.postgres import PostgresSaver
+
+        logger.info(f"Setting up PostgreSQL checkpointer at {settings.checkpointer.postgres_host}")
+
+        _ensure_database_exists(settings)
+
+        with PostgresSaver.from_conn_string(settings.checkpointer.postgres_uri) as saver:
+            saver.setup()
+        logger.info("PostgreSQL checkpointer tables ready")
+    except ImportError:
+        logger.warning("langgraph-checkpoint-postgres not installed, skipping setup")
+    except Exception as e:
+        logger.error(f"Failed to setup PostgreSQL checkpointer: {e}")
+        raise
 
 
 def get_langfuse_callbacks() -> list[Any]:

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Input } from 'antd';
+import { Modal, Input, theme } from 'antd';
 import { MessageTree, ChatInput } from '@/components/Chat';
 import { useStreamQuery } from '@/hooks';
 import { useChatStore } from '@/stores';
@@ -7,6 +7,7 @@ import { useChatStore } from '@/stores';
 export default function ChatPage() {
   const { sendQuery, continueStream, sendFollowUp, createBranch } = useStreamQuery();
   const { sessionId } = useChatStore();
+  const { token } = theme.useToken();
   
   const [branchModalVisible, setBranchModalVisible] = useState(false);
   const [branchFromMessageId, setBranchFromMessageId] = useState<string | null>(null);
@@ -51,7 +52,7 @@ export default function ChatPage() {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        background: 'var(--chat-bg)',
+        background: token.colorBgLayout,
         borderRadius: 8,
         overflow: 'hidden',
       }}

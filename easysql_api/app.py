@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from easysql.config import get_settings
+from easysql.llm import setup_checkpointer
 from easysql.utils.logger import get_logger
 from easysql_api.routers import (
     config_router,
@@ -27,6 +28,13 @@ async def lifespan(app: FastAPI):
     logger.info(f"  LLM Model: {settings.llm.get_model()}")
     if settings.langfuse.is_configured():
         logger.info("  LangFuse: Enabled")
+
+    if settings.checkpointer.is_postgres():
+        logger.info("  Checkpointer: PostgreSQL")
+        setup_checkpointer()
+    else:
+        logger.info("  Checkpointer: In-memory")
+
     yield
     logger.info("EasySQL API shutting down...")
 
