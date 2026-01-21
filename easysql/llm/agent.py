@@ -30,8 +30,13 @@ from easysql.utils.logger import get_logger
 
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
+    from psycopg_pool import AsyncConnectionPool as AsyncConnectionPoolType
+
+    from easysql.config import Settings
 
 logger = get_logger(__name__)
+
+_checkpointer_pool: "AsyncConnectionPoolType | None" = None
 
 
 def route_start(state: EasySQLState) -> str:
@@ -98,19 +103,22 @@ def _create_checkpointer() -> BaseCheckpointSaver | Any:
         return MemorySaver()
 
     try:
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg.rows import dict_row
         from psycopg_pool import AsyncConnectionPool
 
-        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        global _checkpointer_pool
 
         logger.info(
             f"Connecting to PostgreSQL checkpointer at {settings.checkpointer.postgres_host}"
         )
-        # Use AsyncPostgresSaver for async graph operations (astream/ainvoke)
         pool = AsyncConnectionPool(
             settings.checkpointer.postgres_uri,
             max_size=10,
-            kwargs={"autocommit": True, "prepare_threshold": 0},
+            check=AsyncConnectionPool.check_connection,
+            kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
         )
+        _checkpointer_pool = pool
         checkpointer = AsyncPostgresSaver(pool)
         return checkpointer
     except ImportError as e:
@@ -169,6 +177,19 @@ def setup_checkpointer() -> None:
         raise
 
 
+async def close_checkpointer_pool() -> None:
+    """Close the checkpointer connection pool.
+
+    Call during application shutdown to release database connections.
+    """
+    global _checkpointer_pool
+    if _checkpointer_pool is not None:
+        logger.info("Closing checkpointer connection pool...")
+        await _checkpointer_pool.close()
+        _checkpointer_pool = None
+        logger.info("Checkpointer connection pool closed")
+
+
 def get_langfuse_callbacks() -> list[Any]:
     """Get LangFuse callback handlers if configured."""
     settings = get_settings()
@@ -183,14 +204,6 @@ def get_langfuse_callbacks() -> list[Any]:
         os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse.public_key or "")
         os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse.secret_key or "")
         os.environ.setdefault("LANGFUSE_HOST", settings.langfuse.host)
-
-        return [CallbackHandler()]
-    except ImportError:
-        logger.warning("langfuse package not installed, tracing disabled")
-        return []
-
-    try:
-        from langfuse.langchain import CallbackHandler
 
         return [CallbackHandler()]
     except ImportError:

@@ -9,13 +9,19 @@ Main components:
 - get_llm: Factory function to initialize LLM from config
 """
 
-from easysql.llm.agent import build_graph, get_langfuse_callbacks, setup_checkpointer
-from easysql.llm.state import EasySQLState, ContextOutputDict, ValidationResultDict
-from easysql.llm.models import get_llm, ModelPurpose
+from easysql.llm.agent import (
+    build_graph,
+    close_checkpointer_pool,
+    get_langfuse_callbacks,
+    setup_checkpointer,
+)
+from easysql.llm.models import ModelPurpose, get_llm
+from easysql.llm.state import ContextOutputDict, EasySQLState, ValidationResultDict
 
 __all__ = [
     # Graph
     "build_graph",
+    "close_checkpointer_pool",
     "get_langfuse_callbacks",
     "setup_checkpointer",
     # State

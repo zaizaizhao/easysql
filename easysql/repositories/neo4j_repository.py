@@ -81,7 +81,17 @@ class Neo4jRepository:
 
     @property
     def driver(self) -> Driver:
-        """Get the Neo4j driver, connecting if necessary."""
+        """Get the Neo4j driver, connecting if necessary.
+
+        Includes health check to automatically reconnect if the connection is lost.
+        """
+        if self._driver:
+            try:
+                self._driver.verify_connectivity()
+            except Exception:
+                logger.warning("Neo4j connection lost, reconnecting...")
+                self._driver = None
+
         if not self._driver:
             self.connect()
         assert self._driver is not None

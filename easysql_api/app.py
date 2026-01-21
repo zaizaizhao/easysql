@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from easysql.config import get_settings
-from easysql.llm import setup_checkpointer
+from easysql.llm import close_checkpointer_pool, setup_checkpointer
 from easysql.utils.logger import get_logger
 from easysql_api.routers import (
     config_router,
@@ -37,6 +37,7 @@ async def lifespan(app: FastAPI):
 
     yield
     logger.info("EasySQL API shutting down...")
+    await close_checkpointer_pool()
 
 
 def create_app() -> FastAPI:
