@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Empty } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { MessageItem } from './MessageItem';
 import { BranchIndicator } from './BranchIndicator';
 import { BranchButton } from './BranchButton';
-import { useChatStore, type ChatMessage } from '@/stores';
+import { useChatStore } from '@/stores';
+import type { ChatMessage } from '@/types';
 
 interface MessageTreeProps {
   onClarificationSelect?: (answer: string) => void;
@@ -11,6 +13,7 @@ interface MessageTreeProps {
 }
 
 export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTreeProps) {
+  const { t } = useTranslation();
   const { getVisibleMessages, messages, messageMap, isLoading } = useChatStore();
   const listRef = useRef<HTMLDivElement>(null);
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
@@ -33,10 +36,10 @@ export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTre
           height: '100%',
         }}
       >
-        <Empty
-          description="开始一个新的对话"
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-        />
+          <Empty
+            description={t('chat.startNewConversation')}
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
       </div>
     );
   }

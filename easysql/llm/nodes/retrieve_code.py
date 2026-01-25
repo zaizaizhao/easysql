@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from easysql.config import get_settings
 from easysql.embeddings.embedding_service import EmbeddingService
@@ -13,6 +13,9 @@ from easysql.repositories.milvus_repository import MilvusRepository
 from easysql.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
+
     from easysql.code_context.retrieval.code_retrieval import CodeRetrievalService
 
 logger = get_logger(__name__)
@@ -60,7 +63,13 @@ class RetrieveCodeNode(BaseNode):
             self._service_checked = True
         return self._service
 
-    def __call__(self, state: EasySQLState) -> dict:
+    def __call__(
+        self,
+        state: EasySQLState,
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         if self.service is None:
             return {}
 
@@ -97,6 +106,11 @@ class RetrieveCodeNode(BaseNode):
         return {}
 
 
-def retrieve_code_node(state: EasySQLState) -> dict:
+def retrieve_code_node(
+    state: EasySQLState,
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
     node = RetrieveCodeNode()
-    return node(state)
+    return node(state, config, writer=writer)

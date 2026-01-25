@@ -2,7 +2,15 @@
 Generate SQL Node.
 
 Calls LLM to generate SQL based on the constructed context.
+
+.. deprecated::
+    This module is deprecated when use_agent_mode=True.
+    Use sql_agent.SqlAgentNode instead, which provides iterative
+    SQL generation with tool-based validation and repair.
 """
+
+import warnings
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -12,6 +20,10 @@ from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode, SQLResponse
 from easysql.llm.state import EasySQLState
 from easysql.llm.utils.token_manager import get_token_manager
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
 
 
 class GenerateSQLNode(BaseNode):
@@ -49,7 +61,13 @@ class GenerateSQLNode(BaseNode):
         # Always use generation model for SQL generation
         return get_llm(self.config, "generation")
 
-    async def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(
+        self,
+        state: EasySQLState,
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         """Generate SQL using the configured LLM."""
         context = state.get("cached_context") or state.get("context_output")
         if not context:
@@ -99,7 +117,16 @@ class GenerateSQLNode(BaseNode):
 
 
 # Factory function for backward compatibility
-async def generate_sql_node(state: EasySQLState) -> dict:
-    """Legacy function wrapper for GenerateSQLNode."""
+async def generate_sql_node(
+    state: EasySQLState,
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
+    warnings.warn(
+        "generate_sql_node is deprecated when use_agent_mode=True. Use SqlAgentNode.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     node = GenerateSQLNode()
-    return await node(state)
+    return await node(state, config, writer=writer)

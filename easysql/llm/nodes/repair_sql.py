@@ -2,7 +2,15 @@
 Repair SQL Node.
 
 Uses LLM to repair failed SQL based on error feedback.
+
+.. deprecated::
+    This module is deprecated when use_agent_mode=True.
+    Use sql_agent.SqlAgentNode instead, which handles repair
+    iteratively within the ReAct loop.
 """
+
+import warnings
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
@@ -11,6 +19,10 @@ from easysql.config import LLMConfig, get_settings
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode, SQLResponse
 from easysql.llm.state import EasySQLState
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
 
 REPAIR_SYSTEM_PROMPT = """你是一个SQL专家。用户的SQL验证失败，请根据错误信息修复SQL。
 
@@ -48,7 +60,13 @@ class RepairSQLNode(BaseNode):
             self._llm = get_llm(config, "generation")
         return self._llm
 
-    async def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(
+        self,
+        state: EasySQLState,
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         """Repair failed SQL using error feedback.
 
         Args:
@@ -106,7 +124,16 @@ class RepairSQLNode(BaseNode):
 
 
 # Factory function for backward compatibility
-async def repair_sql_node(state: EasySQLState) -> dict:
-    """Legacy function wrapper for RepairSQLNode."""
+async def repair_sql_node(
+    state: EasySQLState,
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
+    warnings.warn(
+        "repair_sql_node is deprecated when use_agent_mode=True. Use SqlAgentNode.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     node = RepairSQLNode()
-    return await node(state)
+    return await node(state, config, writer=writer)

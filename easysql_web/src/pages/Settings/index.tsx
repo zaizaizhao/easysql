@@ -1,7 +1,6 @@
 import { Card, Descriptions, Tag, Typography, Divider, Button, Space, Spin, Progress, message } from 'antd';
 import { SyncOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import dayjs from 'dayjs';
 
 import { useConfig, usePipelineStatus, useRunPipeline } from '@/hooks';
 
@@ -40,7 +39,14 @@ export default function SettingsPage() {
         <Tag icon={cfg.icon} color={cfg.color}>{cfg.text}</Tag>
         {pipelineStatus.started_at && (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {dayjs(pipelineStatus.started_at).format('YYYY-MM-DD HH:mm:ss')}
+            {new Intl.DateTimeFormat(undefined, {
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            }).format(new Date(pipelineStatus.started_at))}
           </Text>
         )}
       </Space>
@@ -60,7 +66,7 @@ export default function SettingsPage() {
       <Title level={4}>{t('settings.title')}</Title>
 
       <Card title={t('settings.schemaSync')} style={{ marginBottom: 16 }}>
-        <Space direction="vertical" style={{ width: '100%' }}>
+        <Space orientation="vertical" style={{ width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <Text strong>{t('settings.pipelineStatus')}</Text>

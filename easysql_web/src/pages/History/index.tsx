@@ -80,7 +80,15 @@ export default function HistoryPage() {
       key: 'created_at',
       width: 160,
       render: (time: string) => (
-        <Text type="secondary">{dayjs(time).fromNow()}</Text>
+        <Text type="secondary">
+          {new Intl.DateTimeFormat(undefined, { 
+            year: 'numeric', 
+            month: 'numeric', 
+            day: 'numeric', 
+            hour: 'numeric', 
+            minute: 'numeric' 
+          }).format(new Date(time))}
+        </Text>
       ),
       sorter: (a, b) => dayjs(a.created_at).valueOf() - dayjs(b.created_at).valueOf(),
       defaultSortOrder: 'descend',
@@ -110,6 +118,7 @@ export default function HistoryPage() {
               size="small"
               danger
               icon={<DeleteOutlined />}
+              aria-label={t('common.delete')}
             />
           </Popconfirm>
         </Space>

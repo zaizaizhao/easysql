@@ -1,5 +1,7 @@
 """
-SQL Executor Base and Types (Re-export for backwards compatibility).
+SQL Executors Package.
+
+Provides SQL execution strategies for different database backends.
 """
 
 from easysql.llm.tools.executors.base import (
@@ -8,10 +10,12 @@ from easysql.llm.tools.executors.base import (
     ExecutionResult,
     SchemaInfoDict,
 )
+from easysql.llm.tools.executors.sqlalchemy_executor import SqlAlchemyExecutor
 
 __all__ = [
     "BaseSqlExecutor",
     "DbDialect",
     "ExecutionResult",
     "SchemaInfoDict",
+    "SqlAlchemyExecutor",
 ]

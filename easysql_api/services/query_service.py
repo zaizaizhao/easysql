@@ -183,22 +183,44 @@ class QueryService:
             yield {"event": "start", "data": {"session_id": session.session_id}}
 
             last_state: dict[str, Any] = {}
-            async for state_snapshot in self.graph.astream(Command(resume=answer), config):
-                for node_name, updates in state_snapshot.items():
-                    if not isinstance(updates, dict):
-                        continue
-
-                    last_state.update(updates)
-                    sanitized_updates = self._sanitize_output(updates)
-
-                    yield {
-                        "event": "state_update",
-                        "data": {
-                            "session_id": session.session_id,
-                            "node": node_name,
-                            **sanitized_updates,
-                        },
-                    }
+            async for chunk in self.graph.astream(
+                Command(resume=answer), config, stream_mode=["updates", "custom"]
+            ):
+                if isinstance(chunk, tuple) and len(chunk) == 2:
+                    mode, data = chunk
+                    if mode == "custom" and isinstance(data, dict):
+                        yield {
+                            "event": "agent_progress",
+                            "data": {"session_id": session.session_id, **data},
+                        }
+                    elif mode == "updates" and isinstance(data, dict):
+                        for node_name, updates in data.items():
+                            if not isinstance(updates, dict):
+                                continue
+                            last_state.update(updates)
+                            sanitized_updates = self._sanitize_output(updates)
+                            yield {
+                                "event": "state_update",
+                                "data": {
+                                    "session_id": session.session_id,
+                                    "node": node_name,
+                                    **sanitized_updates,
+                                },
+                            }
+                elif isinstance(chunk, dict):
+                    for node_name, updates in chunk.items():
+                        if not isinstance(updates, dict):
+                            continue
+                        last_state.update(updates)
+                        sanitized_updates = self._sanitize_output(updates)
+                        yield {
+                            "event": "state_update",
+                            "data": {
+                                "session_id": session.session_id,
+                                "node": node_name,
+                                **sanitized_updates,
+                            },
+                        }
 
             snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
@@ -323,22 +345,44 @@ class QueryService:
             yield {"event": "start", "data": {"session_id": session.session_id}}
 
             last_state: dict[str, Any] = {}
-            async for state_snapshot in self.graph.astream(input_state, config):
-                for node_name, updates in state_snapshot.items():
-                    if not isinstance(updates, dict):
-                        continue
-
-                    last_state.update(updates)
-                    sanitized_updates = self._sanitize_output(updates)
-
-                    yield {
-                        "event": "state_update",
-                        "data": {
-                            "session_id": session.session_id,
-                            "node": node_name,
-                            **sanitized_updates,
-                        },
-                    }
+            async for chunk in self.graph.astream(
+                input_state, config, stream_mode=["updates", "custom"]
+            ):
+                if isinstance(chunk, tuple) and len(chunk) == 2:
+                    mode, data = chunk
+                    if mode == "custom" and isinstance(data, dict):
+                        yield {
+                            "event": "agent_progress",
+                            "data": {"session_id": session.session_id, **data},
+                        }
+                    elif mode == "updates" and isinstance(data, dict):
+                        for node_name, updates in data.items():
+                            if not isinstance(updates, dict):
+                                continue
+                            last_state.update(updates)
+                            sanitized_updates = self._sanitize_output(updates)
+                            yield {
+                                "event": "state_update",
+                                "data": {
+                                    "session_id": session.session_id,
+                                    "node": node_name,
+                                    **sanitized_updates,
+                                },
+                            }
+                elif isinstance(chunk, dict):
+                    for node_name, updates in chunk.items():
+                        if not isinstance(updates, dict):
+                            continue
+                        last_state.update(updates)
+                        sanitized_updates = self._sanitize_output(updates)
+                        yield {
+                            "event": "state_update",
+                            "data": {
+                                "session_id": session.session_id,
+                                "node": node_name,
+                                **sanitized_updates,
+                            },
+                        }
 
             snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
@@ -535,20 +579,44 @@ class QueryService:
             yield {"event": "start", "data": {"session_id": session.session_id}}
 
             last_state: dict[str, Any] = {}
-            async for state_snapshot in self.graph.astream(input_state, config):
-                for node_name, updates in state_snapshot.items():
-                    if not isinstance(updates, dict):
-                        continue
-                    last_state.update(updates)
-                    sanitized_updates = self._sanitize_output(updates)
-                    yield {
-                        "event": "state_update",
-                        "data": {
-                            "session_id": session.session_id,
-                            "node": node_name,
-                            **sanitized_updates,
-                        },
-                    }
+            async for chunk in self.graph.astream(
+                input_state, config, stream_mode=["updates", "custom"]
+            ):
+                if isinstance(chunk, tuple) and len(chunk) == 2:
+                    mode, data = chunk
+                    if mode == "custom" and isinstance(data, dict):
+                        yield {
+                            "event": "agent_progress",
+                            "data": {"session_id": session.session_id, **data},
+                        }
+                    elif mode == "updates" and isinstance(data, dict):
+                        for node_name, updates in data.items():
+                            if not isinstance(updates, dict):
+                                continue
+                            last_state.update(updates)
+                            sanitized_updates = self._sanitize_output(updates)
+                            yield {
+                                "event": "state_update",
+                                "data": {
+                                    "session_id": session.session_id,
+                                    "node": node_name,
+                                    **sanitized_updates,
+                                },
+                            }
+                elif isinstance(chunk, dict):
+                    for node_name, updates in chunk.items():
+                        if not isinstance(updates, dict):
+                            continue
+                        last_state.update(updates)
+                        sanitized_updates = self._sanitize_output(updates)
+                        yield {
+                            "event": "state_update",
+                            "data": {
+                                "session_id": session.session_id,
+                                "node": node_name,
+                                **sanitized_updates,
+                            },
+                        }
 
             snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state

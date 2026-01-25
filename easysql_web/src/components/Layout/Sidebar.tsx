@@ -76,6 +76,7 @@ export function Sidebar() {
               icon={<PlusOutlined />}
               onClick={handleNewChat}
               block
+              aria-label={t('nav.newChat')}
             >
               {!sidebarCollapsed && t('nav.newChat')}
             </Button>
@@ -107,6 +108,7 @@ export function Sidebar() {
             icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={toggleSidebar}
             block
+            aria-label={sidebarCollapsed ? t('common.expand') : t('common.collapse')}
           />
         </div>
       </div>

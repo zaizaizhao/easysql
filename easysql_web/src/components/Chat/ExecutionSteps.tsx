@@ -11,8 +11,9 @@ import {
   LoadingOutlined,
   QuestionCircleOutlined,
   SafetyCertificateOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons';
-import type { StepTrace } from '@/stores/chatStore';
+import type { StepTrace } from '@/types';
 
 interface ExecutionStepsProps {
   trace?: StepTrace[];
@@ -31,9 +32,10 @@ const STEP_ICONS: Record<string, React.ReactNode> = {
   retrieve_code: <CodeOutlined />,
   generate_sql: <CodeOutlined />,
   validate_sql: <CheckCircleOutlined />,
+  sql_agent: <ThunderboltOutlined />,
 };
 
-// Full flow (Plan Mode)
+// Full flow (Plan Mode) - Legacy
 const PIPELINE_FULL = [
   'retrieve_hint',
   'analyze',
@@ -45,7 +47,7 @@ const PIPELINE_FULL = [
   'validate_sql'
 ];
 
-// Fast flow (Fast Mode)
+// Fast flow (Fast Mode) - Legacy
 const PIPELINE_FAST = [
   'retrieve',
   'build_context',
@@ -54,17 +56,41 @@ const PIPELINE_FAST = [
   'validate_sql'
 ];
 
-// Follow-up flow (Short - No Shift)
+// Agent mode flows
+const PIPELINE_AGENT_FULL = [
+  'retrieve_hint',
+  'analyze',
+  'clarify',
+  'retrieve',
+  'build_context',
+  'retrieve_code',
+  'sql_agent'
+];
+
+const PIPELINE_AGENT_FAST = [
+  'retrieve',
+  'build_context',
+  'retrieve_code',
+  'sql_agent'
+];
+
+// Follow-up flow (Short - No Shift) - Legacy
 const PIPELINE_FOLLOWUP_SHORT = [
   'shift_detect',
   'generate_sql',
   'validate_sql'
 ];
 
-// Follow-up flow (Long - Shift Detected)
+// Follow-up flow (Short - No Shift) - Agent Mode
+const PIPELINE_FOLLOWUP_SHORT_AGENT = [
+  'shift_detect',
+  'sql_agent'
+];
+
+// Follow-up flow (Long - Shift Detected) - Legacy
 const PIPELINE_FOLLOWUP_LONG = [
   'shift_detect',
-  'retrieve_hint', // or retrieve depending on mode, but usually hint in plan mode
+  'retrieve_hint',
   'analyze',
   'clarify',
   'retrieve',
@@ -74,6 +100,18 @@ const PIPELINE_FOLLOWUP_LONG = [
   'validate_sql'
 ];
 
+// Follow-up flow (Long - Shift Detected) - Agent Mode
+const PIPELINE_FOLLOWUP_LONG_AGENT = [
+  'shift_detect',
+  'retrieve_hint',
+  'analyze',
+  'clarify',
+  'retrieve',
+  'build_context',
+  'retrieve_code',
+  'sql_agent'
+];
+
 export function ExecutionSteps({ trace = [], isStreaming }: ExecutionStepsProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
@@ -81,26 +119,25 @@ export function ExecutionSteps({ trace = [], isStreaming }: ExecutionStepsProps)
   const executedStepsMap = new Map(trace.map(step => [step.node, step]));
   const executedNodes = new Set(trace.map(s => s.node));
 
-  // Determine which pipeline to show
-  let currentPipeline = PIPELINE_FULL;
+  const isAgentMode = executedNodes.has('sql_agent');
+
+  let currentPipeline = isAgentMode ? PIPELINE_AGENT_FULL : PIPELINE_FULL;
 
   if (executedNodes.has('shift_detect')) {
     if (executedNodes.has('retrieve') || executedNodes.has('retrieve_hint')) {
-      // Follow-up with shift detected (re-retrieval)
-      currentPipeline = PIPELINE_FOLLOWUP_LONG;
+      currentPipeline = isAgentMode ? PIPELINE_FOLLOWUP_LONG_AGENT : PIPELINE_FOLLOWUP_LONG;
       
-      // Special handling: if we jumped straight to retrieve (fast mode), filter out plan-mode steps
       if (!executedNodes.has('retrieve_hint') && executedNodes.has('retrieve')) {
-         currentPipeline = ['shift_detect', ...PIPELINE_FAST];
+         currentPipeline = isAgentMode 
+           ? ['shift_detect', ...PIPELINE_AGENT_FAST]
+           : ['shift_detect', ...PIPELINE_FAST];
       }
     } else {
-      // Follow-up without shift (direct generation)
-      currentPipeline = PIPELINE_FOLLOWUP_SHORT;
+      currentPipeline = isAgentMode ? PIPELINE_FOLLOWUP_SHORT_AGENT : PIPELINE_FOLLOWUP_SHORT;
     }
   } else {
-    // Initial query
     if (!executedNodes.has('retrieve_hint') && executedNodes.has('retrieve')) {
-      currentPipeline = PIPELINE_FAST;
+      currentPipeline = isAgentMode ? PIPELINE_AGENT_FAST : PIPELINE_FAST;
     }
   }
 

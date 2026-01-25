@@ -11,6 +11,9 @@ from easysql.llm.nodes.base import BaseNode
 from easysql.utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
+
     from easysql.llm.state import EasySQLState
 
 logger = get_logger(__name__)
@@ -40,7 +43,13 @@ class ShiftDetectNode(BaseNode):
 输出 JSON 格式：
 {{"needs_new_tables": true/false, "reason": "判断理由", "suggested_tables": ["表名"]}}"""
 
-    async def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(
+        self,
+        state: "EasySQLState",
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         cached_context = state.get("cached_context")
         if not cached_context:
             logger.info("No cached context, requires full retrieval")
@@ -105,6 +114,11 @@ class ShiftDetectNode(BaseNode):
         return "\n---\n".join(summaries)
 
 
-async def shift_detect_node(state: EasySQLState) -> dict:
+async def shift_detect_node(
+    state: "EasySQLState",
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
     node = ShiftDetectNode()
-    return await node(state)
+    return await node(state, config, writer=writer)

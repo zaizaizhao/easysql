@@ -5,7 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { SQLBlock } from './SQLBlock';
 import { ExecutionSteps } from './ExecutionSteps';
 import { ClarificationButtons } from './ClarificationButtons';
-import type { ChatMessage } from '@/stores';
+import { AgentThinking } from './AgentThinking';
+import type { ChatMessage } from '@/types';
 
 const { Text, Paragraph } = Typography;
 
@@ -80,7 +81,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading }: Messa
                   </Text>
                 </Space>
                 <div style={{ marginTop: 4 }}>
-                  {message.retrievalSummary.tables.slice(0, showAllTables ? undefined : 5).map((table) => (
+                  {message.retrievalSummary.tables.slice(0, showAllTables ? undefined : 5).map((table: string) => (
                     <Tag key={table} style={{ marginBottom: 4 }}>{table}</Tag>
                   ))}
                   {!showAllTables && message.retrievalSummary.tables.length > 5 && (
@@ -107,6 +108,14 @@ export function MessageItem({ message, onClarificationSelect, isLoading }: Messa
               <ExecutionSteps trace={message.trace} isStreaming={message.isStreaming} />
             )}
 
+            {(message.agentSteps || message.thinkingContent) && (
+              <AgentThinking 
+                thinkingContent={message.thinkingContent}
+                agentSteps={message.agentSteps}
+                isStreaming={message.isStreaming}
+              />
+            )}
+
             {message.content && (
               <Paragraph style={{ marginBottom: 8 }}>
                 {message.content}
@@ -128,7 +137,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading }: Messa
                        {message.clarificationQuestions.length > 1 ? t('clarification.answerQuestions') : t('clarification.needConfirm')}
                      </Text>
                      <div style={{ fontSize: 13, color: token.colorTextSecondary }}>
-                       {message.clarificationQuestions.map((q, idx) => (
+                       {message.clarificationQuestions.map((q: string, idx: number) => (
                          <div key={idx}>{message.clarificationQuestions!.length > 1 ? `${idx + 1}. ${q}` : q}</div>
                        ))}
                      </div>
@@ -155,6 +164,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading }: Messa
                   sql={message.sql}
                   validationPassed={message.validationPassed}
                   validationError={message.validationError}
+                  autoExecute={!message.isStreaming}
                 />
               </div>
             )}

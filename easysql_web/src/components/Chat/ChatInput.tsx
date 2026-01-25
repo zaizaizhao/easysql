@@ -51,10 +51,11 @@ export function ChatInput({ onSend }: ChatInputProps) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={getPlaceholder()}
+          placeholder={getPlaceholder() + '…'}
           disabled={!currentDatabase || isLoading}
           autoSize={{ minRows: 1, maxRows: 4 }}
           style={{ flex: 1 }}
+          autoComplete="off"
         />
         <Tooltip title={isLoading ? t('chat.processing') : t('chat.sendTooltip')}>
           <Button
@@ -63,6 +64,7 @@ export function ChatInput({ onSend }: ChatInputProps) {
             onClick={handleSend}
             disabled={!input.trim() || isLoading || !currentDatabase}
             style={{ height: 'auto' }}
+            aria-label={t('chat.send')}
           />
         </Tooltip>
       </Space.Compact>

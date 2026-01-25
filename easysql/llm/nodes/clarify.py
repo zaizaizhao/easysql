@@ -4,7 +4,7 @@ Clarify Node (HITL).
 Asks user for clarification if needed using LangGraph interrupt.
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.language_models import BaseChatModel
@@ -14,6 +14,10 @@ from easysql.config import get_settings, LLMConfig
 from easysql.llm.state import EasySQLState, SchemaHintDict
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
 
 
 class ClarifyNode(BaseNode):
@@ -55,7 +59,13 @@ class ClarifyNode(BaseNode):
 
         return "\n".join(lines)
 
-    async def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(
+        self,
+        state: EasySQLState,
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         questions = state.get("clarification_questions") or []
 
         if not questions:
@@ -107,6 +117,11 @@ class ClarifyNode(BaseNode):
         }
 
 
-async def clarify_node(state: EasySQLState) -> dict:
+async def clarify_node(
+    state: EasySQLState,
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
     node = ClarifyNode()
-    return await node(state)
+    return await node(state, config, writer=writer)

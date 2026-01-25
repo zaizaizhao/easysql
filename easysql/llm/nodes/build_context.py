@@ -4,13 +4,17 @@ Build Context Node.
 Uses ContextBuilder to construct the prompts for SQL generation.
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from easysql.llm.state import EasySQLState
 from easysql.llm.nodes.base import BaseNode
 from easysql.context.builder import ContextBuilder
 from easysql.context.models import ContextInput
 from easysql.retrieval.schema_retrieval import RetrievalResult
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
 
 
 class BuildContextNode(BaseNode):
@@ -35,7 +39,13 @@ class BuildContextNode(BaseNode):
             self._builder = ContextBuilder.default()
         return self._builder
 
-    def __call__(self, state: EasySQLState) -> dict:
+    def __call__(
+        self,
+        state: EasySQLState,
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         """Construct prompt context from retrieval results.
 
         Args:
@@ -80,7 +90,12 @@ class BuildContextNode(BaseNode):
 
 
 # Factory function for backward compatibility
-def build_context_node(state: EasySQLState) -> dict:
+def build_context_node(
+    state: EasySQLState,
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
     """Legacy function wrapper for BuildContextNode."""
     node = BuildContextNode()
-    return node(state)
+    return node(state, config, writer=writer)

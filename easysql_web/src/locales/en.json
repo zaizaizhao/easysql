@@ -36,7 +36,15 @@
     "yourAnswer": "Your answer:",
     "retrievedTables": "Retrieved {{count}} related tables:",
     "usedSchemaHint": "Used schema hint",
-    "tablesRetrieved": "Retrieved {{count}} tables"
+    "tablesRetrieved": "Retrieved {{count}} tables",
+    "startNewConversation": "Start a new conversation",
+    "followUp": "Follow up",
+    "branchFollowUp": "Branch from here",
+    "branchInfo": "Branch {{current}}/{{total}}",
+    "modalTitle": "Follow up from this message",
+    "modalOk": "Send",
+    "modalCancel": "Cancel",
+    "modalPlaceholder": "Enter your follow-up question..."
   },
   "clarification": {
     "needConfirm": "Need your confirmation:",
@@ -75,8 +83,16 @@
     "generate_sql": "Generate SQL",
     "validate_sql": "Validate SQL",
     "shift_detect": "Analyze Intent",
+    "sql_agent": "SQL Agent",
     "validationPassed": "Validation passed",
     "validationFailed": "Validation failed"
+  },
+  "agent": {
+    "thinking": "Thinking",
+    "iteration": "Iteration #{{current}}",
+    "callingTool": "Calling tool",
+    "toolSuccess": "Success",
+    "toolFailed": "Failed"
   },
   "history": {
     "title": "Session History",

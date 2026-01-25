@@ -33,7 +33,7 @@ export interface QueryResponse {
 }
 
 export interface StreamEvent {
-  event: 'start' | 'state_update' | 'complete' | 'error';
+  event: 'start' | 'state_update' | 'agent_progress' | 'complete' | 'error';
   data: {
     node?: string;
     session_id?: string;
@@ -61,6 +61,14 @@ export interface StreamEvent {
     };
     sql?: string;
     error?: string;
+    type?: string;
+    iteration?: number;
+    action?: 'tool_start' | 'tool_end' | 'thinking';
+    tool?: string;
+    success?: boolean;
+    input_preview?: string;
+    output_preview?: string;
+    content?: string;
   };
 }
 

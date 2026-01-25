@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Modal, Input, theme } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { MessageTree, ChatInput } from '@/components/Chat';
 import { useStreamQuery } from '@/hooks';
 import { useChatStore } from '@/stores';
 
 export default function ChatPage() {
+  const { t } = useTranslation();
   const { sendQuery, continueStream, sendFollowUp, createBranch } = useStreamQuery();
   const { sessionId } = useChatStore();
   const { token } = theme.useToken();
@@ -64,18 +66,18 @@ export default function ChatPage() {
       <ChatInput onSend={handleSend} />
       
       <Modal
-        title="基于此消息追问"
+        title={t('chat.modalTitle')}
         open={branchModalVisible}
         onOk={handleBranchSubmit}
         onCancel={handleBranchCancel}
-        okText="发送"
-        cancelText="取消"
+        okText={t('chat.modalOk')}
+        cancelText={t('chat.modalCancel')}
         okButtonProps={{ disabled: !branchQuestion.trim() }}
       >
         <Input.TextArea
           value={branchQuestion}
           onChange={(e) => setBranchQuestion(e.target.value)}
-          placeholder="输入您的追问..."
+          placeholder={t('chat.modalPlaceholder') + '…'}
           rows={4}
           autoFocus
           onPressEnter={(e) => {

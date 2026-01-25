@@ -6,6 +6,7 @@ Retrieves tables + key columns + semantic columns to enable precise clarificatio
 """
 
 from functools import lru_cache
+from typing import TYPE_CHECKING, Any
 
 from easysql.config import get_settings
 from easysql.embeddings.embedding_service import EmbeddingService
@@ -15,6 +16,10 @@ from easysql.readers.milvus_reader import MilvusSchemaReader
 from easysql.readers.neo4j_reader import Neo4jSchemaReader
 from easysql.repositories.milvus_repository import MilvusRepository
 from easysql.repositories.neo4j_repository import Neo4jRepository
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
 
 TIME_DATA_TYPES = {"date", "datetime", "timestamp", "time", "year"}
 
@@ -110,7 +115,13 @@ class RetrieveHintNode(BaseNode):
                     )
         return key_cols
 
-    def __call__(self, state: EasySQLState) -> dict:
+    def __call__(
+        self,
+        state: EasySQLState,
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         query = state["raw_query"]
         db_name = state.get("db_name")
 
@@ -167,6 +178,11 @@ class RetrieveHintNode(BaseNode):
         return {"schema_hint": schema_hint}
 
 
-def retrieve_hint_node(state: EasySQLState) -> dict:
+def retrieve_hint_node(
+    state: EasySQLState,
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
     node = RetrieveHintNode()
-    return node(state)
+    return node(state, config, writer=writer)

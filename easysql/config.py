@@ -199,8 +199,15 @@ class LLMConfig(BaseSettings):
     # Anthropic
     anthropic_api_key: str | None = None
 
-    # MCP
-    mcp_dbhub_url: str | None = Field(default=None, description="DBHub MCP Server URL")
+    # Agent Mode
+    use_agent_mode: bool = Field(
+        default=False,
+        description="Enable SQL Agent mode with ReAct loop for iterative SQL generation and validation",
+    )
+    agent_max_iterations: int = Field(
+        default=15,
+        description="Maximum iterations for SQL Agent ReAct loop (safety limit)",
+    )
 
     # Provider-specific Models (Priority: Google > Anthropic > OpenAI)
     google_llm_model: str | None = Field(default=None, description="Google Gemini model name")

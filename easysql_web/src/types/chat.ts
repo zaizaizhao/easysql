@@ -6,6 +6,17 @@ export interface StepTrace {
   timestamp: number;
 }
 
+export interface AgentStep {
+  iteration: number;
+  action: 'tool_start' | 'tool_end' | 'thinking' | 'token' | 'thought_complete';
+  tool?: string;
+  success?: boolean;
+  inputPreview?: string;
+  outputPreview?: string;
+  content?: string;
+  timestamp: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -19,6 +30,8 @@ export interface ChatMessage {
   isStreaming?: boolean;
   steps?: string[];
   trace?: StepTrace[];
+  agentSteps?: AgentStep[];
+  thinkingContent?: string;
   retrievalSummary?: {
     tablesCount: number;
     tables: string[];

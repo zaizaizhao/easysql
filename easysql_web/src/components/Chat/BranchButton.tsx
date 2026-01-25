@@ -1,5 +1,6 @@
 import { Button, theme } from 'antd';
 import { BranchesOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 
 interface BranchButtonProps {
   messageId: string;
@@ -8,6 +9,7 @@ interface BranchButtonProps {
 }
 
 export function BranchButton({ messageId, onClick, visible = false }: BranchButtonProps) {
+  const { t } = useTranslation();
   const { token } = theme.useToken();
   return (
     <Button
@@ -15,6 +17,7 @@ export function BranchButton({ messageId, onClick, visible = false }: BranchButt
       size="small"
       icon={<BranchesOutlined />}
       onClick={() => onClick(messageId)}
+      aria-label={t('chat.branchFollowUp')}
       style={{
         fontSize: 11,
         color: token.colorPrimary,
@@ -24,7 +27,7 @@ export function BranchButton({ messageId, onClick, visible = false }: BranchButt
         height: 'auto',
       }}
     >
-      基于此追问
+      {t('chat.branchFollowUp')}
     </Button>
   );
 }

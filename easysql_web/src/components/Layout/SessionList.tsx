@@ -3,9 +3,9 @@ import { Typography, Button, Popconfirm, Spin, theme, message } from 'antd';
 import { DeleteOutlined, MessageOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from '@/stores';
+import type { ChatMessage } from '@/types';
 import { useSessions, useDeleteSession } from '@/hooks';
 import { getSessionDetail } from '@/api';
-import type { ChatMessage } from '@/stores/chatStore';
 import axios from 'axios';
 
 const { Text } = Typography;
@@ -111,7 +111,7 @@ export function SessionList({ collapsed }: SessionListProps) {
     return (
       <div style={{ padding: '8px 12px' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
-          {t('session.empty', '暂无会话')}
+          {t('session.empty')}
         </Text>
       </div>
     );
@@ -135,7 +135,7 @@ export function SessionList({ collapsed }: SessionListProps) {
           letterSpacing: 0.5,
         }}
       >
-        {t('session.history', '历史会话')}
+        {t('session.history')}
       </Text>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {displaySessions.map((session, index) => {
@@ -150,72 +150,83 @@ export function SessionList({ collapsed }: SessionListProps) {
             title = getSessionTitle(session.session_id, index);
           }
           
-          return (
-            <div
-              key={session.session_id}
-              onClick={() => handleSessionClick(session.session_id)}
-              style={{
-                padding: '6px 12px',
-                cursor: 'pointer',
-                background: isActive ? token.colorPrimaryBg : 'transparent',
-                borderRadius: 6,
-                margin: '0 4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                transition: 'background 0.2s',
-              }}
-              className="session-item"
-            >
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 8,
-                overflow: 'hidden',
-                flex: 1,
-              }}>
-                <MessageOutlined style={{ fontSize: 12, opacity: 0.6, flexShrink: 0 }} />
-                <Text 
-                  ellipsis 
-                  style={{ 
-                    fontSize: 13,
-                    fontWeight: isActive ? 500 : 400,
-                    color: isActive ? token.colorPrimary : token.colorText,
+                        return (
+                <div
+                  key={session.session_id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleSessionClick(session.session_id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSessionClick(session.session_id);
+                    }
                   }}
+                  style={{
+                    padding: '6px 12px',
+                    cursor: 'pointer',
+                    background: isActive ? token.colorPrimaryBg : 'transparent',
+                    borderRadius: 6,
+                    margin: '0 4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    transition: 'background-color 0.2s',
+                    width: 'calc(100% - 8px)',
+                    textAlign: 'left',
+                  }}
+                  className="session-item"
                 >
-                  {title}
-                </Text>
-              </div>
-              
-              {!isUnsaved && (
-                <div 
-                  className="session-actions"
-                  style={{ opacity: isActive ? 1 : 0 }}
-                >
-                  <Popconfirm
-                    title={t('session.deleteConfirm', '确定删除此会话？')}
-                    onConfirm={(e) => handleDeleteSession(session.session_id, e as React.MouseEvent)}
-                    onCancel={(e) => e?.stopPropagation()}
-                    okText={t('common.confirm', '确定')}
-                    cancelText={t('common.cancel', '取消')}
-                  >
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<DeleteOutlined />}
-                      onClick={(e) => e.stopPropagation()}
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: 8,
+                    overflow: 'hidden',
+                    flex: 1,
+                  }}>
+                    <MessageOutlined style={{ fontSize: 12, opacity: 0.6, flexShrink: 0 }} />
+                    <Text 
+                      ellipsis 
                       style={{ 
-                        width: 20, 
-                        height: 20, 
-                        fontSize: 12, 
-                        color: token.colorTextSecondary 
+                        fontSize: 13,
+                        fontWeight: isActive ? 500 : 400,
+                        color: isActive ? token.colorPrimary : token.colorText,
                       }}
-                    />
-                  </Popconfirm>
+                    >
+                      {title}
+                    </Text>
+                  </div>
+                  
+                  {!isUnsaved && (
+                    <div 
+                      className="session-actions"
+                      style={{ opacity: isActive ? 1 : 0 }}
+                    >
+                      <Popconfirm
+                        title={t('session.deleteConfirm')}
+                        onConfirm={(e) => handleDeleteSession(session.session_id, e as React.MouseEvent)}
+                        onCancel={(e) => e?.stopPropagation()}
+                        okText={t('common.confirm')}
+                        cancelText={t('common.cancel')}
+                      >
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={<DeleteOutlined />}
+                          onClick={(e) => e.stopPropagation()}
+                          aria-label={t('common.delete')}
+                          style={{ 
+                            width: 20, 
+                            height: 20, 
+                            fontSize: 12, 
+                            color: token.colorTextSecondary 
+                          }}
+                        />
+                      </Popconfirm>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
+              );
         })}
       </div>
       <style>
@@ -225,6 +236,10 @@ export function SessionList({ collapsed }: SessionListProps) {
           }
           .session-item:hover .session-actions {
             opacity: 1 !important;
+          }
+          .session-item:focus-visible {
+            outline: 2px solid ${token.colorPrimary};
+            outline-offset: -2px;
           }
         `}
       </style>

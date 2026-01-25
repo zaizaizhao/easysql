@@ -1,0 +1,6 @@
+# DBHub Configuration for EasySQL
+# New format: [[sources]] with DSN connection string
+
+[[sources]]
+id = "medical"
+dsn = "postgres://postgres:111111@localhost:5432/medical"

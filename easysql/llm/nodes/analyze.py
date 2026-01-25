@@ -5,7 +5,7 @@ Analyzes the user query to determine ambiguity and need for HITL clarification.
 Uses schema hints (from retrieve_hint node) for schema-aware clarification.
 """
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 from pydantic import BaseModel, Field
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.language_models import BaseChatModel
@@ -14,6 +14,10 @@ from easysql.config import get_settings, LLMConfig
 from easysql.llm.state import EasySQLState, SchemaHintDict, SchemaHintColumn
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
 
 
 class AnalysisResult(BaseModel):
@@ -159,7 +163,13 @@ class AnalyzeQueryNode(BaseNode):
 
         return "\n".join(lines)
 
-    async def __call__(self, state: EasySQLState) -> dict:
+    async def __call__(
+        self,
+        state: EasySQLState,
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         """Analyze query with schema context and determine if clarification is needed."""
         if self.config.query_mode == "fast":
             return {
@@ -210,7 +220,12 @@ class AnalyzeQueryNode(BaseNode):
             }
 
 
-async def analyze_query_node(state: EasySQLState) -> dict:
+async def analyze_query_node(
+    state: EasySQLState,
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
     """Factory function for AnalyzeQueryNode."""
     node = AnalyzeQueryNode()
-    return await node(state)
+    return await node(state, config, writer=writer)

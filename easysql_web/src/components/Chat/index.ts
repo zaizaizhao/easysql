@@ -6,3 +6,5 @@ export { MessageTree } from './MessageTree';
 export { BranchIndicator } from './BranchIndicator';
 export { BranchButton } from './BranchButton';
 export { ChatInput } from './ChatInput';
+export { AgentThinking } from './AgentThinking';
+export { ExecutionSteps } from './ExecutionSteps';

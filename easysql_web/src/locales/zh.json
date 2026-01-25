@@ -16,7 +16,9 @@
     "unknown": "未知",
     "total": "共 {{count}} 条",
     "more": "+{{count}} 更多",
-    "collapse": "收起"
+    "collapse": "收起",
+    "switchToLight": "切换到浅色模式",
+    "switchToDark": "切换到深色模式"
   },
   "nav": {
     "chat": "对话",
@@ -36,7 +38,15 @@
     "yourAnswer": "您的回答：",
     "retrievedTables": "检索到 {{count}} 张相关表：",
     "usedSchemaHint": "使用了Schema提示",
-    "tablesRetrieved": "检索到 {{count}} 张表"
+    "tablesRetrieved": "检索到 {{count}} 张表",
+    "startNewConversation": "开始一个新的对话",
+    "followUp": "基于此追问",
+    "branchFollowUp": "基于此追问",
+    "branchInfo": "分支 {{current}}/{{total}}",
+    "modalTitle": "基于此消息追问",
+    "modalOk": "发送",
+    "modalCancel": "取消",
+    "modalPlaceholder": "输入您的追问..."
   },
   "clarification": {
     "needConfirm": "需要您确认：",
@@ -75,8 +85,16 @@
     "generate_sql": "生成SQL",
     "validate_sql": "验证SQL",
     "shift_detect": "意图分析",
+    "sql_agent": "SQL Agent",
     "validationPassed": "验证通过",
     "validationFailed": "验证失败"
+  },
+  "agent": {
+    "thinking": "Thinking",
+    "iteration": "迭代 #{{current}}",
+    "callingTool": "调用工具",
+    "toolSuccess": "执行成功",
+    "toolFailed": "执行失败"
   },
   "history": {
     "title": "历史会话",

@@ -75,8 +75,8 @@ export function ResultTable({ result, loading }: ResultTableProps) {
       <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text type="secondary" style={{ fontSize: 12 }}>
           {t('execute.resultStats', { 
-            rows: result.row_count, 
-            time: result.execution_time_ms?.toFixed(2) 
+            rows: new Intl.NumberFormat().format(result.row_count), 
+            time: new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(result.execution_time_ms || 0) 
           })}
         </Text>
         {result.truncated && (
@@ -96,7 +96,7 @@ export function ResultTable({ result, loading }: ResultTableProps) {
           size: 'small',
           hideOnSinglePage: true
         }}
-        rowKey={(_, index) => (index ?? Math.random()).toString()}
+        rowKey={(record, index) => record?.id ?? `row_${index}`}
         style={{ border: `1px solid ${token.colorBorder}`, borderRadius: 8 }}
       />
     </div>

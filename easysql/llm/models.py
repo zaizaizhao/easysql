@@ -60,6 +60,7 @@ def _build_model_kwargs(config: LLMConfig, provider: str) -> dict[str, Any]:
     """Build model initialization kwargs based on provider."""
     kwargs: dict[str, Any] = {
         "temperature": 0,  # Deterministic for SQL generation
+        "timeout": 120,  # 120 seconds timeout for API calls
     }
 
     if provider == "openai":

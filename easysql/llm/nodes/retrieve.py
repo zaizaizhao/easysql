@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import TYPE_CHECKING, Any
 
 from easysql.config import get_settings
 from easysql.embeddings.embedding_service import EmbeddingService
@@ -12,6 +13,10 @@ from easysql.repositories.milvus_repository import MilvusRepository
 from easysql.repositories.neo4j_repository import Neo4jRepository
 from easysql.retrieval.schema_retrieval import SchemaRetrievalService
 from easysql.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+    from langgraph.types import StreamWriter
 
 logger = get_logger(__name__)
 
@@ -61,7 +66,13 @@ class RetrieveNode(BaseNode):
             self._service = get_retrieval_service()
         return self._service
 
-    def __call__(self, state: EasySQLState) -> dict:
+    def __call__(
+        self,
+        state: EasySQLState,
+        config: "RunnableConfig | None" = None,
+        *,
+        writer: "StreamWriter | None" = None,
+    ) -> dict[Any, Any]:
         clarified_query = state.get("clarified_query")
         query = clarified_query or state["raw_query"]
 
@@ -87,6 +98,11 @@ class RetrieveNode(BaseNode):
         return {"retrieval_result": result.__dict__}
 
 
-def retrieve_node(state: EasySQLState) -> dict:
+def retrieve_node(
+    state: EasySQLState,
+    config: "RunnableConfig | None" = None,
+    *,
+    writer: "StreamWriter | None" = None,
+) -> dict[Any, Any]:
     node = RetrieveNode()
-    return node(state)
+    return node(state, config, writer=writer)

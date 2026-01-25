@@ -24,6 +24,7 @@ from easysql.llm.nodes.retrieve import retrieve_node
 from easysql.llm.nodes.retrieve_code import retrieve_code_node
 from easysql.llm.nodes.retrieve_hint import retrieve_hint_node
 from easysql.llm.nodes.shift_detect import shift_detect_node
+from easysql.llm.nodes.sql_agent import sql_agent_node
 from easysql.llm.nodes.validate_sql import validate_sql_node
 from easysql.llm.state import EasySQLState
 from easysql.utils.logger import get_logger
@@ -52,11 +53,15 @@ def route_start(state: EasySQLState) -> str:
 
 def route_shift_detect(state: EasySQLState) -> str:
     """Route after shift detection."""
+    settings = get_settings()
+
     if state.get("needs_new_retrieval"):
-        settings = get_settings()
         if settings.llm.query_mode == "fast":
             return "retrieve"
         return "retrieve_hint"
+
+    if settings.llm.use_agent_mode:
+        return "sql_agent"
     return "generate_sql"
 
 
@@ -119,7 +124,7 @@ def _create_checkpointer() -> BaseCheckpointSaver | Any:
             kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
         )
         _checkpointer_pool = pool
-        checkpointer = AsyncPostgresSaver(pool)
+        checkpointer = AsyncPostgresSaver(pool)  # type: ignore[arg-type]
         return checkpointer
     except ImportError as e:
         logger.warning(
@@ -211,8 +216,18 @@ def get_langfuse_callbacks() -> list[Any]:
         return []
 
 
+def route_after_retrieve_code(state: EasySQLState) -> str:
+    """Route after retrieve_code based on agent mode setting."""
+    settings = get_settings()
+    if settings.llm.use_agent_mode:
+        return "sql_agent"
+    return "generate_sql"
+
+
 def build_graph() -> "CompiledStateGraph":
     """Builds and compiles the EasySQL Agent Graph."""
+    settings = get_settings()
+    use_agent_mode = settings.llm.use_agent_mode
 
     builder = StateGraph(EasySQLState)
 
@@ -223,9 +238,15 @@ def build_graph() -> "CompiledStateGraph":
     builder.add_node("retrieve", retrieve_node)
     builder.add_node("build_context", build_context_node)
     builder.add_node("retrieve_code", retrieve_code_node)
-    builder.add_node("generate_sql", generate_sql_node)
-    builder.add_node("validate_sql", validate_sql_node)
-    builder.add_node("repair_sql", repair_sql_node)
+
+    if use_agent_mode:
+        builder.add_node("sql_agent", sql_agent_node)
+        logger.info("Building graph with SQL Agent mode enabled")
+    else:
+        builder.add_node("generate_sql", generate_sql_node)
+        builder.add_node("validate_sql", validate_sql_node)
+        builder.add_node("repair_sql", repair_sql_node)
+        logger.info("Building graph with legacy SQL generation mode")
 
     builder.add_conditional_edges(
         START,
@@ -237,14 +258,17 @@ def build_graph() -> "CompiledStateGraph":
         },
     )
 
+    shift_detect_targets: dict[str, str] = {
+        "retrieve_hint": "retrieve_hint",
+        "retrieve": "retrieve",
+    }
+    if use_agent_mode:
+        shift_detect_targets["sql_agent"] = "sql_agent"
+    else:
+        shift_detect_targets["generate_sql"] = "generate_sql"
+
     builder.add_conditional_edges(
-        "shift_detect",
-        route_shift_detect,
-        {
-            "retrieve_hint": "retrieve_hint",
-            "retrieve": "retrieve",
-            "generate_sql": "generate_sql",
-        },
+        "shift_detect", route_shift_detect, shift_detect_targets  # type: ignore[arg-type]
     )
 
     builder.add_edge("retrieve_hint", "analyze")
@@ -256,14 +280,17 @@ def build_graph() -> "CompiledStateGraph":
     builder.add_edge("clarify", "retrieve")
     builder.add_edge("retrieve", "build_context")
     builder.add_edge("build_context", "retrieve_code")
-    builder.add_edge("retrieve_code", "generate_sql")
-    builder.add_edge("generate_sql", "validate_sql")
 
-    builder.add_conditional_edges(
-        "validate_sql", route_validate, {END: END, "repair_sql": "repair_sql"}
-    )
-
-    builder.add_edge("repair_sql", "validate_sql")
+    if use_agent_mode:
+        builder.add_edge("retrieve_code", "sql_agent")
+        builder.add_edge("sql_agent", END)
+    else:
+        builder.add_edge("retrieve_code", "generate_sql")
+        builder.add_edge("generate_sql", "validate_sql")
+        builder.add_conditional_edges(
+            "validate_sql", route_validate, {END: END, "repair_sql": "repair_sql"}
+        )
+        builder.add_edge("repair_sql", "validate_sql")
 
     checkpointer = _create_checkpointer()
 

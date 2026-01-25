@@ -47,8 +47,7 @@ export function useStreamQuery() {
           question, 
           db_name: currentDatabase || undefined,
           session_id: sessionId || undefined,
-        },
-        handleStreamEvent
+        }
       );
 
       for await (const event of generator) {
@@ -80,8 +79,7 @@ export function useStreamQuery() {
     try {
       const generator = streamContinueQuery(
         sessionId,
-        { answer },
-        handleStreamEvent
+        { answer }
       );
 
       for await (const event of generator) {
@@ -122,8 +120,7 @@ export function useStreamQuery() {
     try {
       const generator = streamFollowUpMessage(
         sessionId,
-        { question },
-        handleStreamEvent
+        { question }
       );
 
       for await (const event of generator) {
@@ -162,8 +159,7 @@ export function useStreamQuery() {
     try {
       const generator = streamBranchMessage(
         sessionId,
-        { from_message_id: fromMessageId, question },
-        handleStreamEvent
+        { from_message_id: fromMessageId, question }
       );
 
       for await (const event of generator) {

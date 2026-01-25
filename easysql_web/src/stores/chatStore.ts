@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { QueryStatus, StreamEvent, SessionInfo, ChatMessage, SessionCache, StepTrace } from '@/types';
+import type { QueryStatus, StreamEvent, SessionInfo, ChatMessage, SessionCache } from '@/types';
 import { processStreamEvent } from './streamHandler';
 
 interface ChatState {

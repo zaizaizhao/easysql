@@ -1,4 +1,4 @@
-import type { ChatMessage, StreamEvent, QueryStatus, SessionCache } from '@/types';
+import type { ChatMessage, StreamEvent, QueryStatus, SessionCache, AgentStep } from '@/types';
 
 export interface StreamHandlerResult {
   messages?: ChatMessage[];
@@ -130,6 +130,107 @@ export const processStreamEvent = (
         } else {
           const cached = sessionCache.get(targetSessionId);
           if (cached) {
+            const result = updateSessionState(
+              cached.messages,
+              cached.messageMap,
+              updates
+            );
+            if (result) {
+              const newCache = new Map(sessionCache);
+              newCache.set(targetSessionId, {
+                ...cached,
+                messages: result.messages,
+                messageMap: result.messageMap,
+              });
+              return { sessionCache: newCache };
+            }
+          }
+        }
+      }
+      break;
+    }
+
+    case 'agent_progress': {
+      const eventType = event.data.type;
+      
+      if (eventType === 'token') {
+        const tokenContent = event.data.content || '';
+        
+        if (isActive) {
+          const msg = messages.find((m) => m.role === 'assistant' && m.isStreaming);
+          if (msg) {
+            const currentThinking = msg.thinkingContent || '';
+            const result = updateSessionState(messages, messageMap, { 
+              thinkingContent: currentThinking + tokenContent 
+            });
+            if (result) {
+              return { messages: result.messages, messageMap: result.messageMap };
+            }
+          }
+        } else {
+          const cached = sessionCache.get(targetSessionId);
+          if (cached) {
+            const msg = cached.messages.find((m) => m.role === 'assistant' && m.isStreaming);
+            if (msg) {
+              const currentThinking = msg.thinkingContent || '';
+              const result = updateSessionState(cached.messages, cached.messageMap, { 
+                thinkingContent: currentThinking + tokenContent 
+              });
+              if (result) {
+                const newCache = new Map(sessionCache);
+                newCache.set(targetSessionId, {
+                  ...cached,
+                  messages: result.messages,
+                  messageMap: result.messageMap,
+                });
+                return { sessionCache: newCache };
+              }
+            }
+          }
+        }
+        break;
+      }
+      
+      if (eventType === 'thought_complete') {
+        break;
+      }
+      
+      const agentStep: AgentStep = {
+        iteration: event.data.iteration ?? 0,
+        action: event.data.action ?? 'thinking',
+        tool: event.data.tool,
+        success: event.data.success,
+        inputPreview: event.data.input_preview,
+        outputPreview: event.data.output_preview,
+        content: event.data.content,
+        timestamp: Date.now(),
+      };
+
+      if (isActive) {
+        const msg = messages.find((m) => m.role === 'assistant' && m.isStreaming);
+        if (msg) {
+          const agentSteps = [...(msg.agentSteps || []), agentStep];
+          const updates: Partial<ChatMessage> = { agentSteps };
+          if (agentStep.action === 'thinking') {
+            updates.thinkingContent = '';
+          }
+          const result = updateSessionState(messages, messageMap, updates);
+          if (result) {
+            return { messages: result.messages, messageMap: result.messageMap };
+          }
+        }
+      } else {
+        const cached = sessionCache.get(targetSessionId);
+        if (cached) {
+          const msg = cached.messages.find(
+            (m) => m.role === 'assistant' && m.isStreaming
+          );
+          if (msg) {
+            const agentSteps = [...(msg.agentSteps || []), agentStep];
+            const updates: Partial<ChatMessage> = { agentSteps };
+            if (agentStep.action === 'thinking') {
+              updates.thinkingContent = '';
+            }
             const result = updateSessionState(
               cached.messages,
               cached.messageMap,

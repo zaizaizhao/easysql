@@ -54,35 +54,12 @@ def test_route_validate(mock_get_settings):
     assert route_validate({"validation_passed": False, "retry_count": 5}) == "__end__"
 
 
-@patch("easysql.llm.tools.factory.get_settings")
-def test_create_sql_executor_fallback(mock_get_settings):
-    """Test SQLAlchemy executor fallback when MCP is not configured."""
-    mock_settings = MagicMock()
-    mock_settings.llm.mcp_dbhub_url = None
-    mock_get_settings.return_value = mock_settings
-
+def test_create_sql_executor():
+    """Test SQLAlchemy executor creation."""
     executor = create_sql_executor()
     from easysql.llm.tools.sqlalchemy_executor import SqlAlchemyExecutor
 
     assert isinstance(executor, SqlAlchemyExecutor)
-
-
-@patch("easysql.llm.tools.factory.get_settings")
-@patch("easysql.llm.tools.factory.McpExecutor")
-def test_create_sql_executor_mcp(mock_mcp_cls, mock_get_settings):
-    """Test MCP executor creation when configured."""
-    mock_settings = MagicMock()
-    mock_settings.llm.mcp_dbhub_url = "http://fake:8080"
-    mock_get_settings.return_value = mock_settings
-
-    mock_executor = MagicMock()
-    mock_mcp_cls.return_value = mock_executor
-
-    executor = create_sql_executor()
-
-    mock_mcp_cls.assert_called_with("http://fake:8080")
-    mock_executor.check_connection.assert_called_once()
-    assert executor == mock_executor
 
 
 def test_graph_build():

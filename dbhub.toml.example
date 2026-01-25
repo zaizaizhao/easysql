@@ -1,0 +1,11 @@
+[[sources]]
+id = "demo"
+dsn = "sqlite:///:memory:"
+
+[[sources]]
+id = "his"
+dsn = "mysql://root:your_password@localhost:3306/your_database"
+
+[[sources]]
+id = "analytics"
+dsn = "postgres://postgres:your_password@localhost:5432/analytics_db"

@@ -2,24 +2,29 @@
 SQL Execution Tools Module.
 
 Provides SQL execution strategies for the LLM Agent.
-Supports MCP (Model Context Protocol) via DBHub and direct SQLAlchemy connections.
+Uses direct SQLAlchemy for database operations.
 
 Main components:
 - BaseSqlExecutor: Abstract base class defining executor interface
 - SqlAlchemyExecutor: Direct database execution via SQLAlchemy
-- McpExecutor: Execution via DBHub MCP Server
-- create_sql_executor: Factory function with MCP-first fallback strategy
+- create_sql_executor: Factory function for SQLAlchemy executor
+- get_agent_tools: Factory for SQL Agent tools
 """
 
+from easysql.llm.tools.agent_tools import (
+    ExecuteSqlTool,
+    SearchObjectsTool,
+    create_agent_tools,
+    get_agent_tools,
+)
 from easysql.llm.tools.base import (
     BaseSqlExecutor,
+    DbDialect,
     ExecutionResult,
     SchemaInfoDict,
-    DbDialect,
 )
-from easysql.llm.tools.sqlalchemy_executor import SqlAlchemyExecutor
-from easysql.llm.tools.mcp_executor import McpExecutor
 from easysql.llm.tools.factory import create_sql_executor
+from easysql.llm.tools.sqlalchemy_executor import SqlAlchemyExecutor
 
 __all__ = [
     # Base classes & types
@@ -29,7 +34,11 @@ __all__ = [
     "DbDialect",
     # Implementations
     "SqlAlchemyExecutor",
-    "McpExecutor",
     # Factory
     "create_sql_executor",
+    # Agent tools
+    "ExecuteSqlTool",
+    "SearchObjectsTool",
+    "create_agent_tools",
+    "get_agent_tools",
 ]

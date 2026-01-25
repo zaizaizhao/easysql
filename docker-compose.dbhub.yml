@@ -1,0 +1,25 @@
+services:
+  dbhub:
+    image: bytebase/dbhub:latest
+    container_name: easysql-dbhub
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dbhub.toml:/app/dbhub.toml:ro
+      - dbhub_data:/data
+    command: ["--transport", "http", "--port", "8080", "--config", "/app/dbhub.toml"]
+    restart: unless-stopped
+    networks:
+      - easysql-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+volumes:
+  dbhub_data:
+
+networks:
+  easysql-network:
+    driver: bridge

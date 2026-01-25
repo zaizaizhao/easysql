@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button, Tooltip, message, Space, theme } from 'antd';
 import { CopyOutlined, CheckCircleOutlined, CloseCircleOutlined, PlayCircleOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -12,14 +12,16 @@ interface SQLBlockProps {
   sql: string;
   validationPassed?: boolean;
   validationError?: string;
+  autoExecute?: boolean;
 }
 
-export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockProps) {
+export function SQLBlock({ sql, validationPassed, validationError, autoExecute = false }: SQLBlockProps) {
   const { t } = useTranslation();
   const { theme: appTheme, currentDatabase } = useAppStore();
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ExecuteResponse | null>(null);
   const { token } = theme.useToken();
+  const hasAutoExecutedRef = useRef(false);
 
   const handleCopy = async () => {
     try {
@@ -47,7 +49,6 @@ export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockPro
       setResult(response);
     } catch (error) {
       console.error('Execution failed:', error);
-      // Error is handled by API interceptor usually, but we set local state too
       setResult({
         status: 'failed',
         error: error instanceof Error ? error.message : String(error),
@@ -58,6 +59,13 @@ export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockPro
       setExecuting(false);
     }
   };
+
+  useEffect(() => {
+    if (autoExecute && sql && currentDatabase && !hasAutoExecutedRef.current && !result) {
+      hasAutoExecutedRef.current = true;
+      handleExecute();
+    }
+  }, [autoExecute, sql, currentDatabase]);
 
   const lineCount = sql.split('\n').length;
   const editorHeight = Math.min(Math.max(lineCount * 19 + 24, 150), 600) + 'px';
@@ -111,6 +119,7 @@ export function SQLBlock({ sql, validationPassed, validationError }: SQLBlockPro
             size="small"
             icon={<CopyOutlined />}
             onClick={handleCopy}
+            aria-label={t('sql.copy')}
           >
             {t('sql.copy')}
           </Button>

@@ -47,7 +47,7 @@ export function ClarificationButtons({ questions, onSelect, disabled, isLoading 
         border: `1px solid ${token.colorWarningBorder}`,
       }}
     >
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+      <Space orientation="vertical" style={{ width: '100%' }} size="middle">
         <Space>
           <QuestionCircleOutlined style={{ color: token.colorWarning, fontSize: 16 }} />
           <span style={{ color: token.colorWarningText, fontWeight: 500 }}>
@@ -87,7 +87,7 @@ export function ClarificationButtons({ questions, onSelect, disabled, isLoading 
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={t('clarification.inputPlaceholder')}
+            placeholder={t('clarification.inputPlaceholder') + '…'}
             disabled={disabled || isLoading}
             autoSize={{ minRows: 1, maxRows: 3 }}
             style={{ 
@@ -95,6 +95,7 @@ export function ClarificationButtons({ questions, onSelect, disabled, isLoading 
               background: token.colorBgContainer,
               borderColor: token.colorBorder,
             }}
+            autoComplete="off"
           />
           <Button
             type="primary"
@@ -102,6 +103,7 @@ export function ClarificationButtons({ questions, onSelect, disabled, isLoading 
             onClick={handleSubmit}
             disabled={!inputValue.trim() || disabled || isLoading}
             style={{ height: 32 }}
+            aria-label={t('chat.send')}
           />
         </div>
       </Space>
