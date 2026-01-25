@@ -1,12 +1,19 @@
-# <img src="easysql_web/public/easysql_icon.svg" width="40" height="40" align="top" /> EasySQL
+<div align="center">
+  <img src="easysql_web/public/easysql_icon.svg" width="120" height="120" alt="EasySQL Logo" />
+  <h1>EasySQL</h1>
+</div>
 
 > ⚠️ **开发中** - 本项目仍在积极开发阶段，API 和功能可能会有变动。欢迎试用和反馈！
 
 面向企业场景的 Text2SQL 方案，用 Neo4j 存表关系、用 Milvus 做语义检索，解决「表太多 LLM 不知道该查哪张」的问题。
 
+<div align="center">
+
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Code Style: Black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
+</div>
 
 [English](docs/README_EN.md)
 
