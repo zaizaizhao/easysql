@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasySQL - 企业级 Text2SQL 解决方案</title>
+    <meta name="description" content="EasySQL 是面向企业场景的 Text2SQL 方案，用 Neo4j 存表关系、用 Milvus 做语义检索，解决「表太多 LLM 不知道该查哪张」的问题。">
+    <link rel="icon" type="image/svg+xml" href="images/logo.svg">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --teal-light: #36cfc9;
+            --teal-dark: #08979c;
+            --blue-light: #2f54eb;
+            --blue-dark: #10239e;
+            --gray-50: #fafafa;
+            --gray-100: #f5f5f5;
+            --gray-200: #e8e8e8;
+            --gray-500: #8c8c8c;
+            --gray-700: #434343;
+            --gray-900: #1f1f1f;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: var(--gray-900);
+            line-height: 1.6;
+            background: #fff;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: var(--gray-900);
+            font-weight: 700;
+            font-size: 1.25rem;
+        }
+
+        .nav-logo img {
+            width: 36px;
+            height: 36px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 32px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--gray-700);
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover {
+            color: var(--teal-dark);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--teal-light), var(--teal-dark));
+            color: white;
+            box-shadow: 0 4px 14px rgba(54, 207, 201, 0.35);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(54, 207, 201, 0.45);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--gray-900);
+            border: 1px solid var(--gray-200);
+        }
+
+        .btn-secondary:hover {
+            background: var(--gray-100);
+            border-color: var(--gray-300);
+        }
+
+        .btn-github {
+            background: #24292e;
+            color: white;
+            border: none;
+        }
+
+        .btn-github:hover {
+            background: #1a1e22;
+        }
+
+        .btn-outline {
+            background: white;
+            color: var(--gray-900);
+            border: 2px solid var(--gray-200);
+        }
+
+        .btn-outline:hover {
+            border-color: var(--teal-dark);
+            color: var(--teal-dark);
+        }
+
+        /* Language Switcher */
+        .lang-switch {
+            display: flex;
+            align-items: center;
+            background: var(--gray-100);
+            border-radius: 6px;
+            padding: 4px;
+            gap: 2px;
+        }
+
+        .lang-switch button {
+            padding: 6px 12px;
+            border: none;
+            background: transparent;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--gray-500);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .lang-switch button.active {
+            background: white;
+            color: var(--gray-900);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .lang-switch button:hover:not(.active) {
+            color: var(--gray-700);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 160px 24px 100px;
+            text-align: center;
+            background: linear-gradient(180deg, var(--gray-50) 0%, white 100%);
+        }
+
+        .hero-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: rgba(54, 207, 201, 0.1);
+            border: 1px solid rgba(54, 207, 201, 0.3);
+            border-radius: 50px;
+            font-size: 0.875rem;
+            color: var(--teal-dark);
+            margin-bottom: 24px;
+        }
+
+        .hero-badge::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            background: var(--teal-light);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, var(--gray-900) 0%, var(--blue-dark) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--gray-500);
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .hero-image {
+            margin-top: 60px;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow:
+                0 25px 80px rgba(0, 0, 0, 0.12),
+                0 10px 30px rgba(0, 0, 0, 0.08);
+            border: 1px solid var(--gray-200);
+            transform: scale(1.02) translateY(-8px);
+            transition: transform 0.4s ease, box-shadow 0.4s ease;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .hero-image:hover {
+            transform: scale(1.04) translateY(-12px);
+            box-shadow:
+                0 35px 100px rgba(0, 0, 0, 0.15),
+                0 15px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: scale(1.02) translateY(-8px);
+            }
+            50% {
+                transform: scale(1.02) translateY(-16px);
+            }
+        }
+
+        .hero-image img {
+            width: 100%;
+            display: block;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 100px 24px;
+            background: white;
+        }
+
+        .section-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-header h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .section-header p {
+            font-size: 1.125rem;
+            color: var(--gray-500);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 32px;
+        }
+
+        .feature-card {
+            padding: 32px;
+            background: var(--gray-50);
+            border-radius: 16px;
+            border: 1px solid var(--gray-100);
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+        }
+
+        .feature-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .feature-icon.teal {
+            background: linear-gradient(135deg, rgba(54, 207, 201, 0.2), rgba(8, 151, 156, 0.2));
+        }
+
+        .feature-icon.blue {
+            background: linear-gradient(135deg, rgba(47, 84, 235, 0.2), rgba(16, 35, 158, 0.2));
+        }
+
+        .feature-card h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .feature-card p {
+            color: var(--gray-500);
+            font-size: 0.95rem;
+        }
+
+        /* Architecture Section */
+        .architecture {
+            padding: 100px 24px;
+            background: var(--gray-50);
+        }
+
+        .arch-brain {
+            position: relative;
+            max-width: 700px;
+            height: 420px;
+            margin: 60px auto;
+        }
+
+        .brain-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: 180px;
+            background: linear-gradient(135deg, var(--blue-light), var(--blue-dark));
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(47, 84, 235, 0.3);
+            z-index: 10;
+        }
+
+        .brain-icon {
+            margin-bottom: 8px;
+        }
+
+        .brain-center h3 {
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .brain-center p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.75rem;
+        }
+
+        .brain-orbit {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        .orbit-item {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .orbit-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .orbit-icon:hover {
+            transform: scale(1.1);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .orbit-item span {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--gray-700);
+        }
+
+        .orbit-1 { top: 0; left: 50%; transform: translateX(-50%); }
+        .orbit-2 { top: 15%; right: 5%; }
+        .orbit-3 { top: 60%; right: 0; }
+        .orbit-4 { bottom: 0; left: 50%; transform: translateX(-50%); }
+        .orbit-5 { top: 60%; left: 0; }
+        .orbit-6 { top: 15%; left: 5%; }
+
+        .arch-desc {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 32px;
+            margin-top: 60px;
+        }
+
+        .arch-desc-item {
+            text-align: center;
+            padding: 24px;
+        }
+
+        .arch-desc-num {
+            font-size: 3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--teal-light), var(--teal-dark));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1;
+            margin-bottom: 16px;
+        }
+
+        .arch-desc-content h4 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--gray-900);
+        }
+
+        .arch-desc-content p {
+            font-size: 0.9rem;
+            color: var(--gray-500);
+            line-height: 1.6;
+        }
+
+        /* Tech Stack */
+        .tech-stack {
+            padding: 100px 24px;
+            background: white;
+        }
+
+        .tech-grid {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 48px;
+        }
+
+        .tech-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            background: var(--gray-50);
+            border-radius: 12px;
+            border: 1px solid var(--gray-100);
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .tech-item-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+
+        .tech-item h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .tech-item span {
+            font-size: 0.85rem;
+            color: var(--gray-500);
+        }
+
+        /* CTA Section */
+        .cta {
+            padding: 100px 24px;
+            background: linear-gradient(135deg, var(--blue-dark) 0%, var(--teal-dark) 100%);
+            text-align: center;
+        }
+
+        .cta h2 {
+            color: white;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        .cta p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 1.125rem;
+            margin-bottom: 32px;
+        }
+
+        .cta .btn-primary {
+            background: white;
+            color: var(--blue-dark);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+        }
+
+        .cta .btn-primary:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Footer */
+        footer {
+            padding: 48px 24px;
+            background: var(--gray-900);
+            text-align: center;
+        }
+
+        footer p {
+            color: var(--gray-500);
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: var(--teal-light);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .arch-brain {
+                height: auto;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 24px;
+            }
+
+            .brain-center {
+                position: relative;
+                top: auto;
+                left: auto;
+                transform: none;
+                width: 140px;
+                height: 140px;
+            }
+
+            .brain-orbit {
+                position: relative;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+                width: 100%;
+            }
+
+            .orbit-item {
+                position: relative;
+                top: auto !important;
+                left: auto !important;
+                right: auto !important;
+                bottom: auto !important;
+                transform: none !important;
+            }
+
+            .arch-desc {
+                grid-template-columns: 1fr;
+                gap: 24px;
+            }
+
+            .tech-grid {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-container">
+            <a href="#" class="nav-logo">
+                <img src="images/logo.svg" alt="EasySQL Logo">
+                <span>EasySQL</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features" data-i18n="nav.features">Features</a>
+                <a href="#architecture" data-i18n="nav.architecture">Architecture</a>
+                <a href="#tech-stack" data-i18n="nav.techStack">Tech Stack</a>
+                <div class="lang-switch">
+                    <button data-lang="zh" class="active">中文</button>
+                    <button data-lang="en">EN</button>
+                </div>
+                <a href="https://github.com/zaizaizhao/easysql" target="_blank" class="btn btn-github">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+                    </svg>
+                    GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-container">
+            <div class="hero-badge" data-i18n="hero.badge">Open Source</div>
+            <h1 data-i18n="hero.title">企业级 Text2SQL 解决方案</h1>
+            <p data-i18n="hero.subtitle">DDD 领域建模 × 知识图谱推理 × 向量语义检索，构建持续进化、越用越精准的智能 SQL 引擎</p>
+            <div class="hero-buttons">
+                <a href="https://github.com/zaizaizhao/easysql" class="btn btn-primary">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+                    </svg>
+                    <span data-i18n="hero.getStarted">Get Started</span>
+                </a>
+                <a href="#features" class="btn btn-outline" data-i18n="hero.learnMore">Learn More</a>
+            </div>
+            <div class="hero-image">
+                <img src="images/example_pic1.png" alt="EasySQL Interface Preview">
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 data-i18n="features.title">Why EasySQL?</h2>
+                <p data-i18n="features.subtitle">专为企业复杂数据库场景设计的智能 SQL 生成引擎</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon teal">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#08979c" stroke-width="2">
+                            <circle cx="12" cy="12" r="3" />
+                            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.ddd.title">DDD 业务上下文</h3>
+                    <p data-i18n="features.ddd.desc">深度理解业务领域，自动识别订单、库存、客户等核心概念，让 SQL 生成符合业务语义而非表面字段匹配。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2f54eb" stroke-width="2">
+                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.kg.title">知识图谱驱动</h3>
+                    <p data-i18n="features.kg.desc">Neo4j 构建表关系图谱，精准捕获外键、索引、约束，确保多表 JOIN 路径最优且语义正确。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon teal">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#08979c" stroke-width="2">
+                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.fewshot.title">Few-Shot 智能学习</h3>
+                    <p data-i18n="features.fewshot.desc">内置示例学习机制，通过少量标注样本快速适配特定业务场景，无需大规模训练数据。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2f54eb" stroke-width="2">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.smarter.title">越用越聪明</h3>
+                    <p data-i18n="features.smarter.desc">持续学习用户反馈和纠正，自动积累业务知识，查询准确率随使用时间稳步提升。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon teal">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#08979c" stroke-width="2">
+                            <rect x="3" y="3" width="7" height="7"/>
+                            <rect x="14" y="3" width="7" height="7"/>
+                            <rect x="14" y="14" width="7" height="7"/>
+                            <rect x="3" y="14" width="7" height="7"/>
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.modular.title">组合式架构</h3>
+                    <p data-i18n="features.modular.desc">模块化设计，检索、生成、验证、修复各环节可独立配置，灵活组合满足不同场景需求。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2f54eb" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="M21 21l-4.35-4.35"/>
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.semantic.title">语义向量检索</h3>
+                    <p data-i18n="features.semantic.desc">Milvus 驱动的深度语义理解，「本月销量」自动关联 order_detail，告别简单关键词匹配。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon teal">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#08979c" stroke-width="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.selfheal.title">自愈式执行</h3>
+                    <p data-i18n="features.selfheal.desc">SQL 执行异常时自动诊断错误根因，智能修复并重试，显著提升端到端成功率。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon blue">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2f54eb" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                            <line x1="8" y1="21" x2="16" y2="21" />
+                            <line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.multidb.title">全栈数据库支持</h3>
+                    <p data-i18n="features.multidb.desc">MySQL、PostgreSQL、Oracle、SQL Server 一套方案通吃，统一接口屏蔽方言差异。</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon teal">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#08979c" stroke-width="2">
+                            <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
+                            <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
+                        </svg>
+                    </div>
+                    <h3 data-i18n="features.observe.title">全链路可观测</h3>
+                    <p data-i18n="features.observe.desc">LangFuse 集成，Token 消耗、推理耗时、检索召回一目了然，便于调优与成本控制。</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section class="architecture" id="architecture">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 data-i18n="arch.title">Intelligent Architecture</h2>
+                <p data-i18n="arch.subtitle">多智能体协同的认知计算框架，而非简单的流水线</p>
+            </div>
+
+            <!-- Core Brain -->
+            <div class="arch-brain">
+                <div class="brain-center">
+                    <div class="brain-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5">
+                            <path d="M12 2a10 10 0 0110 10c0 5.52-4.48 10-10 10S2 17.52 2 12 6.48 2 12 2z"/>
+                            <path d="M12 2c-2.76 0-5 4.48-5 10s2.24 10 5 10 5-4.48 5-10-2.24-10-5-10z"/>
+                            <path d="M2 12h20"/>
+                            <path d="M12 2c2.5 2.5 4 5.5 4 10s-1.5 7.5-4 10"/>
+                            <path d="M12 2c-2.5 2.5-4 5.5-4 10s1.5 7.5 4 10"/>
+                        </svg>
+                    </div>
+                    <h3 data-i18n="arch.core.title">Cognitive Core</h3>
+                    <p data-i18n="arch.core.desc">LangGraph 智能体引擎</p>
+                </div>
+
+                <!-- Surrounding Capabilities -->
+                <div class="brain-orbit">
+                    <div class="orbit-item orbit-1">
+                        <div class="orbit-icon" style="background: linear-gradient(135deg, #36cfc9, #08979c);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <path d="M21 21l-4.35-4.35"/>
+                            </svg>
+                        </div>
+                        <span data-i18n="arch.orbit.semantic">语义理解</span>
+                    </div>
+                    <div class="orbit-item orbit-2">
+                        <div class="orbit-icon" style="background: linear-gradient(135deg, #2f54eb, #10239e);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <circle cx="18" cy="5" r="3"/>
+                                <circle cx="6" cy="12" r="3"/>
+                                <circle cx="18" cy="19" r="3"/>
+                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                            </svg>
+                        </div>
+                        <span data-i18n="arch.orbit.reasoning">关系推理</span>
+                    </div>
+                    <div class="orbit-item orbit-3">
+                        <div class="orbit-icon" style="background: linear-gradient(135deg, #fa8c16, #d46b08);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83"/>
+                            </svg>
+                        </div>
+                        <span data-i18n="arch.orbit.context">上下文学习</span>
+                    </div>
+                    <div class="orbit-item orbit-4">
+                        <div class="orbit-icon" style="background: linear-gradient(135deg, #722ed1, #531dab);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
+                                <polyline points="22 4 12 14.01 9 11.01"/>
+                            </svg>
+                        </div>
+                        <span data-i18n="arch.orbit.selfcorrect">自我修正</span>
+                    </div>
+                    <div class="orbit-item orbit-5">
+                        <div class="orbit-icon" style="background: linear-gradient(135deg, #52c41a, #389e0d);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            </svg>
+                        </div>
+                        <span data-i18n="arch.orbit.evolve">持续进化</span>
+                    </div>
+                    <div class="orbit-item orbit-6">
+                        <div class="orbit-icon" style="background: linear-gradient(135deg, #eb2f96, #c41d7f);">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <rect x="3" y="3" width="7" height="7"/>
+                                <rect x="14" y="3" width="7" height="7"/>
+                                <rect x="14" y="14" width="7" height="7"/>
+                                <rect x="3" y="14" width="7" height="7"/>
+                            </svg>
+                        </div>
+                        <span data-i18n="arch.orbit.modular">模块组合</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Architecture Description -->
+            <div class="arch-desc">
+                <div class="arch-desc-item">
+                    <div class="arch-desc-num">01</div>
+                    <div class="arch-desc-content">
+                        <h4 data-i18n="arch.desc1.title">理解意图，而非匹配关键词</h4>
+                        <p data-i18n="arch.desc1.text">深度语义分析用户问题，理解业务上下文，从数百张表中精准定位目标数据。</p>
+                    </div>
+                </div>
+                <div class="arch-desc-item">
+                    <div class="arch-desc-num">02</div>
+                    <div class="arch-desc-content">
+                        <h4 data-i18n="arch.desc2.title">推理关系，而非遍历路径</h4>
+                        <p data-i18n="arch.desc2.text">知识图谱驱动的关系推理，智能发现最优 JOIN 路径，保证查询语义正确性。</p>
+                    </div>
+                </div>
+                <div class="arch-desc-item">
+                    <div class="arch-desc-num">03</div>
+                    <div class="arch-desc-content">
+                        <h4 data-i18n="arch.desc3.title">学习反馈，而非一次性生成</h4>
+                        <p data-i18n="arch.desc3.text">Few-Shot 机制 + 用户反馈闭环，每次纠正都让系统更懂你的业务。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tech Stack Section -->
+    <section class="tech-stack" id="tech-stack">
+        <div class="section-container">
+            <div class="section-header">
+                <h2 data-i18n="tech.title">Tech Stack</h2>
+                <p data-i18n="tech.subtitle">基于成熟的开源技术栈构建</p>
+            </div>
+            <div class="tech-grid">
+                <div class="tech-item">
+                    <div class="tech-item-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#08979c">
+                            <circle cx="12" cy="12" r="10" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4>Neo4j</h4>
+                        <span>知识图谱存储</span>
+                    </div>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-item-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#2f54eb">
+                            <rect x="4" y="4" width="16" height="16" rx="2" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4>Milvus</h4>
+                        <span>向量语义检索</span>
+                    </div>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-item-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#fa8c16">
+                            <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4>LangGraph</h4>
+                        <span>Agent 编排</span>
+                    </div>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-item-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#52c41a">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4>FastAPI</h4>
+                        <span>REST API</span>
+                    </div>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-item-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#722ed1">
+                            <circle cx="12" cy="12" r="10" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4>React</h4>
+                        <span>Web 前端</span>
+                    </div>
+                </div>
+                <div class="tech-item">
+                    <div class="tech-item-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="#eb2f96">
+                            <path
+                                d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h4>SQLAlchemy</h4>
+                        <span>多数据库支持</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta">
+        <div class="section-container">
+            <h2 data-i18n="cta.title">Ready to Get Started?</h2>
+            <p data-i18n="cta.subtitle">开源免费，快速部署，轻松解决企业 Text2SQL 难题</p>
+            <a href="https://github.com/zaizaizhao/easysql" class="btn btn-primary">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+                </svg>
+                <span data-i18n="cta.button">View on GitHub</span>
+            </a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p><span data-i18n="footer.text">EasySQL is open source under the</span> <a href="https://opensource.org/licenses/Apache-2.0">Apache 2.0 License</a></p>
+    </footer>
+
+    <script>
+        // i18n Translation System
+        const translations = {
+            zh: {
+                // Navigation
+                'nav.features': '核心特性',
+                'nav.architecture': '智能架构',
+                'nav.techStack': '技术栈',
+
+                // Hero
+                'hero.badge': '开源项目',
+                'hero.title': '企业级 Text2SQL 解决方案',
+                'hero.subtitle': 'DDD 领域建模 × 知识图谱推理 × 向量语义检索，构建持续进化、越用越精准的智能 SQL 引擎',
+                'hero.getStarted': '快速开始',
+                'hero.learnMore': '了解更多',
+
+                // Features
+                'features.title': 'Why EasySQL?',
+                'features.subtitle': '专为企业复杂数据库场景设计的智能 SQL 生成引擎',
+                'features.ddd.title': 'DDD 业务上下文',
+                'features.ddd.desc': '深度理解业务领域，自动识别订单、库存、客户等核心概念，让 SQL 生成符合业务语义而非表面字段匹配。',
+                'features.kg.title': '知识图谱驱动',
+                'features.kg.desc': 'Neo4j 构建表关系图谱，精准捕获外键、索引、约束，确保多表 JOIN 路径最优且语义正确。',
+                'features.fewshot.title': 'Few-Shot 智能学习',
+                'features.fewshot.desc': '内置示例学习机制，通过少量标注样本快速适配特定业务场景，无需大规模训练数据。',
+                'features.smarter.title': '越用越聪明',
+                'features.smarter.desc': '持续学习用户反馈和纠正，自动积累业务知识，查询准确率随使用时间稳步提升。',
+                'features.modular.title': '组合式架构',
+                'features.modular.desc': '模块化设计，检索、生成、验证、修复各环节可独立配置，灵活组合满足不同场景需求。',
+                'features.semantic.title': '语义向量检索',
+                'features.semantic.desc': 'Milvus 驱动的深度语义理解，「本月销量」自动关联 order_detail，告别简单关键词匹配。',
+                'features.selfheal.title': '自愈式执行',
+                'features.selfheal.desc': 'SQL 执行异常时自动诊断错误根因，智能修复并重试，显著提升端到端成功率。',
+                'features.multidb.title': '全栈数据库支持',
+                'features.multidb.desc': 'MySQL、PostgreSQL、Oracle、SQL Server 一套方案通吃，统一接口屏蔽方言差异。',
+                'features.observe.title': '全链路可观测',
+                'features.observe.desc': 'LangFuse 集成，Token 消耗、推理耗时、检索召回一目了然，便于调优与成本控制。',
+
+                // Architecture
+                'arch.title': '智能架构',
+                'arch.subtitle': '多智能体协同的认知计算框架，而非简单的流水线',
+                'arch.core.title': '认知核心',
+                'arch.core.desc': 'LangGraph 智能体引擎',
+                'arch.orbit.semantic': '语义理解',
+                'arch.orbit.reasoning': '关系推理',
+                'arch.orbit.context': '上下文学习',
+                'arch.orbit.selfcorrect': '自我修正',
+                'arch.orbit.evolve': '持续进化',
+                'arch.orbit.modular': '模块组合',
+                'arch.desc1.title': '理解意图，而非匹配关键词',
+                'arch.desc1.text': '深度语义分析用户问题，理解业务上下文，从数百张表中精准定位目标数据。',
+                'arch.desc2.title': '推理关系，而非遍历路径',
+                'arch.desc2.text': '知识图谱驱动的关系推理，智能发现最优 JOIN 路径，保证查询语义正确性。',
+                'arch.desc3.title': '学习反馈，而非一次性生成',
+                'arch.desc3.text': 'Few-Shot 机制 + 用户反馈闭环，每次纠正都让系统更懂你的业务。',
+
+                // Tech Stack
+                'tech.title': '技术栈',
+                'tech.subtitle': '基于成熟的开源技术栈构建',
+
+                // CTA
+                'cta.title': '准备开始？',
+                'cta.subtitle': '开源免费，快速部署，轻松解决企业 Text2SQL 难题',
+                'cta.button': '访问 GitHub',
+
+                // Footer
+                'footer.text': 'EasySQL 基于 Apache 2.0 协议开源'
+            },
+            en: {
+                // Navigation
+                'nav.features': 'Features',
+                'nav.architecture': 'Architecture',
+                'nav.techStack': 'Tech Stack',
+
+                // Hero
+                'hero.badge': 'Open Source',
+                'hero.title': 'Enterprise Text2SQL Solution',
+                'hero.subtitle': 'DDD domain modeling × Knowledge graph reasoning × Vector semantic search — a continuously evolving intelligent SQL engine that gets smarter over time',
+                'hero.getStarted': 'Get Started',
+                'hero.learnMore': 'Learn More',
+
+                // Features
+                'features.title': 'Why EasySQL?',
+                'features.subtitle': 'Intelligent SQL generation engine designed for complex enterprise databases',
+                'features.ddd.title': 'DDD Business Context',
+                'features.ddd.desc': 'Deep understanding of business domains. Automatically identifies core concepts like orders, inventory, and customers for semantically accurate SQL.',
+                'features.kg.title': 'Knowledge Graph Driven',
+                'features.kg.desc': 'Neo4j builds table relationship graphs, precisely capturing foreign keys, indexes, and constraints for optimal JOIN paths.',
+                'features.fewshot.title': 'Few-Shot Learning',
+                'features.fewshot.desc': 'Built-in example learning mechanism. Quickly adapts to specific business scenarios with minimal labeled samples.',
+                'features.smarter.title': 'Gets Smarter Over Time',
+                'features.smarter.desc': 'Continuously learns from user feedback and corrections, automatically accumulating business knowledge.',
+                'features.modular.title': 'Composable Architecture',
+                'features.modular.desc': 'Modular design with independently configurable retrieval, generation, validation, and repair components.',
+                'features.semantic.title': 'Semantic Vector Search',
+                'features.semantic.desc': 'Milvus-powered deep semantic understanding. "Monthly sales" automatically maps to order_detail table.',
+                'features.selfheal.title': 'Self-Healing Execution',
+                'features.selfheal.desc': 'Automatically diagnoses SQL errors, intelligently repairs and retries for higher end-to-end success rates.',
+                'features.multidb.title': 'Full Database Support',
+                'features.multidb.desc': 'MySQL, PostgreSQL, Oracle, SQL Server - one solution for all, with unified interface hiding dialect differences.',
+                'features.observe.title': 'Full Observability',
+                'features.observe.desc': 'LangFuse integration for token usage, latency, and retrieval metrics at a glance.',
+
+                // Architecture
+                'arch.title': 'Intelligent Architecture',
+                'arch.subtitle': 'A cognitive computing framework with multi-agent collaboration, not just a simple pipeline',
+                'arch.core.title': 'Cognitive Core',
+                'arch.core.desc': 'LangGraph Agent Engine',
+                'arch.orbit.semantic': 'Semantic Understanding',
+                'arch.orbit.reasoning': 'Relation Reasoning',
+                'arch.orbit.context': 'Context Learning',
+                'arch.orbit.selfcorrect': 'Self Correction',
+                'arch.orbit.evolve': 'Continuous Evolution',
+                'arch.orbit.modular': 'Modular Composition',
+                'arch.desc1.title': 'Understand Intent, Not Just Keywords',
+                'arch.desc1.text': 'Deep semantic analysis of user questions, understanding business context to precisely locate target data from hundreds of tables.',
+                'arch.desc2.title': 'Reason Relationships, Not Traverse Paths',
+                'arch.desc2.text': 'Knowledge graph-driven relation reasoning intelligently discovers optimal JOIN paths while ensuring semantic correctness.',
+                'arch.desc3.title': 'Learn from Feedback, Not One-Shot Generation',
+                'arch.desc3.text': 'Few-Shot mechanism + user feedback loop. Every correction makes the system understand your business better.',
+
+                // Tech Stack
+                'tech.title': 'Tech Stack',
+                'tech.subtitle': 'Built on mature open-source technologies',
+
+                // CTA
+                'cta.title': 'Ready to Get Started?',
+                'cta.subtitle': 'Open source, free to use, easy deployment for enterprise Text2SQL challenges',
+                'cta.button': 'View on GitHub',
+
+                // Footer
+                'footer.text': 'EasySQL is open source under the'
+            }
+        };
+
+        let currentLang = 'zh';
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            localStorage.setItem('easysql-lang', lang);
+            document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+
+            // Update all elements with data-i18n
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+
+            // Update active button
+            document.querySelectorAll('.lang-switch button').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-lang') === lang);
+            });
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Get saved language or default to zh
+            const savedLang = localStorage.getItem('easysql-lang') || 'zh';
+            setLanguage(savedLang);
+
+            // Language switch buttons
+            document.querySelectorAll('.lang-switch button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    setLanguage(btn.getAttribute('data-lang'));
+                });
+            });
+
+            // Smooth scroll for anchor links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
