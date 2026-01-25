@@ -2,6 +2,7 @@ import { Typography, theme, Space } from 'antd';
 import { DatabaseOutlined, MessageOutlined, BulbOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { ChatInput } from './ChatInput';
+import Logo from '@/assets/icon/easysql_icon.svg';
 
 const { Title, Text } = Typography;
 
@@ -28,20 +29,16 @@ export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
       }}
     >
       <div style={{ marginBottom: 48, textAlign: 'center' }}>
-        <div
-          style={{
-            width: 64,
-            height: 64,
-            background: token.colorPrimaryBg,
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 24px',
-          }}
-        >
-          <DatabaseOutlined style={{ fontSize: 32, color: token.colorPrimary }} />
-        </div>
+        <img 
+          src={Logo} 
+          alt="EasySQL Logo" 
+          style={{ 
+            width: 80, 
+            height: 80, 
+            marginBottom: 24,
+            filter: 'drop-shadow(0 4px 12px rgba(22, 119, 255, 0.2))'
+          }} 
+        />
         <Title level={2} style={{ marginBottom: 16 }}>
           {t('welcome.title', 'EasySQL Assistant')}
         </Title>

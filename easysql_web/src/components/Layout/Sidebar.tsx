@@ -6,11 +6,11 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PlusOutlined,
-  DatabaseOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, useChatStore } from '@/stores';
 import { SessionList } from './SessionList';
+import Logo from '@/assets/icon/easysql_icon.svg';
 
 const { Sider } = Layout;
 const { Title } = Typography;
@@ -67,22 +67,14 @@ export function Sidebar() {
             <div style={{ 
               display: 'flex', 
               alignItems: 'center', 
-              gap: 8, 
-              marginBottom: 16, 
-              paddingLeft: 4 
+              gap: 10, 
+              marginBottom: 20, 
+              paddingLeft: 8 
             }}>
-              <div style={{
-                width: 24,
-                height: 24,
-                background: token.colorPrimary,
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-                <DatabaseOutlined style={{ color: '#fff', fontSize: 14 }} />
-              </div>
-              <Title level={5} style={{ margin: 0, fontWeight: 600 }}>EasySQL</Title>
+              <img src={Logo} alt="EasySQL" style={{ width: 32, height: 32 }} />
+              <Title level={4} style={{ margin: 0, fontWeight: 700, background: 'linear-gradient(45deg, #1677ff, #722ed1)', backgroundClip: 'text', WebkitBackgroundClip: 'text', color: 'transparent' }}>
+                EasySQL
+              </Title>
             </div>
           )}
           
@@ -94,12 +86,13 @@ export function Sidebar() {
               block
               size="large"
               style={{ 
-                height: 40,
-                borderRadius: 8,
+                height: 44,
+                borderRadius: 12,
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                paddingLeft: sidebarCollapsed ? undefined : 16,
+                justifyContent: sidebarCollapsed ? 'center' : 'center',
+                boxShadow: '0 4px 12px rgba(22, 119, 255, 0.2)',
+                fontWeight: 500,
               }}
             >
               {!sidebarCollapsed && t('nav.newChat')}

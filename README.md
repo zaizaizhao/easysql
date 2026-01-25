@@ -1,4 +1,4 @@
-# EasySQL
+# <img src="easysql_web/public/easysql_icon.svg" width="40" height="40" align="top" /> EasySQL
 
 > ⚠️ **开发中** - 本项目仍在积极开发阶段，API 和功能可能会有变动。欢迎试用和反馈！
 
