@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { Input, Button, Space, Tooltip, theme } from 'antd';
+import { Input, Button, theme } from 'antd';
 import { SendOutlined, LoadingOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useChatStore, useAppStore } from '@/stores';
@@ -13,6 +13,7 @@ interface ChatInputProps {
 export function ChatInput({ onSend }: ChatInputProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
   const { isLoading } = useChatStore();
   const { currentDatabase } = useAppStore();
   const { token } = theme.useToken();
@@ -41,33 +42,75 @@ export function ChatInput({ onSend }: ChatInputProps) {
   return (
     <div
       style={{
-        padding: 16,
-        borderTop: `1px solid ${token.colorBorder}`,
-        background: token.colorBgContainer,
+        padding: '16px 24px 24px',
+        background: 'transparent',
       }}
     >
-      <Space.Compact style={{ width: '100%' }}>
+      <div
+        style={{
+          position: 'relative',
+          maxWidth: 900,
+          margin: '0 auto',
+          background: token.colorBgContainer,
+          borderRadius: 12,
+          boxShadow: isFocused 
+            ? `0 4px 12px ${token.colorFillSecondary}`
+            : `0 2px 8px ${token.colorFillQuaternary}`,
+          border: `1px solid ${isFocused ? token.colorPrimary : token.colorBorderSecondary}`,
+          transition: 'all 0.2s ease',
+          padding: '8px 8px 8px 16px',
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: 8,
+        }}
+      >
         <TextArea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={getPlaceholder() + '…'}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
+          placeholder={getPlaceholder()}
           disabled={!currentDatabase || isLoading}
-          autoSize={{ minRows: 1, maxRows: 4 }}
-          style={{ flex: 1 }}
+          autoSize={{ minRows: 1, maxRows: 8 }}
+          variant="borderless"
+          style={{ 
+            flex: 1, 
+            padding: '8px 0',
+            resize: 'none',
+            fontSize: 16,
+            lineHeight: 1.5,
+            maxHeight: 200,
+          }}
           autoComplete="off"
         />
-        <Tooltip title={isLoading ? t('chat.processing') : t('chat.sendTooltip')}>
-          <Button
-            type="primary"
-            icon={isLoading ? <LoadingOutlined /> : <SendOutlined />}
-            onClick={handleSend}
-            disabled={!input.trim() || isLoading || !currentDatabase}
-            style={{ height: 'auto' }}
-            aria-label={t('chat.send')}
-          />
-        </Tooltip>
-      </Space.Compact>
+        
+        <Button
+          type="primary"
+          shape="circle"
+          icon={isLoading ? <LoadingOutlined /> : <SendOutlined />}
+          onClick={handleSend}
+          disabled={!input.trim() || isLoading || !currentDatabase}
+          size="large"
+          style={{ 
+            flexShrink: 0,
+            marginBottom: 2,
+            boxShadow: 'none',
+            opacity: (!input.trim() || isLoading) ? 0.5 : 1,
+          }}
+          aria-label={t('chat.send')}
+        />
+      </div>
+      <div 
+        style={{ 
+          textAlign: 'center', 
+          marginTop: 8, 
+          fontSize: 12, 
+          color: token.colorTextQuaternary 
+        }}
+      >
+        EasySQL generated content may be inaccurate. Please verify important information.
+      </div>
     </div>
   );
 }

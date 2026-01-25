@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Modal, Input, theme } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { MessageTree, ChatInput } from '@/components/Chat';
+import { MessageTree, ChatInput, WelcomeScreen } from '@/components/Chat';
 import { useStreamQuery } from '@/hooks';
 import { useChatStore } from '@/stores';
 
@@ -59,11 +59,17 @@ export default function ChatPage() {
         overflow: 'hidden',
       }}
     >
-      <MessageTree 
-        onClarificationSelect={handleClarificationAnswer}
-        onBranchClick={handleBranchClick}
-      />
-      <ChatInput onSend={handleSend} />
+      {!sessionId ? (
+        <WelcomeScreen onSend={handleSend} />
+      ) : (
+        <>
+          <MessageTree 
+            onClarificationSelect={handleClarificationAnswer}
+            onBranchClick={handleBranchClick}
+          />
+          <ChatInput onSend={handleSend} />
+        </>
+      )}
       
       <Modal
         title={t('chat.modalTitle')}

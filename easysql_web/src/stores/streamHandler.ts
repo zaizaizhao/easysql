@@ -48,11 +48,14 @@ export const processStreamEvent = (
 ): StreamHandlerResult => {
   const { sessionId, messages, messageMap, sessionCache } = currentState;
   const eventSessionId = event.data?.session_id;
+  
+  // Logic Fix: If we are in "new chat" mode (sessionId is null),
+  // any valid event with session_id becomes the active session.
   const targetSessionId = eventSessionId || sessionId;
 
   if (!targetSessionId) return {};
 
-  const isActive = targetSessionId === sessionId;
+  const isActive = targetSessionId === sessionId || (sessionId === null && !!eventSessionId);
 
   switch (event.event) {
     case 'start': {

@@ -17,6 +17,7 @@
     "total": "共 {{count}} 条",
     "more": "+{{count}} 更多",
     "collapse": "收起",
+    "expand": "展开",
     "switchToLight": "切换到浅色模式",
     "switchToDark": "切换到深色模式"
   },
@@ -25,6 +26,22 @@
     "history": "历史",
     "settings": "设置",
     "newChat": "新建对话"
+  },
+  "welcome": {
+    "title": "EasySQL 助手",
+    "subtitle": "使用自然语言查询您的数据",
+    "feature1": {
+      "title": "自然语言",
+      "desc": "像说话一样查询数据库"
+    },
+    "feature2": {
+      "title": "智能上下文",
+      "desc": "自动发现相关表结构"
+    },
+    "feature3": {
+      "title": "自动纠错",
+      "desc": "自动修复 SQL 语法错误"
+    }
   },
   "chat": {
     "placeholder": "向 {{database}} 数据库提问... (Enter 发送, Shift+Enter 换行)",
@@ -153,6 +170,12 @@
     "history": "历史会话",
     "deleteConfirm": "确定删除此会话？",
     "createError": "创建会话失败",
-    "loadError": "加载会话失败"
+    "loadError": "加载会话失败",
+    "group": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "previous7Days": "过去7天",
+      "older": "更早"
+    }
   }
 }

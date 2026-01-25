@@ -8,3 +8,4 @@ export { BranchButton } from './BranchButton';
 export { ChatInput } from './ChatInput';
 export { AgentThinking } from './AgentThinking';
 export { ExecutionSteps } from './ExecutionSteps';
+export { WelcomeScreen } from './WelcomeScreen';

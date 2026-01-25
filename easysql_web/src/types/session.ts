@@ -16,6 +16,10 @@ export interface MessageInfo {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
+  sql?: string;
+  validation_passed?: boolean;
+  clarification_questions?: string[];
+  user_answer?: string;
 }
 
 export interface SessionDetail {

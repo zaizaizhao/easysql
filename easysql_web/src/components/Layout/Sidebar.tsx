@@ -1,25 +1,26 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Button, Tooltip, Divider, message, theme } from 'antd';
+import { Layout, Menu, Button, Tooltip, Divider, theme, Typography } from 'antd';
 import {
   HistoryOutlined,
   SettingOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PlusOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, useChatStore } from '@/stores';
 import { SessionList } from './SessionList';
-import { createSession } from '@/api';
 
 const { Sider } = Layout;
+const { Title } = Typography;
 
 export function Sidebar() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar } = useAppStore();
-  const { cacheCurrentSession, addNewSession } = useChatStore();
+  const { cacheCurrentSession, setSessionId } = useChatStore();
   const { token } = theme.useToken();
 
   const menuItems = [
@@ -35,16 +36,10 @@ export function Sidebar() {
     },
   ];
 
-  const handleNewChat = async () => {
+  const handleNewChat = () => {
     cacheCurrentSession();
-    try {
-      const session = await createSession();
-      addNewSession(session);
-      navigate('/chat');
-    } catch (error) {
-      console.error('Failed to create session:', error);
-      message.error(t('session.createError', 'Failed to create session'));
-    }
+    setSessionId(null);
+    navigate('/chat');
   };
 
   return (
@@ -52,7 +47,7 @@ export function Sidebar() {
       trigger={null}
       collapsible
       collapsed={sidebarCollapsed}
-      width={240}
+      width={260}
       collapsedWidth={60}
       style={{
         background: token.colorBgContainer,
@@ -64,50 +59,78 @@ export function Sidebar() {
           display: 'flex',
           flexDirection: 'column',
           height: '100%',
-          padding: '8px',
-          overflowY: 'auto',
-          overflowX: 'hidden',
+          overflow: 'hidden',
         }}
       >
-        <div style={{ marginBottom: 8 }}>
+        <div style={{ padding: '16px 12px 12px' }}>
+          {!sidebarCollapsed && (
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 8, 
+              marginBottom: 16, 
+              paddingLeft: 4 
+            }}>
+              <div style={{
+                width: 24,
+                height: 24,
+                background: token.colorPrimary,
+                borderRadius: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}>
+                <DatabaseOutlined style={{ color: '#fff', fontSize: 14 }} />
+              </div>
+              <Title level={5} style={{ margin: 0, fontWeight: 600 }}>EasySQL</Title>
+            </div>
+          )}
+          
           <Tooltip title={sidebarCollapsed ? t('nav.newChat') : ''} placement="right">
             <Button
               type="primary"
               icon={<PlusOutlined />}
               onClick={handleNewChat}
               block
-              aria-label={t('nav.newChat')}
+              size="large"
+              style={{ 
+                height: 40,
+                borderRadius: 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                paddingLeft: sidebarCollapsed ? undefined : 16,
+              }}
             >
               {!sidebarCollapsed && t('nav.newChat')}
             </Button>
           </Tooltip>
         </div>
 
-        {!sidebarCollapsed && (
-          <>
-            <SessionList collapsed={sidebarCollapsed} />
-            <Divider style={{ margin: '8px 0' }} />
-          </>
-        )}
+        <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 8 }}>
+          <SessionList collapsed={sidebarCollapsed} />
+        </div>
 
-        <Menu
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ 
-            background: 'transparent',
-            border: 'none',
-            flex: sidebarCollapsed ? 1 : 0,
-          }}
-        />
-
-        <div style={{ marginTop: 'auto' }}>
+        <div style={{ padding: 8, borderTop: `1px solid ${token.colorBorderSecondary}` }}>
+          <Menu
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            items={menuItems}
+            onClick={({ key }) => navigate(key)}
+            style={{ 
+              background: 'transparent',
+              border: 'none',
+            }}
+          />
+          
+          <Divider style={{ margin: '8px 0' }} />
+          
           <Button
             type="text"
             icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={toggleSidebar}
             block
+            style={{ color: token.colorTextSecondary }}
             aria-label={sidebarCollapsed ? t('common.expand') : t('common.collapse')}
           />
         </div>

@@ -16,13 +16,30 @@
     "unknown": "Unknown",
     "total": "Total {{count}} items",
     "more": "+{{count}} more",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "expand": "Expand"
   },
   "nav": {
     "chat": "Chat",
     "history": "History",
     "settings": "Settings",
     "newChat": "New Chat"
+  },
+  "welcome": {
+    "title": "EasySQL Assistant",
+    "subtitle": "Ask questions about your data in natural language",
+    "feature1": {
+      "title": "Natural Language",
+      "desc": "Query database using plain English"
+    },
+    "feature2": {
+      "title": "Smart Context",
+      "desc": "Automatically finds relevant tables"
+    },
+    "feature3": {
+      "title": "Auto-Correction",
+      "desc": "Fixes SQL errors automatically"
+    }
   },
   "chat": {
     "placeholder": "Ask {{database}} database... (Enter to send, Shift+Enter for new line)",
@@ -151,6 +168,12 @@
     "history": "Recent Sessions",
     "deleteConfirm": "Delete this session?",
     "createError": "Failed to create session",
-    "loadError": "Failed to load session"
+    "loadError": "Failed to load session",
+    "group": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "previous7Days": "Previous 7 Days",
+      "older": "Older"
+    }
   }
 }
