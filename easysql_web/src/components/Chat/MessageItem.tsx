@@ -14,9 +14,10 @@ interface MessageItemProps {
   message: ChatMessage;
   onClarificationSelect?: (answer: string) => void;
   isLoading?: boolean;
+  userQuestion?: string;
 }
 
-export function MessageItem({ message, onClarificationSelect, isLoading }: MessageItemProps) {
+export function MessageItem({ message, onClarificationSelect, isLoading, userQuestion }: MessageItemProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const isUser = message.role === 'user';
@@ -165,6 +166,9 @@ export function MessageItem({ message, onClarificationSelect, isLoading }: Messa
                   validationPassed={message.validationPassed}
                   validationError={message.validationError}
                   autoExecute={!message.isStreaming}
+                  question={userQuestion}
+                  messageId={message.id}
+                  tablesUsed={message.retrievalSummary?.tables}
                 />
               </div>
             )}

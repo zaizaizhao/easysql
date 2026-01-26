@@ -23,7 +23,8 @@
     "chat": "Chat",
     "history": "History",
     "settings": "Settings",
-    "newChat": "New Chat"
+    "newChat": "New Chat",
+    "fewShot": "Few-Shot Examples"
   },
   "welcome": {
     "title": "EasySQL Assistant",
@@ -79,7 +80,10 @@
     "copySuccess": "SQL copied to clipboard",
     "copyFailed": "Copy failed",
     "validationPassed": "Syntax validation passed",
-    "validationFailed": "Syntax validation failed"
+    "validationFailed": "Syntax validation failed",
+    "edit": "Edit",
+    "cancelEdit": "Cancel Edit",
+    "editing": "Editing"
   },
   "execute": {
     "run": "Run",
@@ -88,7 +92,8 @@
     "affectedRows": "Affected rows: {{count}}",
     "noData": "No data returned",
     "resultStats": "{{rows}} rows returned ({{time}}ms)",
-    "truncated": "Result truncated (showing first 1000 rows)"
+    "truncated": "Result truncated (showing first 1000 rows)",
+    "resultTitle": "Execution Result"
   },
   "steps": {
     "retrieve_hint": "Analyze Schema",
@@ -175,5 +180,30 @@
       "previous7Days": "Previous 7 Days",
       "older": "Older"
     }
+  },
+  "fewShot": {
+    "title": "Few-Shot Examples",
+    "question": "Question",
+    "sql": "SQL",
+    "tablesUsed": "Tables",
+    "explanation": "Explanation",
+    "createdAt": "Created",
+    "selectDatabase": "Please select a database first",
+    "noExamples": "No examples saved yet",
+    "saveAsExample": "Save as example",
+    "alreadySaved": "Already saved",
+    "saveSuccess": "Saved as example",
+    "saveFailed": "Failed to save example",
+    "deleteConfirm": "Delete this example?",
+    "deleteSuccess": "Example deleted",
+    "deleteFailed": "Failed to delete example",
+    "fetchFailed": "Failed to load examples",
+    "missingInfo": "Missing question or database",
+    "editExample": "Edit Example",
+    "updateSuccess": "Example updated",
+    "updateFailed": "Failed to update example",
+    "questionRequired": "Question is required",
+    "sqlRequired": "SQL is required",
+    "duplicateError": "Similar example already exists"
   }
 }

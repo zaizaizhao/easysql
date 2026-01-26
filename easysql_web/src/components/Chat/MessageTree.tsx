@@ -64,10 +64,14 @@ export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTre
         padding: '0 16px',
       }}
     >
-      {visibleMessages.map((message) => {
+      {visibleMessages.map((message, index) => {
         const siblings = getSiblings(message);
         const currentIndex = getCurrentIndex(message, siblings);
         const hasBranches = siblings.length > 1;
+
+        const prevUserMessage = message.role === 'assistant' && index > 0 && visibleMessages[index - 1]?.role === 'user'
+          ? visibleMessages[index - 1]
+          : undefined;
 
         return (
           <div
@@ -80,6 +84,7 @@ export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTre
               message={message}
               onClarificationSelect={onClarificationSelect}
               isLoading={isLoading}
+              userQuestion={prevUserMessage?.content}
             />
             
             {hasBranches && (

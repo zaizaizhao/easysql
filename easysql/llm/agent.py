@@ -22,6 +22,7 @@ from easysql.llm.nodes.generate_sql import generate_sql_node
 from easysql.llm.nodes.repair_sql import repair_sql_node
 from easysql.llm.nodes.retrieve import retrieve_node
 from easysql.llm.nodes.retrieve_code import retrieve_code_node
+from easysql.llm.nodes.retrieve_few_shot import retrieve_few_shot_node
 from easysql.llm.nodes.retrieve_hint import retrieve_hint_node
 from easysql.llm.nodes.shift_detect import shift_detect_node
 from easysql.llm.nodes.sql_agent import sql_agent_node
@@ -236,6 +237,7 @@ def build_graph() -> "CompiledStateGraph":
     builder.add_node("analyze", analyze_query_node)
     builder.add_node("clarify", clarify_node)
     builder.add_node("retrieve", retrieve_node)
+    builder.add_node("retrieve_few_shot", retrieve_few_shot_node)
     builder.add_node("build_context", build_context_node)
     builder.add_node("retrieve_code", retrieve_code_node)
 
@@ -268,7 +270,9 @@ def build_graph() -> "CompiledStateGraph":
         shift_detect_targets["generate_sql"] = "generate_sql"
 
     builder.add_conditional_edges(
-        "shift_detect", route_shift_detect, shift_detect_targets  # type: ignore[arg-type]
+        "shift_detect",
+        route_shift_detect,
+        shift_detect_targets,  # type: ignore[arg-type]
     )
 
     builder.add_edge("retrieve_hint", "analyze")
@@ -278,7 +282,8 @@ def build_graph() -> "CompiledStateGraph":
     )
 
     builder.add_edge("clarify", "retrieve")
-    builder.add_edge("retrieve", "build_context")
+    builder.add_edge("retrieve", "retrieve_few_shot")
+    builder.add_edge("retrieve_few_shot", "build_context")
     builder.add_edge("build_context", "retrieve_code")
 
     if use_agent_mode:

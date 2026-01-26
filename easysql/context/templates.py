@@ -11,8 +11,8 @@ from pathlib import Path
 from .models import SectionContent
 
 
-# Default system prompt for Text2SQL
-DEFAULT_SYSTEM_PROMPT = """你是一个专业的 SQL 专家，擅长将自然语言问题转换为 SQL 查询语句。
+# Default system prompt for Text2SQL (base template without DB-specific rules)
+DEFAULT_SYSTEM_PROMPT_BASE = """你是一个专业的 SQL 专家，擅长将自然语言问题转换为 SQL 查询语句。
 
 重要规则：
 1. **严格限制**: 只使用下方提供的表和列，绝对不要假设或使用任何未提供的表
@@ -28,9 +28,32 @@ DEFAULT_SYSTEM_PROMPT = """你是一个专业的 SQL 专家，擅长将自然语
    - 只有当用户问题语义上明确需要按某字段过滤、但未提供具体值时，才使用示例值并添加注释说明
 9. **语义理解**: 仔细分析用户意图，区分"查询某个特定患者的数据"和"查询所有患者的数据"，前者需要 WHERE 条件，后者不需要
 
+{db_specific_rules}
+
 输出格式：
 - 只输出一条完整的、可直接执行的 SQL 查询语句
 - 如果无法生成有效 SQL，输出: -- 缺少必要的表: [表名]"""
+
+
+def get_default_system_prompt(db_type: str | None = None) -> str:
+    """
+    Get the default system prompt with database-specific rules.
+
+    Args:
+        db_type: Database type (mysql, postgresql, oracle, sqlserver).
+                 If None, no database-specific rules are included.
+
+    Returns:
+        System prompt string with database-specific rules if applicable.
+    """
+    from .db_specific_rules import get_db_specific_rules
+
+    db_rules = get_db_specific_rules(db_type)
+    return DEFAULT_SYSTEM_PROMPT_BASE.format(db_specific_rules=db_rules)
+
+
+# For backward compatibility
+DEFAULT_SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT_BASE.format(db_specific_rules="")
 
 # Default user prompt template
 DEFAULT_USER_PROMPT_TEMPLATE = """{sections}
@@ -51,27 +74,36 @@ class PromptTemplate:
         system_template: System prompt template.
         user_template: User prompt template with {sections} and {question} placeholders.
         section_separator: Separator between sections.
+        db_type: Database type for database-specific rules.
     """
 
     system_template: str
     user_template: str
     section_separator: str = "\n\n"
+    db_type: str | None = None
 
     @classmethod
-    def default(cls) -> "PromptTemplate":
-        """Create default Text2SQL template. factory mode"""
+    def default(cls, db_type: str | None = None) -> "PromptTemplate":
+        """Create default Text2SQL template. factory mode
+
+        Args:
+            db_type: Database type (mysql, postgresql, oracle, sqlserver).
+                     If provided, includes database-specific SQL rules.
+        """
         return cls(
-            system_template=DEFAULT_SYSTEM_PROMPT,
+            system_template=get_default_system_prompt(db_type),
             user_template=DEFAULT_USER_PROMPT_TEMPLATE,
+            db_type=db_type,
         )
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "PromptTemplate":
+    def from_yaml(cls, path: str | Path, db_type: str | None = None) -> "PromptTemplate":
         """
         Load template from YAML file.
 
         Args:
             path: Path to YAML template file.
+            db_type: Database type for database-specific rules.
 
         Returns:
             PromptTemplate instance.
@@ -90,10 +122,13 @@ class PromptTemplate:
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
+        system_template = data.get("system_template", get_default_system_prompt(db_type))
+
         return cls(
-            system_template=data.get("system_template", DEFAULT_SYSTEM_PROMPT),
+            system_template=system_template,
             user_template=data.get("user_template", DEFAULT_USER_PROMPT_TEMPLATE),
             section_separator=data.get("section_separator", "\n\n"),
+            db_type=db_type,
         )
 
     def render_system(self, **kwargs) -> str:

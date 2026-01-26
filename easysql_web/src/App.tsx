@@ -13,6 +13,7 @@ import { useAppStore } from '@/stores';
 import ChatPage from '@/pages/Chat';
 import HistoryPage from '@/pages/History';
 import SettingsPage from '@/pages/Settings';
+import FewShotPage from '@/pages/FewShot';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,6 +59,7 @@ function AppContent() {
               <Route path="chat" element={<ChatPage />} />
               <Route path="chat/:sessionId" element={<ChatPage />} />
               <Route path="history" element={<HistoryPage />} />
+              <Route path="few-shot" element={<FewShotPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Routes>

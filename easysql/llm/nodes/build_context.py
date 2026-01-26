@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, Any, Optional
 from easysql.llm.state import EasySQLState
 from easysql.llm.nodes.base import BaseNode
 from easysql.context.builder import ContextBuilder
-from easysql.context.models import ContextInput
+from easysql.context.models import ContextInput, FewShotExample
+from easysql.context.db_specific_rules import get_db_type_from_config
 from easysql.retrieval.schema_retrieval import RetrievalResult
 
 if TYPE_CHECKING:
@@ -31,6 +32,16 @@ class BuildContextNode(BaseNode):
                     If None, will use default builder.
         """
         self._builder = builder
+        self._db_type: str | None = None
+
+    def _get_builder(self, db_name: str | None = None) -> ContextBuilder:
+        """Get or lazily initialize the context builder with db_type."""
+        if self._builder is not None:
+            return self._builder
+
+        # Get database type from config
+        db_type = get_db_type_from_config(db_name)
+        return ContextBuilder.default(db_type=db_type)
 
     @property
     def builder(self) -> ContextBuilder:
@@ -55,6 +66,7 @@ class BuildContextNode(BaseNode):
             State updates with context_output.
         """
         query = state["clarified_query"] or state["raw_query"]
+        db_name = state.get("db_name")
 
         # Reconstruct RetrievalResult from dict
         retrieval_data = state["retrieval_result"]
@@ -71,11 +83,29 @@ class BuildContextNode(BaseNode):
             stats=retrieval_data.get("stats", {}),
         )
 
+        few_shot_examples: list[FewShotExample] = []
+        state_examples = state.get("few_shot_examples")
+        if state_examples:
+            for ex in state_examples:
+                few_shot_examples.append(
+                    FewShotExample(
+                        question=ex["question"],
+                        sql=ex["sql"],
+                        tables_used=ex.get("tables_used", []),
+                        explanation=ex.get("explanation"),
+                    )
+                )
+
         context_input = ContextInput(
-            question=query, retrieval_result=result_obj, db_name=state.get("db_name")
+            question=query,
+            retrieval_result=result_obj,
+            db_name=db_name,
+            few_shot_examples=few_shot_examples,
         )
 
-        output = self.builder.build(context_input)
+        # Use builder with database-specific rules
+        builder = self._get_builder(db_name)
+        output = builder.build(context_input)
 
         context_dict = {
             "system_prompt": output.system_prompt,

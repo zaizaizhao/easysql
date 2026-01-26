@@ -168,6 +168,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       messages: state.messages,
       messageMap: state.messageMap,
       sessionCache: state.sessionCache,
+      sessions: state.sessions,
       status: state.status,
     });
     

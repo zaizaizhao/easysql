@@ -27,6 +27,7 @@ from easysql.llm.nodes.generate_sql import GenerateSQLNode, generate_sql_node
 from easysql.llm.nodes.validate_sql import ValidateSQLNode, validate_sql_node
 from easysql.llm.nodes.repair_sql import RepairSQLNode, repair_sql_node
 from easysql.llm.nodes.shift_detect import ShiftDetectNode, shift_detect_node
+from easysql.llm.nodes.retrieve_few_shot import RetrieveFewShotNode, retrieve_few_shot_node
 
 __all__ = [
     "BaseNode",
@@ -40,6 +41,7 @@ __all__ = [
     "ValidateSQLNode",
     "RepairSQLNode",
     "ShiftDetectNode",
+    "RetrieveFewShotNode",
     "retrieve_hint_node",
     "analyze_query_node",
     "clarify_node",
@@ -50,4 +52,5 @@ __all__ = [
     "validate_sql_node",
     "repair_sql_node",
     "shift_detect_node",
+    "retrieve_few_shot_node",
 ]

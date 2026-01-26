@@ -53,6 +53,15 @@ class SchemaHintDict(TypedDict):
     semantic_columns: list[SchemaHintColumn]
 
 
+class FewShotExampleDict(TypedDict):
+    """A few-shot example for in-context learning."""
+
+    question: str
+    sql: str
+    tables_used: list[str]
+    explanation: str | None
+
+
 class ConversationTurn(TypedDict):
     """Single conversation turn for history tracking."""
 
@@ -125,3 +134,6 @@ class EasySQLState(TypedDict):
     needs_new_retrieval: bool
     shift_reason: str | None
     history_summary: str | None
+
+    # --- Few-Shot Learning ---
+    few_shot_examples: list[FewShotExampleDict] | None

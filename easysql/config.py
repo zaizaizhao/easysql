@@ -348,6 +348,28 @@ class Settings(BaseSettings):
     llm_api_key: str | None = Field(default=None, description="LLM API key")
     llm_api_base: str | None = Field(default=None, description="LLM API base URL")
 
+    # ===== Few-Shot Configuration =====
+    few_shot_enabled: bool = Field(
+        default=False, description="Enable few-shot learning with similar examples"
+    )
+    few_shot_max_examples: int = Field(
+        default=3, description="Maximum number of few-shot examples to include"
+    )
+    few_shot_min_similarity: float = Field(
+        default=0.6, description="Minimum similarity score for few-shot retrieval"
+    )
+    few_shot_collection_name: str = Field(
+        default="few_shot_examples", description="Milvus collection name for few-shot examples"
+    )
+
+    # ===== Session Persistence Configuration =====
+    session_backend: str = Field(
+        default="memory", description="Session storage backend: memory or postgres"
+    )
+    session_postgres_uri: str | None = Field(
+        default=None, description="PostgreSQL URI for session storage (if backend=postgres)"
+    )
+
     # ===== Code Context Configuration =====
     code_context_enabled: bool = Field(
         default=False, description="Enable code context retrieval for Text2SQL"
@@ -467,6 +489,14 @@ class Settings(BaseSettings):
         if upper_v not in valid_levels:
             raise ValueError(f"LOG_LEVEL must be one of {valid_levels}")
         return upper_v
+
+    @field_validator("session_backend")
+    @classmethod
+    def validate_session_backend(cls, v: str) -> str:
+        valid_backends = {"memory", "postgres"}
+        if v.lower() not in valid_backends:
+            raise ValueError(f"SESSION_BACKEND must be one of {valid_backends}")
+        return v.lower()
 
 
 @lru_cache

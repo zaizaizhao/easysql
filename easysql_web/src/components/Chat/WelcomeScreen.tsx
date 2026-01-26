@@ -1,4 +1,4 @@
-import { Typography, theme, Space } from 'antd';
+import { Typography, theme } from 'antd';
 import { DatabaseOutlined, MessageOutlined, BulbOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { ChatInput } from './ChatInput';
@@ -12,7 +12,6 @@ interface WelcomeScreenProps {
 
 export function WelcomeScreen({ onSend }: WelcomeScreenProps) {
   const { t } = useTranslation();
-  const { token } = theme.useToken();
 
   return (
     <div

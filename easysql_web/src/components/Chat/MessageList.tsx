@@ -44,13 +44,19 @@ export function MessageList({ onClarificationSelect }: MessageListProps) {
         padding: '0 16px',
       }}
     >
-      {messages.map((message) => (
-        <MessageItem
-          key={message.id}
-          message={message}
-          onClarificationSelect={onClarificationSelect}
-        />
-      ))}
+      {messages.map((message, index) => {
+        const prevUserMessage = message.role === 'assistant' && index > 0 && messages[index - 1]?.role === 'user'
+          ? messages[index - 1]
+          : undefined;
+        return (
+          <MessageItem
+            key={message.id}
+            message={message}
+            onClarificationSelect={onClarificationSelect}
+            userQuestion={prevUserMessage?.content}
+          />
+        );
+      })}
     </div>
   );
 }

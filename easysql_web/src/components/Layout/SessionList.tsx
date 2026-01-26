@@ -1,4 +1,5 @@
 import { useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Typography, Button, Popconfirm, Spin, theme, message } from 'antd';
 import { DeleteOutlined, MessageOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +18,8 @@ interface SessionListProps {
 export function SessionList({ collapsed }: SessionListProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
+  const navigate = useNavigate();
+  const location = useLocation();
   
   const { data, isLoading, refetch } = useSessions();
   const deleteSessionMutation = useDeleteSession();
@@ -28,14 +31,13 @@ export function SessionList({ collapsed }: SessionListProps) {
     switchSession,
     removeSession,
     messages: currentMessages,
+    sessionCache,
   } = useChatStore();
 
   const prevSessionIdRef = useRef<string | null>(null);
-  const initialLoadDoneRef = useRef(false);
 
   useEffect(() => {
-    if (data?.sessions && !initialLoadDoneRef.current) {
-      initialLoadDoneRef.current = true;
+    if (data?.sessions) {
       setSessions(data.sessions);
     }
   }, [data?.sessions, setSessions]);
@@ -48,16 +50,21 @@ export function SessionList({ collapsed }: SessionListProps) {
   }, [currentSessionId, refetch]);
 
   const handleSessionClick = async (sessionId: string) => {
-    if (sessionId === currentSessionId) return;
+    const isOnChatPage = location.pathname.startsWith('/chat');
+    
+    if (sessionId === currentSessionId && isOnChatPage) return;
+    
+    if (sessionId === currentSessionId && !isOnChatPage) {
+      navigate(`/chat/${sessionId}`);
+      return;
+    }
     
     try {
       const detail = await getSessionDetail(sessionId);
       
-      // 合并消息：用户问题(1条) + 助手完整回复(1条，含澄清+回答+SQL+表格)
-      const mergedMessages: ChatMessage[] = [];
-      
-      let firstUserQuestion: ChatMessage | null = null;
-      let assistantData: {
+      const messages: ChatMessage[] = [];
+      let currentUserMsg: ChatMessage | null = null;
+      let currentAssistantData: {
         clarificationQuestions?: string[];
         userAnswer?: string;
         sql?: string;
@@ -65,63 +72,62 @@ export function SessionList({ collapsed }: SessionListProps) {
         content?: string;
         timestamp?: Date;
       } = {};
+      let msgIndex = 0;
+      
+      const flushAssistant = () => {
+        if (currentUserMsg && (currentAssistantData.sql || currentAssistantData.clarificationQuestions || currentAssistantData.content)) {
+          messages.push(currentUserMsg);
+          messages.push({
+            id: `${sessionId}_msg_${msgIndex++}`,
+            role: 'assistant',
+            content: currentAssistantData.content || '',
+            timestamp: currentAssistantData.timestamp || new Date(),
+            sql: currentAssistantData.sql,
+            validationPassed: currentAssistantData.validationPassed,
+            clarificationQuestions: currentAssistantData.clarificationQuestions,
+            userAnswer: currentAssistantData.userAnswer,
+          });
+          currentUserMsg = null;
+          currentAssistantData = {};
+        }
+      };
       
       for (const m of detail.messages) {
         if (m.role === 'user') {
-          if (!firstUserQuestion && !m.user_answer) {
-            firstUserQuestion = {
-              id: `${sessionId}_user`,
+          if (m.user_answer) {
+            currentAssistantData.userAnswer = m.user_answer;
+          } else {
+            flushAssistant();
+            currentUserMsg = {
+              id: `${sessionId}_msg_${msgIndex++}`,
               role: 'user',
               content: m.content,
               timestamp: new Date(m.timestamp),
             };
           }
-          if (m.user_answer) {
-            assistantData.userAnswer = m.user_answer;
-          }
         } else if (m.role === 'assistant') {
-          if (!assistantData.timestamp) {
-            assistantData.timestamp = new Date(m.timestamp);
+          if (!currentAssistantData.timestamp) {
+            currentAssistantData.timestamp = new Date(m.timestamp);
           }
-          if (m.clarification_questions && m.clarification_questions.length > 0) {
-            assistantData.clarificationQuestions = m.clarification_questions;
+          if (m.clarification_questions?.length) {
+            currentAssistantData.clarificationQuestions = m.clarification_questions;
           }
           if (m.sql) {
-            assistantData.sql = m.sql;
-            assistantData.validationPassed = m.validation_passed;
+            currentAssistantData.sql = m.sql;
+            currentAssistantData.validationPassed = m.validation_passed;
           }
-          if (m.content && !assistantData.content) {
-            assistantData.content = m.content;
+          if (m.content && !currentAssistantData.content) {
+            currentAssistantData.content = m.content;
           }
         }
       }
-      
-      if (firstUserQuestion) {
-        mergedMessages.push(firstUserQuestion);
-        mergedMessages.push({
-          id: `${sessionId}_assistant`,
-          role: 'assistant',
-          content: assistantData.content || '',
-          timestamp: assistantData.timestamp || new Date(),
-          sql: assistantData.sql || detail.generated_sql || undefined,
-          validationPassed: assistantData.validationPassed ?? detail.validation_passed ?? undefined,
-          clarificationQuestions: assistantData.clarificationQuestions,
-          userAnswer: assistantData.userAnswer,
-        });
-      }
-      
-      const messages = mergedMessages.length > 0 ? mergedMessages : detail.messages.map((m, idx) => ({
-        id: `${sessionId}_msg_${idx}`,
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-        timestamp: new Date(m.timestamp),
-        sql: m.sql || undefined,
-        validationPassed: m.validation_passed ?? undefined,
-        clarificationQuestions: m.clarification_questions || undefined,
-        userAnswer: m.user_answer || undefined,
-      }));
+      flushAssistant();
       
       switchSession(sessionId, messages);
+      
+      if (!location.pathname.startsWith('/chat')) {
+        navigate(`/chat/${sessionId}`);
+      }
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         removeSession(sessionId);
@@ -243,7 +249,19 @@ export function SessionList({ collapsed }: SessionListProps) {
                       
                       let sessionTitle: string;
                       if (isUnsaved) {
-                        const userMsg = currentMessages.find(m => m.role === 'user');
+                        const isCurrentActive = session.session_id === currentSessionId;
+                        let messagesForTitle: typeof currentMessages = [];
+                        
+                        if (isCurrentActive) {
+                          messagesForTitle = currentMessages;
+                        } else {
+                          const cached = sessionCache.get(session.session_id);
+                          if (cached) {
+                            messagesForTitle = cached.messages;
+                          }
+                        }
+                        
+                        const userMsg = messagesForTitle.find(m => m.role === 'user');
                         sessionTitle = userMsg?.content.slice(0, 30) || t('nav.newChat');
                       } else {
                         sessionTitle = getSessionTitle(session.session_id, index);

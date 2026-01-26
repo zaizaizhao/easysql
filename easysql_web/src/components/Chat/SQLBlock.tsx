@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button, Tooltip, message, Space, theme } from 'antd';
-import { CopyOutlined, CheckCircleOutlined, CloseCircleOutlined, PlayCircleOutlined, LoadingOutlined, DownOutlined, RightOutlined, EditOutlined, TableOutlined } from '@ant-design/icons';
+import { CopyOutlined, CheckCircleOutlined, CloseCircleOutlined, PlayCircleOutlined, LoadingOutlined, DownOutlined, RightOutlined, EditOutlined, TableOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import Editor from '@monaco-editor/react';
 import { useAppStore } from '@/stores';
 import { executeApi } from '@/api/execute';
+import { fewShotApi } from '@/api/fewShot';
 import type { ExecuteResponse } from '@/types';
 import { ResultTable } from './ResultTable';
 
@@ -13,24 +14,52 @@ interface SQLBlockProps {
   validationPassed?: boolean;
   validationError?: string;
   autoExecute?: boolean;
+  question?: string;
+  messageId?: string;
+  tablesUsed?: string[];
+  isFewShot?: boolean;
 }
 
-export function SQLBlock({ sql: initialSql, validationPassed, validationError, autoExecute = false }: SQLBlockProps) {
+export function SQLBlock({ 
+  sql: initialSql, 
+  validationPassed, 
+  validationError, 
+  autoExecute = false,
+  question,
+  messageId,
+  tablesUsed,
+  isFewShot: initialIsFewShot = false,
+}: SQLBlockProps) {
   const { t } = useTranslation();
   const { theme: appTheme, currentDatabase } = useAppStore();
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ExecuteResponse | null>(null);
   
-  // Independent collapse states
   const [sqlCollapsed, setSqlCollapsed] = useState(false);
   const [resultCollapsed, setResultCollapsed] = useState(false);
   
   const [isEditing, setIsEditing] = useState(false);
   const [editedSql, setEditedSql] = useState(initialSql);
+  const [isFewShot, setIsFewShot] = useState(initialIsFewShot);
+  const [savingFewShot, setSavingFewShot] = useState(false);
   const { token } = theme.useToken();
   const hasAutoExecutedRef = useRef(false);
+  const hasCheckedFewShotRef = useRef(false);
 
   const currentSql = isEditing ? editedSql : initialSql;
+
+  useEffect(() => {
+    if (messageId && !hasCheckedFewShotRef.current && !initialIsFewShot) {
+      hasCheckedFewShotRef.current = true;
+      fewShotApi.checkByMessageId(messageId)
+        .then((response) => {
+          if (response.is_few_shot) {
+            setIsFewShot(true);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [messageId, initialIsFewShot]);
 
   const handleCopy = async () => {
     try {
@@ -80,6 +109,31 @@ export function SQLBlock({ sql: initialSql, validationPassed, validationError, a
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
       setEditedSql(value);
+    }
+  };
+
+  const handleSaveFewShot = async () => {
+    if (!currentDatabase || !question) {
+      message.warning(t('fewShot.missingInfo', 'Missing question or database'));
+      return;
+    }
+
+    setSavingFewShot(true);
+    try {
+      await fewShotApi.create({
+        db_name: currentDatabase,
+        question: question,
+        sql: currentSql,
+        tables_used: tablesUsed,
+        message_id: messageId,
+      });
+      setIsFewShot(true);
+      message.success(t('fewShot.saveSuccess', 'Saved as example'));
+    } catch (error) {
+      console.error('Failed to save few-shot:', error);
+      message.error(t('fewShot.saveFailed', 'Failed to save example'));
+    } finally {
+      setSavingFewShot(false);
     }
   };
 
@@ -164,6 +218,17 @@ export function SQLBlock({ sql: initialSql, validationPassed, validationError, a
             >
               {t('sql.copy')}
             </Button>
+            {question && (
+              <Tooltip title={isFewShot ? t('fewShot.alreadySaved', 'Already saved') : t('fewShot.saveAsExample', 'Save as example')}>
+                <Button
+                  type="text"
+                  size="small"
+                  icon={isFewShot ? <StarFilled style={{ color: '#faad14' }} /> : savingFewShot ? <LoadingOutlined /> : <StarOutlined />}
+                  onClick={handleSaveFewShot}
+                  disabled={isFewShot || savingFewShot || !currentDatabase}
+                />
+              </Tooltip>
+            )}
           </Space>
         </div>
 

@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.types import StreamWriter
 
 from easysql.config import get_settings
+from easysql.context.db_specific_rules import get_db_specific_rules, get_db_type_from_config
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode
 from easysql.llm.state import ContextOutputDict, EasySQLState
@@ -63,7 +64,7 @@ def _langfuse_span(name: str, **kwargs):
         yield None
 
 
-AGENT_SYSTEM_PROMPT = """你是一个SQL专家。根据用户问题和提供的数据库Schema，生成正确的SQL查询。
+AGENT_SYSTEM_PROMPT_BASE = """你是一个SQL专家。根据用户问题和提供的数据库Schema，生成正确的SQL查询。
 
 ## 可用工具
 1. validate_sql - 验证SQL语句是否正确（执行 LIMIT 1 检查语法和可执行性）
@@ -89,13 +90,16 @@ AGENT_SYSTEM_PROMPT = """你是一个SQL专家。根据用户问题和提供的�
   - 包含"全部"、"所有"、"不限制"、"历史"→ 不添加WHERE
   - "查询患者的XXX"但未指定ID → 不要自行添加示例值
   - 只有明确要求"某个/特定/指定"实体时才需WHERE
-
+{db_specific_rules}
 ## 输出格式
 验证通过后，输出最终SQL：
 ```sql
 你的最终SQL语句
 ```
 """
+
+# Legacy constant for backward compatibility
+AGENT_SYSTEM_PROMPT = AGENT_SYSTEM_PROMPT_BASE.format(db_specific_rules="")
 
 
 class SqlAgentNode(BaseNode):
@@ -142,7 +146,7 @@ class SqlAgentNode(BaseNode):
             llm_with_tools = llm.bind_tools(tools)
 
             messages = self._build_messages(state, context)
-            system_prompt = self._build_system_prompt(context)
+            system_prompt = self._build_system_prompt(context, db_name)
 
             max_iterations = self.settings.llm.agent_max_iterations
             iteration = 0
@@ -260,6 +264,15 @@ class SqlAgentNode(BaseNode):
                             )
 
                         messages.append(ToolMessage(content=str(tool_result), tool_call_id=tool_id))
+
+                    # If validation failed during tool calls, add explicit retry instruction
+                    if not validation_passed and last_error:
+                        logger.info(f"[SqlAgent] Validation failed, adding retry instruction")
+                        messages.append(
+                            HumanMessage(
+                                content=f"SQL验证失败，错误信息: {last_error}\n\n请根据错误信息修正SQL语句，然后再次调用 validate_sql 工具验证。"
+                            )
+                        )
 
                 logger.info(
                     f"[SqlAgent] Completed - iterations={iteration}, validated={validation_passed}"
@@ -396,9 +409,21 @@ class SqlAgentNode(BaseNode):
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def _build_system_prompt(self, context: ContextOutputDict) -> str:
+    def _build_system_prompt(self, context: ContextOutputDict, db_name: str | None = None) -> str:
+        """Build system prompt with database-specific rules."""
         base_prompt = context.get("system_prompt", "")
-        return f"{base_prompt}\n\n{AGENT_SYSTEM_PROMPT}"
+
+        # Get database type and inject specific rules
+        db_type = get_db_type_from_config(db_name)
+        db_rules = get_db_specific_rules(db_type)
+
+        if db_rules:
+            agent_prompt = AGENT_SYSTEM_PROMPT_BASE.format(db_specific_rules=f"\n{db_rules}\n")
+            logger.debug(f"[SqlAgent] Injected {db_type} specific rules into system prompt")
+        else:
+            agent_prompt = AGENT_SYSTEM_PROMPT
+
+        return f"{base_prompt}\n\n{agent_prompt}"
 
     def _build_messages(self, state: EasySQLState, context: ContextOutputDict) -> list[BaseMessage]:
         messages: list[BaseMessage] = []

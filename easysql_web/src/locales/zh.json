@@ -25,7 +25,8 @@
     "chat": "对话",
     "history": "历史",
     "settings": "设置",
-    "newChat": "新建对话"
+    "newChat": "新建对话",
+    "fewShot": "Few-Shot 示例"
   },
   "welcome": {
     "title": "EasySQL 助手",
@@ -81,7 +82,10 @@
     "copySuccess": "SQL 已复制到剪贴板",
     "copyFailed": "复制失败",
     "validationPassed": "语法验证通过",
-    "validationFailed": "语法验证失败"
+    "validationFailed": "语法验证失败",
+    "edit": "编辑",
+    "cancelEdit": "取消编辑",
+    "editing": "编辑中"
   },
   "execute": {
     "run": "运行",
@@ -90,7 +94,8 @@
     "affectedRows": "影响行数: {{count}}",
     "noData": "无数据返回",
     "resultStats": "返回 {{rows}} 行 (耗时 {{time}}ms)",
-    "truncated": "结果已截断 (显示前 1000 行)"
+    "truncated": "结果已截断 (显示前 1000 行)",
+    "resultTitle": "执行结果"
   },
   "steps": {
     "retrieve_hint": "分析Schema",
@@ -177,5 +182,30 @@
       "previous7Days": "过去7天",
       "older": "更早"
     }
+  },
+  "fewShot": {
+    "title": "Few-Shot 示例",
+    "question": "问题",
+    "sql": "SQL",
+    "tablesUsed": "涉及表",
+    "explanation": "说明",
+    "createdAt": "创建时间",
+    "selectDatabase": "请先选择数据库",
+    "noExamples": "暂无保存的示例",
+    "saveAsExample": "保存为示例",
+    "alreadySaved": "已保存为示例",
+    "saveSuccess": "已保存为示例",
+    "saveFailed": "保存示例失败",
+    "deleteConfirm": "确定删除此示例？",
+    "deleteSuccess": "示例已删除",
+    "deleteFailed": "删除示例失败",
+    "fetchFailed": "加载示例失败",
+    "missingInfo": "缺少问题或数据库信息",
+    "editExample": "编辑示例",
+    "updateSuccess": "示例已更新",
+    "updateFailed": "更新示例失败",
+    "questionRequired": "问题不能为空",
+    "sqlRequired": "SQL不能为空",
+    "duplicateError": "已存在相似的示例"
   }
 }

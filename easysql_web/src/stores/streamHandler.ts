@@ -1,9 +1,10 @@
-import type { ChatMessage, StreamEvent, QueryStatus, SessionCache, AgentStep } from '@/types';
+import type { ChatMessage, StreamEvent, QueryStatus, SessionCache, AgentStep, SessionInfo } from '@/types';
 
 export interface StreamHandlerResult {
   messages?: ChatMessage[];
   messageMap?: Map<string, ChatMessage>;
   sessionCache?: Map<string, SessionCache>;
+  sessions?: SessionInfo[];
   isLoading?: boolean;
   status?: QueryStatus;
   error?: string | null;
@@ -43,28 +44,44 @@ export const processStreamEvent = (
     messages: ChatMessage[];
     messageMap: Map<string, ChatMessage>;
     sessionCache: Map<string, SessionCache>;
+    sessions: SessionInfo[];
     status: QueryStatus;
   }
 ): StreamHandlerResult => {
-  const { sessionId, messages, messageMap, sessionCache } = currentState;
+  const { sessionId, messages, messageMap, sessionCache, sessions } = currentState;
   const eventSessionId = event.data?.session_id;
   
-  // Logic Fix: If we are in "new chat" mode (sessionId is null),
-  // any valid event with session_id becomes the active session.
   const targetSessionId = eventSessionId || sessionId;
 
   if (!targetSessionId) return {};
 
   const isActive = targetSessionId === sessionId || (sessionId === null && !!eventSessionId);
+  const isNewSession = sessionId === null && !!eventSessionId;
 
   switch (event.event) {
     case 'start': {
       if (isActive) {
-        return {
+        const result: StreamHandlerResult = {
           sessionId: targetSessionId,
           isLoading: true,
           status: 'processing',
         };
+        
+        if (isNewSession) {
+          const existingSession = sessions.find(s => s.session_id === targetSessionId);
+          if (!existingSession) {
+            const newSession: SessionInfo = {
+              session_id: targetSessionId,
+              status: 'processing',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              question_count: 1,
+            };
+            result.sessions = [newSession, ...sessions];
+          }
+        }
+        
+        return result;
       } else {
         const cached = sessionCache.get(targetSessionId);
         if (cached) {

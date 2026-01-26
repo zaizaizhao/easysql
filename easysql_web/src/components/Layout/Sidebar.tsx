@@ -6,6 +6,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   PlusOutlined,
+  StarOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, useChatStore } from '@/stores';
@@ -28,6 +29,11 @@ export function Sidebar() {
       key: '/history',
       icon: <HistoryOutlined />,
       label: t('nav.history'),
+    },
+    {
+      key: '/few-shot',
+      icon: <StarOutlined />,
+      label: t('nav.fewShot', 'Examples'),
     },
     {
       key: '/settings',
