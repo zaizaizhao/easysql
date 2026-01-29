@@ -51,80 +51,57 @@ export function SessionList({ collapsed }: SessionListProps) {
 
   const handleSessionClick = async (sessionId: string) => {
     const isOnChatPage = location.pathname.startsWith('/chat');
-    
+
     if (sessionId === currentSessionId && isOnChatPage) return;
-    
+
     if (sessionId === currentSessionId && !isOnChatPage) {
       navigate(`/chat/${sessionId}`);
       return;
     }
-    
+
     try {
       const detail = await getSessionDetail(sessionId);
-      
+
       const messages: ChatMessage[] = [];
-      let currentUserMsg: ChatMessage | null = null;
-      let currentAssistantData: {
-        clarificationQuestions?: string[];
-        userAnswer?: string;
-        sql?: string;
-        validationPassed?: boolean;
-        content?: string;
-        timestamp?: Date;
-      } = {};
       let msgIndex = 0;
-      
-      const flushAssistant = () => {
-        if (currentUserMsg && (currentAssistantData.sql || currentAssistantData.clarificationQuestions || currentAssistantData.content)) {
-          messages.push(currentUserMsg);
-          messages.push({
-            id: `${sessionId}_msg_${msgIndex++}`,
-            role: 'assistant',
-            content: currentAssistantData.content || '',
-            timestamp: currentAssistantData.timestamp || new Date(),
-            sql: currentAssistantData.sql,
-            validationPassed: currentAssistantData.validationPassed,
-            clarificationQuestions: currentAssistantData.clarificationQuestions,
-            userAnswer: currentAssistantData.userAnswer,
-          });
-          currentUserMsg = null;
-          currentAssistantData = {};
+
+      // Convert turns to ChatMessage format
+      for (const turn of detail.turns || []) {
+        // Add user message (the question)
+        messages.push({
+          id: `${sessionId}_msg_${msgIndex++}`,
+          role: 'user',
+          content: turn.question,
+          timestamp: new Date(turn.created_at),
+        });
+
+        // Build assistant message from turn data
+        const assistantMsg: ChatMessage = {
+          id: `${sessionId}_msg_${msgIndex++}`,
+          role: 'assistant',
+          content: '',
+          timestamp: new Date(turn.created_at),
+          sql: turn.final_sql,
+          validationPassed: turn.validation_passed,
+        };
+
+        // Handle clarifications if any
+        if (turn.clarifications && turn.clarifications.length > 0) {
+          const lastClarification = turn.clarifications[turn.clarifications.length - 1];
+          assistantMsg.clarificationQuestions = lastClarification.questions;
+          assistantMsg.userAnswer = lastClarification.answer;
         }
-      };
-      
-      for (const m of detail.messages) {
-        if (m.role === 'user') {
-          if (m.user_answer) {
-            currentAssistantData.userAnswer = m.user_answer;
-          } else {
-            flushAssistant();
-            currentUserMsg = {
-              id: `${sessionId}_msg_${msgIndex++}`,
-              role: 'user',
-              content: m.content,
-              timestamp: new Date(m.timestamp),
-            };
-          }
-        } else if (m.role === 'assistant') {
-          if (!currentAssistantData.timestamp) {
-            currentAssistantData.timestamp = new Date(m.timestamp);
-          }
-          if (m.clarification_questions?.length) {
-            currentAssistantData.clarificationQuestions = m.clarification_questions;
-          }
-          if (m.sql) {
-            currentAssistantData.sql = m.sql;
-            currentAssistantData.validationPassed = m.validation_passed;
-          }
-          if (m.content && !currentAssistantData.content) {
-            currentAssistantData.content = m.content;
-          }
+
+        // Handle error case
+        if (turn.error) {
+          assistantMsg.content = turn.error;
         }
+
+        messages.push(assistantMsg);
       }
-      flushAssistant();
-      
+
       switchSession(sessionId, messages);
-      
+
       if (!location.pathname.startsWith('/chat')) {
         navigate(`/chat/${sessionId}`);
       }
@@ -153,11 +130,15 @@ export function SessionList({ collapsed }: SessionListProps) {
   const getSessionTitle = (sessionId: string, index: number): string => {
     const session = storeSessions.find(s => s.session_id === sessionId);
     if (!session) return `${t('nav.chat')} ${index + 1}`;
-    
+
+    // Use title from API (first question) if available
+    if (session.title) return session.title;
+
+    // Fallback to cached title
     const cached = useChatStore.getState().sessionCache.get(sessionId);
     if (cached?.title) return cached.title;
-    
-    // Default title from session ID or date if no messages
+
+    // Default title from session ID
     return `Session ${sessionId.slice(0, 6)}`;
   };
 

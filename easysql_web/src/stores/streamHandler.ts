@@ -70,12 +70,14 @@ export const processStreamEvent = (
         if (isNewSession) {
           const existingSession = sessions.find(s => s.session_id === targetSessionId);
           if (!existingSession) {
+            const firstUserMessage = messages.find(m => m.role === 'user');
             const newSession: SessionInfo = {
               session_id: targetSessionId,
               status: 'processing',
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
               question_count: 1,
+              title: firstUserMessage?.content?.slice(0, 50),
             };
             result.sessions = [newSession, ...sessions];
           }

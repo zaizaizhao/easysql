@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import inspect
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from easysql.config import Settings
-from easysql_api.deps import get_settings_dep
-from easysql_api.services.session_store import get_session_store
+from easysql_api.deps import SessionStoreType, get_session_store_dep, get_settings_dep
 
 router = APIRouter()
 
@@ -62,12 +62,19 @@ async def get_info(
 
 
 @router.get("/metrics", response_model=MetricsResponse)
-async def get_metrics() -> MetricsResponse:
-    store = get_session_store()
+async def get_metrics(
+    store: Annotated[SessionStoreType, Depends(get_session_store_dep)],
+) -> MetricsResponse:
     uptime = (datetime.now(timezone.utc) - _start_time).total_seconds()
 
+    count_result = store.count()
+    if inspect.iscoroutine(count_result):
+        active_sessions = await count_result
+    else:
+        active_sessions = cast(int, count_result)
+
     return MetricsResponse(
-        active_sessions=store.count(),
+        active_sessions=active_sessions,
         uptime_seconds=uptime,
         timestamp=datetime.now(timezone.utc),
     )

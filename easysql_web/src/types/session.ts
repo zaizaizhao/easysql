@@ -5,6 +5,7 @@ export interface SessionInfo {
   created_at: string;
   updated_at: string;
   question_count: number;
+  title?: string;
 }
 
 export interface SessionList {
@@ -12,14 +13,22 @@ export interface SessionList {
   total: number;
 }
 
-export interface MessageInfo {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: string;
-  sql?: string;
+export type TurnStatus = 'in_progress' | 'awaiting_clarification' | 'completed' | 'failed';
+
+export interface TurnClarification {
+  questions: string[];
+  answer?: string;
+}
+
+export interface TurnInfo {
+  turn_id: string;
+  question: string;
+  status: TurnStatus;
+  clarifications: TurnClarification[];
+  final_sql?: string;
   validation_passed?: boolean;
-  clarification_questions?: string[];
-  user_answer?: string;
+  error?: string;
+  created_at: string;
 }
 
 export interface SessionDetail {
@@ -31,6 +40,6 @@ export interface SessionDetail {
   raw_query?: string;
   generated_sql?: string;
   validation_passed?: boolean;
-  messages: MessageInfo[];
+  turns: TurnInfo[];
   state?: Record<string, unknown>;
 }

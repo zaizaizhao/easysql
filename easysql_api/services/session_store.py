@@ -3,9 +3,29 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Protocol, TypeVar, Union, runtime_checkable
 
 from easysql_api.models.query import QueryStatus
+from easysql_api.models.turn import Turn
+
+
+@runtime_checkable
+class SessionProtocol(Protocol):
+    """Protocol for session objects (both Session and PgSession)."""
+
+    session_id: str
+    db_name: str | None
+    status: QueryStatus
+    created_at: datetime
+    updated_at: datetime
+    turns: list[Turn]
+
+    def create_turn(self, question: str) -> Turn: ...
+    def get_current_turn(self) -> Turn | None: ...
+    def get_turn(self, turn_id: str) -> Turn | None: ...
+
+
+SessionT = TypeVar("SessionT", bound=SessionProtocol)
 
 
 @dataclass
@@ -20,10 +40,30 @@ class Session:
     validation_passed: bool | None = None
     clarification_questions: list[str] | None = None
     state: dict[str, Any] | None = None
-    messages: list[dict[str, Any]] = field(default_factory=list)
+    turns: list[Turn] = field(default_factory=list)
+    _turn_counter: int = 0
 
     def touch(self) -> None:
         self.updated_at = datetime.now(timezone.utc)
+
+    def create_turn(self, question: str) -> Turn:
+        self._turn_counter += 1
+        turn = Turn(
+            turn_id=f"turn-{self._turn_counter:03d}",
+            question=question,
+        )
+        self.turns.append(turn)
+        self.touch()
+        return turn
+
+    def get_current_turn(self) -> Turn | None:
+        return self.turns[-1] if self.turns else None
+
+    def get_turn(self, turn_id: str) -> Turn | None:
+        for turn in self.turns:
+            if turn.turn_id == turn_id:
+                return turn
+        return None
 
 
 class SessionStore:

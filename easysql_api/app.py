@@ -33,11 +33,29 @@ async def lifespan(app: FastAPI):
     if settings.checkpointer.is_postgres():
         logger.info("  Checkpointer: PostgreSQL")
         setup_checkpointer()
+
+        from easysql_api.deps import set_pg_session_store
+        from easysql_api.services.pg_session_store import PgSessionStore
+
+        pg_store = PgSessionStore(settings.checkpointer.postgres_uri)
+        await pg_store.connect()
+        set_pg_session_store(pg_store)
+        logger.info("  Session Store: PostgreSQL")
     else:
         logger.info("  Checkpointer: In-memory")
+        logger.info("  Session Store: In-memory")
 
     yield
+
     logger.info("EasySQL API shutting down...")
+
+    if settings.checkpointer.is_postgres():
+        from easysql_api.deps import _pg_session_store, clear_pg_session_store
+
+        if _pg_session_store is not None:
+            await _pg_session_store.close()
+            clear_pg_session_store()
+
     await close_checkpointer_pool()
 
 

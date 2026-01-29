@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from easysql_api.models.turn import TurnInfo
+
 
 class SessionInfo(BaseModel):
     session_id: str
@@ -13,21 +15,12 @@ class SessionInfo(BaseModel):
     created_at: datetime
     updated_at: datetime
     question_count: int = 0
+    title: str | None = None
 
 
 class SessionList(BaseModel):
     sessions: list[SessionInfo]
     total: int
-
-
-class MessageInfo(BaseModel):
-    role: str
-    content: str
-    timestamp: datetime
-    sql: str | None = None
-    validation_passed: bool | None = None
-    clarification_questions: list[str] | None = None
-    user_answer: str | None = None
 
 
 class SessionDetail(BaseModel):
@@ -39,5 +32,5 @@ class SessionDetail(BaseModel):
     raw_query: str | None = None
     generated_sql: str | None = None
     validation_passed: bool | None = None
-    messages: list[MessageInfo] = Field(default_factory=list)
+    turns: list[TurnInfo] = Field(default_factory=list)
     state: dict[str, Any] | None = None

@@ -24,6 +24,11 @@ from easysql_api.models.session import (
     SessionInfo,
     SessionList,
 )
+from easysql_api.models.turn import (
+    ClarificationInfo,
+    TurnInfo,
+    TurnStatus,
+)
 
 __all__ = [
     "QueryRequest",
@@ -40,4 +45,7 @@ __all__ = [
     "ExecuteResponse",
     "ExecuteStatus",
     "SqlCheckResult",
+    "TurnInfo",
+    "TurnStatus",
+    "ClarificationInfo",
 ]

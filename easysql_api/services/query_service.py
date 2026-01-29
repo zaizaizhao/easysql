@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime, timezone
 from typing import Any
 
 from langgraph.types import Command
@@ -43,11 +42,9 @@ class QueryService:
 
     def create_session(self, db_name: str | None = None) -> Session:
         if not db_name:
-            # Pick the first configured database as default
             settings = get_settings()
             databases = settings.databases
             if databases:
-                # Use the first available database key
                 db_name = next(iter(databases.keys()))
                 logger.info(f"No db_name provided, defaulting to: {db_name}")
             else:
@@ -61,16 +58,6 @@ class QueryService:
     def get_session(self, session_id: str) -> Session | None:
         return self._store.get(session_id)
 
-    def _append_message(self, session: Session, role: str, content: str, **kwargs: Any) -> None:
-        message = {
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now(timezone.utc),
-            **kwargs,
-        }
-        session.messages.append(message)
-        session.touch()
-
     async def execute_query(
         self,
         session: Session,
@@ -78,7 +65,7 @@ class QueryService:
     ) -> dict[str, Any]:
         session.raw_query = question
         session.status = QueryStatus.PROCESSING
-        self._append_message(session, "user", question)
+        turn = session.create_turn(question)
 
         input_state: dict[str, Any] = {
             "raw_query": question,
@@ -101,9 +88,10 @@ class QueryService:
 
         try:
             result = await self.graph.ainvoke(input_state, config)
-            return await self._process_result(session, result, config)
+            return await self._process_result(session, result, config, turn)
         except Exception as e:
             logger.error(f"Query execution failed: {e}")
+            turn.fail(str(e))
             session.status = QueryStatus.FAILED
             session.touch()
             return {
@@ -122,36 +110,24 @@ class QueryService:
                 "error": "Session is not awaiting clarification",
             }
 
+        turn = session.get_current_turn()
+        if not turn:
+            return {
+                "status": QueryStatus.FAILED,
+                "error": "No active turn found",
+            }
+
+        turn.answer_clarification(answer)
         session.status = QueryStatus.PROCESSING
-        self._append_message(session, "user", answer, user_answer=answer)
 
         config = self._make_config(session.session_id)
 
         try:
             result = await self.graph.ainvoke(Command(resume=answer), config)
-            processed_result = await self._process_result(session, result, config)
-
-            if processed_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    clarification_questions=processed_result.get("clarification", {}).get(
-                        "questions"
-                    ),
-                )
-            else:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    sql=processed_result.get("sql"),
-                    validation_passed=processed_result.get("validation_passed"),
-                )
-
-            return processed_result
+            return await self._process_result(session, result, config, turn)
         except Exception as e:
             logger.error(f"Continue conversation failed: {e}")
+            turn.fail(str(e))
             session.status = QueryStatus.FAILED
             session.touch()
             return {
@@ -174,8 +150,19 @@ class QueryService:
             }
             return
 
+        turn = session.get_current_turn()
+        if not turn:
+            yield {
+                "event": "error",
+                "data": {
+                    "session_id": session.session_id,
+                    "error": "No active turn found",
+                },
+            }
+            return
+
+        turn.answer_clarification(answer)
         session.status = QueryStatus.PROCESSING
-        self._append_message(session, "user", answer, user_answer=answer)
 
         config = self._make_config(session.session_id)
 
@@ -225,29 +212,14 @@ class QueryService:
             snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
 
-            final_result = await self._process_result(session, dict(final_state), config)
+            final_result = await self._process_result(session, dict(final_state), config, turn)
             final_result["session_id"] = session.session_id
-
-            if final_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    clarification_questions=final_result.get("clarification", {}).get("questions"),
-                )
-            else:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    sql=final_result.get("sql"),
-                    validation_passed=final_result.get("validation_passed"),
-                )
 
             yield {"event": "complete", "data": final_result}
 
         except Exception as e:
             logger.error(f"Stream continue conversation failed: {e}")
+            turn.fail(str(e))
             session.status = QueryStatus.FAILED
             session.touch()
             yield {"event": "error", "data": {"session_id": session.session_id, "error": str(e)}}
@@ -257,11 +229,18 @@ class QueryService:
         session: Session,
         result: dict[str, Any],
         config: dict[str, Any],
+        turn: Any,
     ) -> dict[str, Any]:
+        from easysql_api.models.turn import Turn
+
+        if not isinstance(turn, Turn):
+            raise TypeError("turn must be a Turn instance")
+
         snapshot = await self.graph.aget_state(config)
 
         if snapshot.next and "clarify" in snapshot.next:
             questions = self._extract_clarification_questions(snapshot, result)
+            turn.add_clarification(questions)
             session.status = QueryStatus.AWAITING_CLARIFICATION
             session.clarification_questions = questions
             session.state = dict(result) if result else None
@@ -270,10 +249,15 @@ class QueryService:
             return {
                 "status": QueryStatus.AWAITING_CLARIFICATION.value,
                 "clarification": {"questions": questions},
+                "turn_id": turn.turn_id,
             }
 
-        session.generated_sql = result.get("generated_sql")
-        session.validation_passed = result.get("validation_passed", False)
+        sql = result.get("generated_sql")
+        validation_passed = result.get("validation_passed", False)
+        turn.complete(sql, validation_passed)
+
+        session.generated_sql = sql
+        session.validation_passed = validation_passed
         session.status = QueryStatus.COMPLETED
         session.state = dict(result) if result else None
         session.touch()
@@ -282,6 +266,7 @@ class QueryService:
             "status": QueryStatus.COMPLETED.value,
             "sql": session.generated_sql,
             "validation_passed": session.validation_passed,
+            "turn_id": turn.turn_id,
         }
 
         if not session.validation_passed:
@@ -320,7 +305,7 @@ class QueryService:
     ) -> AsyncGenerator[dict[str, Any], None]:
         session.raw_query = question
         session.status = QueryStatus.PROCESSING
-        self._append_message(session, "user", question)
+        turn = session.create_turn(question)
 
         input_state: dict[str, Any] = {
             "raw_query": question,
@@ -387,29 +372,14 @@ class QueryService:
             snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
 
-            final_result = await self._process_result(session, dict(final_state), config)
+            final_result = await self._process_result(session, dict(final_state), config, turn)
             final_result["session_id"] = session.session_id
-
-            if final_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    clarification_questions=final_result.get("clarification", {}).get("questions"),
-                )
-            else:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    sql=final_result.get("sql"),
-                    validation_passed=final_result.get("validation_passed"),
-                )
 
             yield {"event": "complete", "data": final_result}
 
         except Exception as e:
             logger.exception(f"Stream query failed: {type(e).__name__}: {e!r}")
+            turn.fail(str(e))
             session.status = QueryStatus.FAILED
             session.touch()
             yield {
@@ -464,7 +434,7 @@ class QueryService:
 
         session.raw_query = question
         session.status = QueryStatus.PROCESSING
-        self._append_message(session, "user", question)
+        turn = session.create_turn(question)
 
         config = self._make_config(session.session_id)
 
@@ -498,29 +468,10 @@ class QueryService:
 
         try:
             result = await self.graph.ainvoke(input_state, config)
-            processed_result = await self._process_result(session, result, config)
-
-            if processed_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    clarification_questions=processed_result.get("clarification", {}).get(
-                        "questions"
-                    ),
-                )
-            else:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    sql=processed_result.get("sql"),
-                    validation_passed=processed_result.get("validation_passed"),
-                )
-
-            return processed_result
+            return await self._process_result(session, result, config, turn)
         except Exception as e:
             logger.error(f"Follow-up query failed: {e}")
+            turn.fail(str(e))
             session.status = QueryStatus.FAILED
             session.touch()
             return {"status": QueryStatus.FAILED, "error": str(e)}
@@ -543,7 +494,7 @@ class QueryService:
 
         session.raw_query = question
         session.status = QueryStatus.PROCESSING
-        self._append_message(session, "user", question)
+        turn = session.create_turn(question)
 
         config = self._make_config(session.session_id)
 
@@ -620,29 +571,14 @@ class QueryService:
 
             snapshot = await self.graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
-            final_result = await self._process_result(session, dict(final_state), config)
+            final_result = await self._process_result(session, dict(final_state), config, turn)
             final_result["session_id"] = session.session_id
-
-            if final_result.get("status") == QueryStatus.AWAITING_CLARIFICATION:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    clarification_questions=final_result.get("clarification", {}).get("questions"),
-                )
-            else:
-                self._append_message(
-                    session,
-                    "assistant",
-                    "",
-                    sql=final_result.get("sql"),
-                    validation_passed=final_result.get("validation_passed"),
-                )
 
             yield {"event": "complete", "data": final_result}
 
         except Exception as e:
             logger.error(f"Stream follow-up query failed: {e}")
+            turn.fail(str(e))
             session.status = QueryStatus.FAILED
             session.touch()
             yield {"event": "error", "data": {"session_id": session.session_id, "error": str(e)}}

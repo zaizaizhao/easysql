@@ -9,8 +9,9 @@ from uuid import UUID
 
 import asyncpg
 
-from easysql_api.models.query import QueryStatus
 from easysql.utils.logger import get_logger
+from easysql_api.models.query import QueryStatus
+from easysql_api.models.turn import Turn, turn_from_dict, turn_to_dict
 
 logger = get_logger(__name__)
 
@@ -31,15 +32,35 @@ class PgSession:
         self.status = status
         self.created_at = created_at or datetime.now(timezone.utc)
         self.updated_at = updated_at or datetime.now(timezone.utc)
-        self.messages: list[dict[str, Any]] = []
         self.raw_query: str | None = None
         self.generated_sql: str | None = None
         self.validation_passed: bool | None = None
         self.clarification_questions: list[str] | None = None
         self.state: dict[str, Any] | None = None
+        self.turns: list[Turn] = []
+        self._turn_counter: int = 0
 
     def touch(self) -> None:
         self.updated_at = datetime.now(timezone.utc)
+
+    def create_turn(self, question: str) -> Turn:
+        self._turn_counter += 1
+        turn = Turn(
+            turn_id=f"turn-{self._turn_counter:03d}",
+            question=question,
+        )
+        self.turns.append(turn)
+        self.touch()
+        return turn
+
+    def get_current_turn(self) -> Turn | None:
+        return self.turns[-1] if self.turns else None
+
+    def get_turn(self, turn_id: str) -> Turn | None:
+        for turn in self.turns:
+            if turn.turn_id == turn_id:
+                return turn
+        return None
 
 
 class PgSessionStore:
@@ -82,7 +103,7 @@ class PgSessionStore:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                SELECT id, db_name, status, created_at, updated_at
+                SELECT id, db_name, status, created_at, updated_at, turns
                 FROM easysql_sessions WHERE id = $1
                 """,
                 UUID(session_id),
@@ -98,29 +119,13 @@ class PgSessionStore:
                 updated_at=row["updated_at"],
             )
 
-            messages = await conn.fetch(
-                """
-                SELECT role, content, generated_sql, validation_passed, 
-                       user_answer, clarification_questions, is_few_shot, created_at
-                FROM easysql_messages 
-                WHERE session_id = $1 
-                ORDER BY created_at
-                """,
-                UUID(session_id),
-            )
-            session.messages = [
-                {
-                    "role": m["role"],
-                    "content": m["content"],
-                    "sql": m["generated_sql"],
-                    "validation_passed": m["validation_passed"],
-                    "user_answer": m["user_answer"],
-                    "clarification_questions": m["clarification_questions"],
-                    "is_few_shot": m["is_few_shot"],
-                    "timestamp": m["created_at"],
-                }
-                for m in messages
-            ]
+            turns_data = row.get("turns")
+            if turns_data:
+                if isinstance(turns_data, str):
+                    turns_data = json.loads(turns_data)
+                session.turns = [turn_from_dict(t) for t in turns_data]
+                session._turn_counter = len(session.turns)
+
             return session
 
     async def update_status(self, session_id: str, status: QueryStatus) -> None:
@@ -128,6 +133,16 @@ class PgSessionStore:
             await conn.execute(
                 "UPDATE easysql_sessions SET status = $1 WHERE id = $2",
                 status.value,
+                UUID(session_id),
+            )
+
+    async def save_turns(self, session_id: str, turns: list[Turn]) -> None:
+        async with self.pool.acquire() as conn:
+            turns_json = json.dumps([turn_to_dict(t) for t in turns])
+            await conn.execute(
+                "UPDATE easysql_sessions SET turns = $1, updated_at = $2 WHERE id = $3",
+                turns_json,
+                datetime.now(timezone.utc),
                 UUID(session_id),
             )
 
@@ -146,8 +161,8 @@ class PgSessionStore:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                INSERT INTO easysql_messages 
-                (session_id, parent_id, role, content, generated_sql, tables_used, 
+                INSERT INTO easysql_messages
+                (session_id, parent_id, role, content, generated_sql, tables_used,
                  validation_passed, user_answer, clarification_questions)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 RETURNING id
@@ -174,7 +189,7 @@ class PgSessionStore:
 
     async def delete(self, session_id: str) -> bool:
         async with self.pool.acquire() as conn:
-            result = await conn.execute(
+            result: str = await conn.execute(
                 "DELETE FROM easysql_sessions WHERE id = $1",
                 UUID(session_id),
             )
@@ -184,7 +199,7 @@ class PgSessionStore:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT id, db_name, status, created_at, updated_at
+                SELECT id, db_name, status, created_at, updated_at, turns
                 FROM easysql_sessions
                 ORDER BY updated_at DESC
                 LIMIT $1 OFFSET $2
@@ -192,16 +207,22 @@ class PgSessionStore:
                 limit,
                 offset,
             )
-            return [
-                PgSession(
+            sessions = []
+            for r in rows:
+                session = PgSession(
                     session_id=str(r["id"]),
                     db_name=r["db_name"],
                     status=QueryStatus(r["status"]),
                     created_at=r["created_at"],
                     updated_at=r["updated_at"],
                 )
-                for r in rows
-            ]
+                turns_data = r.get("turns")
+                if turns_data:
+                    if isinstance(turns_data, str):
+                        turns_data = json.loads(turns_data)
+                    session.turns = [turn_from_dict(t) for t in turns_data]
+                sessions.append(session)
+            return sessions
 
     async def count(self) -> int:
         async with self.pool.acquire() as conn:
