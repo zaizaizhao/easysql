@@ -21,7 +21,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { sidebarCollapsed, toggleSidebar } = useAppStore();
-  const { cacheCurrentSession, setSessionId } = useChatStore();
+  const { cacheCurrentSession, clearChat } = useChatStore();
   const { token } = theme.useToken();
 
   const menuItems = [
@@ -44,7 +44,7 @@ export function Sidebar() {
 
   const handleNewChat = () => {
     cacheCurrentSession();
-    setSessionId(null);
+    clearChat();
     navigate('/chat');
   };
 

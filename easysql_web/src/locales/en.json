@@ -119,6 +119,7 @@
   "history": {
     "title": "Session History",
     "database": "Database",
+    "firstQuestion": "First Question",
     "status": "Status",
     "messageCount": "Messages",
     "createdAt": "Created At",

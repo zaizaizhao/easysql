@@ -121,6 +121,7 @@
   "history": {
     "title": "历史会话",
     "database": "数据库",
+    "firstQuestion": "首次问题",
     "status": "状态",
     "messageCount": "消息数",
     "createdAt": "创建时间",

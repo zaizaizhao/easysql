@@ -37,7 +37,8 @@ export default function HistoryPage() {
 
   const filteredSessions = data?.sessions.filter((session) =>
     session.session_id.toLowerCase().includes(searchText.toLowerCase()) ||
-    session.db_name?.toLowerCase().includes(searchText.toLowerCase())
+    session.db_name?.toLowerCase().includes(searchText.toLowerCase()) ||
+    session.title?.toLowerCase().includes(searchText.toLowerCase())
   ) || [];
 
   const columns: ColumnsType<SessionInfo> = [
@@ -49,6 +50,14 @@ export default function HistoryPage() {
       render: (dbName: string) => (
         <Tag color="blue">{dbName?.toUpperCase() || '-'}</Tag>
       ),
+    },
+    {
+      title: t('history.firstQuestion'),
+      dataIndex: 'title',
+      key: 'title',
+      width: 260,
+      ellipsis: true,
+      render: (title?: string) => title || '-',
     },
     {
       title: t('history.status'),
