@@ -6,13 +6,14 @@ import { useAppStore } from '@/stores';
 export function useStreamQuery() {
   const abortControllerRef = useRef<AbortController | null>(null);
   
-  const { 
+    const { 
     addMessage, 
     handleStreamEvent, 
     setIsLoading, 
     setError,
     isLoading,
     sessionId,
+    threadId,
     messages,
   } = useChatStore();
   
@@ -79,7 +80,7 @@ export function useStreamQuery() {
     try {
       const generator = streamContinueQuery(
         sessionId,
-        { answer }
+        { answer, thread_id: threadId || undefined }
       );
 
       for await (const event of generator) {
@@ -90,7 +91,7 @@ export function useStreamQuery() {
       setError(errorMessage);
       setIsLoading(false);
     }
-  }, [isLoading, sessionId, handleStreamEvent, setIsLoading, setError]);
+  }, [isLoading, sessionId, threadId, handleStreamEvent, setIsLoading, setError]);
 
   const sendFollowUp = useCallback(async (question: string, parentMessageId?: string) => {
     if (isLoading || !sessionId) return;
@@ -98,7 +99,12 @@ export function useStreamQuery() {
     setIsLoading(true);
     setError(null);
 
-    const parentId = parentMessageId || messages[messages.length - 1]?.id;
+    const parentLocalId = parentMessageId || messages[messages.length - 1]?.id;
+    const parentMessage = parentLocalId
+      ? useChatStore.getState().messageMap.get(parentLocalId)
+      : undefined;
+    const parentServerId = parentMessage?.serverId || parentLocalId;
+    const parentThreadId = parentMessage?.threadId || threadId || undefined;
 
     const userMessageId = `user_${Date.now()}`;
     addMessage({
@@ -106,7 +112,7 @@ export function useStreamQuery() {
       role: 'user',
       content: question,
       timestamp: new Date(),
-    }, parentId);
+    }, parentLocalId);
 
     const assistantMessageId = `assistant_${Date.now()}`;
     addMessage({
@@ -120,7 +126,7 @@ export function useStreamQuery() {
     try {
       const generator = streamFollowUpMessage(
         sessionId,
-        { question }
+        { question, parent_message_id: parentServerId, thread_id: parentThreadId }
       );
 
       for await (const event of generator) {
@@ -131,7 +137,7 @@ export function useStreamQuery() {
       setError(errorMessage);
       setIsLoading(false);
     }
-  }, [isLoading, sessionId, messages, addMessage, handleStreamEvent, setIsLoading, setError]);
+  }, [isLoading, sessionId, threadId, messages, addMessage, handleStreamEvent, setIsLoading, setError]);
 
   const createBranch = useCallback(async (question: string, fromMessageId: string) => {
     if (isLoading || !sessionId) return;
@@ -140,6 +146,10 @@ export function useStreamQuery() {
     setError(null);
 
     const userMessageId = `user_${Date.now()}`;
+    const fromMessage = useChatStore.getState().messageMap.get(fromMessageId);
+    const fromServerId = fromMessage?.serverId || fromMessageId;
+    const fromThreadId = fromMessage?.threadId || threadId || undefined;
+
     addMessage({
       id: userMessageId,
       role: 'user',
@@ -159,7 +169,7 @@ export function useStreamQuery() {
     try {
       const generator = streamBranchMessage(
         sessionId,
-        { from_message_id: fromMessageId, question }
+        { from_message_id: fromServerId, question, thread_id: fromThreadId }
       );
 
       for await (const event of generator) {
@@ -170,7 +180,7 @@ export function useStreamQuery() {
       setError(errorMessage);
       setIsLoading(false);
     }
-  }, [isLoading, sessionId, addMessage, handleStreamEvent, setIsLoading, setError]);
+  }, [isLoading, sessionId, threadId, addMessage, handleStreamEvent, setIsLoading, setError]);
 
   const cancelQuery = useCallback(() => {
     if (abortControllerRef.current) {

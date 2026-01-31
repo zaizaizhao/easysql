@@ -186,18 +186,20 @@ class TestContextMerger:
 
 
 class TestShiftDetectNode:
-    def test_no_cached_context_requires_retrieval(self):
+    @pytest.mark.asyncio
+    async def test_no_cached_context_requires_retrieval(self):
         from easysql.llm.nodes.shift_detect import ShiftDetectNode
 
         node = ShiftDetectNode()
         state = {"raw_query": "查询患者信息", "cached_context": None}
 
-        result = node(state)
+        result = await node(state)
 
         assert result["needs_new_retrieval"] is True
         assert result["shift_reason"] == "no_cached_context"
 
-    def test_no_tables_requires_retrieval(self):
+    @pytest.mark.asyncio
+    async def test_no_tables_requires_retrieval(self):
         from easysql.llm.nodes.shift_detect import ShiftDetectNode
 
         node = ShiftDetectNode()
@@ -207,7 +209,7 @@ class TestShiftDetectNode:
             "retrieval_result": {"tables": []},
         }
 
-        result = node(state)
+        result = await node(state)
 
         assert result["needs_new_retrieval"] is True
         assert result["shift_reason"] == "no_tables_in_cache"
@@ -259,21 +261,26 @@ class TestConversationState:
 
         state: EasySQLState = {
             "raw_query": "追问内容",
-            "generated_sql": "",
-            "validation_passed": False,
+            "clarified_query": None,
             "clarification_questions": [],
-            "retry_count": 0,
-            "clarification_answer": None,
-            "context_output": None,
+            "messages": [],
+            "schema_hint": None,
             "retrieval_result": None,
-            "retrieval_summary": None,
-            "session_id": "session_123",
+            "context_output": None,
+            "code_context": None,
+            "generated_sql": "",
+            "validation_result": None,
+            "validation_passed": False,
+            "retry_count": 0,
+            "error": None,
+            "db_name": None,
             "conversation_history": [
                 {
                     "question": "原始问题",
                     "sql": "SELECT 1",
                     "tables_used": [],
                     "message_id": "m1",
+                    "token_count": 100,
                 }
             ],
             "cached_context": {"system_prompt": "cached", "user_prompt": "cached"},
@@ -282,6 +289,7 @@ class TestConversationState:
             "needs_new_retrieval": False,
             "shift_reason": None,
             "history_summary": None,
+            "few_shot_examples": None,
         }
 
         assert state["current_message_id"] == "m2"
@@ -320,7 +328,8 @@ class TestEdgeCases:
 
         assert "new_table" in result
 
-    def test_shift_detect_graceful_failure(self):
+    @pytest.mark.asyncio
+    async def test_shift_detect_graceful_failure(self):
         from easysql.llm.nodes.shift_detect import ShiftDetectNode
 
         node = ShiftDetectNode()
@@ -334,7 +343,7 @@ class TestEdgeCases:
 
         with patch("easysql.llm.nodes.shift_detect.get_llm") as mock_llm:
             mock_llm.side_effect = Exception("LLM unavailable")
-            result = node(state)
+            result = await node(state)
 
         assert result["needs_new_retrieval"] is True
         assert "detection_error" in result["shift_reason"]
@@ -382,6 +391,44 @@ class TestIntegration:
         merged_tables = merger.merge(cached_context, retrieval2)
         assert "patient" in merged_tables
         assert "prescription" in merged_tables
+
+
+class TestUpdateHistoryNode:
+    def test_update_history_appends_turn(self):
+        from easysql.llm.nodes.update_history import UpdateHistoryNode
+
+        node = UpdateHistoryNode()
+        state = {
+            "raw_query": "查询所有患者",
+            "generated_sql": "SELECT * FROM patient",
+            "validation_passed": True,
+            "retrieval_result": {"tables": ["patient"]},
+            "conversation_history": [],
+        }
+
+        result = node(state)
+
+        history = result.get("conversation_history", [])
+        assert len(history) == 1
+        assert history[0]["question"] == "查询所有患者"
+        assert history[0]["sql"] == "SELECT * FROM patient"
+        assert history[0]["tables_used"] == ["patient"]
+        assert history[0]["token_count"] > 0
+
+    def test_update_history_skips_empty(self):
+        from easysql.llm.nodes.update_history import UpdateHistoryNode
+
+        node = UpdateHistoryNode()
+        state = {
+            "raw_query": "查询所有患者",
+            "generated_sql": None,
+            "error": None,
+            "conversation_history": [],
+        }
+
+        result = node(state)
+
+        assert result == {}
 
 
 if __name__ == "__main__":

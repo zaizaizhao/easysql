@@ -21,7 +21,7 @@ def get_settings_dep() -> Settings:
 
 def get_session_store_dep() -> SessionStoreType:
     settings = get_settings()
-    if settings.checkpointer.is_postgres():
+    if settings.is_session_postgres():
         if _pg_session_store is None:
             raise RuntimeError(
                 "PgSessionStore not initialized. Ensure app lifespan initialized it."
@@ -41,7 +41,8 @@ def clear_pg_session_store() -> None:
 
 
 def get_query_service_dep() -> QueryService:
-    return get_query_service()
+    store = get_session_store_dep()
+    return get_query_service(store=store)
 
 
 def get_execute_service_dep() -> ExecuteService:

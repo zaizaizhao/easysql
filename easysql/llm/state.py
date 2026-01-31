@@ -4,6 +4,8 @@ LangGraph State Definition for EasySQL Agent.
 
 from typing import Annotated, TypedDict
 
+from typing_extensions import NotRequired
+
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -70,6 +72,12 @@ class ConversationTurn(TypedDict):
     sql: str | None
     tables_used: list[str]
     token_count: int
+    clarification_questions: NotRequired[list[str] | None]
+    clarification_answer: NotRequired[str | None]
+    validation_passed: NotRequired[bool | None]
+    error: NotRequired[str | None]
+    db_name: NotRequired[str | None]
+    created_at: NotRequired[str | None]
 
 
 class EasySQLState(TypedDict):

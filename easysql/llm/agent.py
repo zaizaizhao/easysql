@@ -26,6 +26,7 @@ from easysql.llm.nodes.retrieve_few_shot import retrieve_few_shot_node
 from easysql.llm.nodes.retrieve_hint import retrieve_hint_node
 from easysql.llm.nodes.shift_detect import shift_detect_node
 from easysql.llm.nodes.sql_agent import sql_agent_node
+from easysql.llm.nodes.update_history import update_history_node
 from easysql.llm.nodes.validate_sql import validate_sql_node
 from easysql.llm.state import EasySQLState
 from easysql.utils.logger import get_logger
@@ -85,14 +86,14 @@ def route_validate(state: EasySQLState) -> str:
     Otherwise routes to repair_sql for error-informed regeneration.
     """
     if state.get("validation_passed"):
-        return END
+        return "update_history"
 
     settings = get_settings()
     max_retries = settings.llm.max_sql_retries
     retry_count = state.get("retry_count", 0)
 
     if retry_count >= max_retries:
-        return END
+        return "update_history"
 
     return "repair_sql"
 
@@ -240,6 +241,7 @@ def build_graph() -> "CompiledStateGraph":
     builder.add_node("retrieve_few_shot", retrieve_few_shot_node)
     builder.add_node("build_context", build_context_node)
     builder.add_node("retrieve_code", retrieve_code_node)
+    builder.add_node("update_history", update_history_node)
 
     if use_agent_mode:
         builder.add_node("sql_agent", sql_agent_node)
@@ -288,14 +290,16 @@ def build_graph() -> "CompiledStateGraph":
 
     if use_agent_mode:
         builder.add_edge("retrieve_code", "sql_agent")
-        builder.add_edge("sql_agent", END)
+        builder.add_edge("sql_agent", "update_history")
+        builder.add_edge("update_history", END)
     else:
         builder.add_edge("retrieve_code", "generate_sql")
         builder.add_edge("generate_sql", "validate_sql")
         builder.add_conditional_edges(
-            "validate_sql", route_validate, {END: END, "repair_sql": "repair_sql"}
+            "validate_sql", route_validate, {"update_history": "update_history", "repair_sql": "repair_sql"}
         )
         builder.add_edge("repair_sql", "validate_sql")
+        builder.add_edge("update_history", END)
 
     checkpointer = _create_checkpointer()
 

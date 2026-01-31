@@ -24,17 +24,21 @@ class QueryRequest(BaseModel):
 class ContinueRequest(BaseModel):
     answer: str = Field(..., min_length=1, max_length=1000)
     stream: bool = Field(default=False)
+    thread_id: str | None = Field(default=None, description="Thread ID for branch isolation")
 
 
 class MessageRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     stream: bool = Field(default=False)
+    parent_message_id: str | None = Field(default=None, description="Parent message ID")
+    thread_id: str | None = Field(default=None, description="Thread ID for branch isolation")
 
 
 class BranchRequest(BaseModel):
     from_message_id: str = Field(..., description="Message ID to branch from")
     question: str = Field(..., min_length=1, max_length=2000)
     stream: bool = Field(default=False)
+    thread_id: str | None = Field(default=None, description="Parent thread ID for branching")
 
 
 class ClarificationInfo(BaseModel):
@@ -50,6 +54,9 @@ class QueryResponse(BaseModel):
     clarification: ClarificationInfo | None = None
     error: str | None = None
     stats: dict[str, Any] | None = None
+    message_id: str | None = None
+    parent_message_id: str | None = None
+    thread_id: str | None = None
 
 
 class StreamEvent(BaseModel):

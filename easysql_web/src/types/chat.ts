@@ -19,6 +19,8 @@ export interface AgentStep {
 
 export interface ChatMessage {
   id: string;
+  serverId?: string;
+  threadId?: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;

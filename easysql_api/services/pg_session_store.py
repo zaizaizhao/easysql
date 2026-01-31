@@ -103,7 +103,8 @@ class PgSessionStore:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 """
-                SELECT id, db_name, status, created_at, updated_at, turns
+                SELECT id, db_name, status, created_at, updated_at,
+                       raw_query, generated_sql, validation_passed, state, turns, title
                 FROM easysql_sessions WHERE id = $1
                 """,
                 UUID(session_id),
@@ -118,6 +119,10 @@ class PgSessionStore:
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
             )
+            session.raw_query = row.get("raw_query")
+            session.generated_sql = row.get("generated_sql")
+            session.validation_passed = row.get("validation_passed")
+            session.state = row.get("state")
 
             turns_data = row.get("turns")
             if turns_data:
@@ -146,11 +151,45 @@ class PgSessionStore:
                 UUID(session_id),
             )
 
+    async def update_session_fields(self, session_id: str, **kwargs: Any) -> None:
+        if not kwargs:
+            return
+
+        allowed_fields = {
+            "raw_query",
+            "generated_sql",
+            "validation_passed",
+            "state",
+            "title",
+        }
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        if not updates:
+            return
+
+        columns = []
+        values: list[Any] = []
+        for idx, (key, value) in enumerate(updates.items(), start=1):
+            columns.append(f"{key} = ${idx}")
+            values.append(value)
+
+        values.append(datetime.now(timezone.utc))
+        values.append(UUID(session_id))
+
+        set_clause = ", ".join(columns) + f", updated_at = ${len(values)-1}"
+
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                f"UPDATE easysql_sessions SET {set_clause} WHERE id = ${len(values)}",
+                *values,
+            )
+
     async def add_message(
         self,
         session_id: str,
         role: str,
-        content: str,
+        content: str | None,
+        message_id: str | None = None,
+        thread_id: str | None = None,
         parent_id: str | None = None,
         generated_sql: str | None = None,
         tables_used: list[str] | None = None,
@@ -158,17 +197,32 @@ class PgSessionStore:
         user_answer: str | None = None,
         clarification_questions: list[str] | None = None,
     ) -> str:
-        async with self.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                """
-                INSERT INTO easysql_messages
-                (session_id, parent_id, role, content, generated_sql, tables_used,
-                 validation_passed, user_answer, clarification_questions)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                RETURNING id
-                """,
+        columns = []
+        values: list[Any] = []
+
+        if message_id:
+            columns.append("id")
+            values.append(UUID(message_id))
+
+        columns.extend(
+            [
+                "session_id",
+                "parent_id",
+                "thread_id",
+                "role",
+                "content",
+                "generated_sql",
+                "tables_used",
+                "validation_passed",
+                "user_answer",
+                "clarification_questions",
+            ]
+        )
+        values.extend(
+            [
                 UUID(session_id),
                 UUID(parent_id) if parent_id else None,
+                thread_id or session_id,
                 role,
                 content,
                 generated_sql,
@@ -176,8 +230,36 @@ class PgSessionStore:
                 validation_passed,
                 user_answer,
                 json.dumps(clarification_questions) if clarification_questions else None,
+            ]
+        )
+
+        placeholders = ", ".join(f"${idx}" for idx in range(1, len(values) + 1))
+
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO easysql_messages
+                ({columns})
+                VALUES ({placeholders})
+                RETURNING id
+                """.format(columns=", ".join(columns), placeholders=placeholders),
+                *values,
             )
             return str(row["id"])
+
+    async def get_message(self, message_id: str) -> dict[str, Any] | None:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, session_id, parent_id, thread_id, role, content, generated_sql,
+                       tables_used, validation_passed, user_answer, clarification_questions, created_at
+                FROM easysql_messages WHERE id = $1
+                """,
+                UUID(message_id),
+            )
+            if not row:
+                return None
+            return dict(row)
 
     async def mark_as_few_shot(self, message_id: str, is_few_shot: bool = True) -> None:
         async with self.pool.acquire() as conn:
@@ -199,7 +281,8 @@ class PgSessionStore:
         async with self.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT id, db_name, status, created_at, updated_at, turns
+                SELECT id, db_name, status, created_at, updated_at,
+                       raw_query, generated_sql, validation_passed, state, turns, title
                 FROM easysql_sessions
                 ORDER BY updated_at DESC
                 LIMIT $1 OFFSET $2
@@ -216,6 +299,10 @@ class PgSessionStore:
                     created_at=r["created_at"],
                     updated_at=r["updated_at"],
                 )
+                session.raw_query = r.get("raw_query")
+                session.generated_sql = r.get("generated_sql")
+                session.validation_passed = r.get("validation_passed")
+                session.state = r.get("state")
                 turns_data = r.get("turns")
                 if turns_data:
                     if isinstance(turns_data, str):

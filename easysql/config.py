@@ -370,6 +370,24 @@ class Settings(BaseSettings):
         default=None, description="PostgreSQL URI for session storage (if backend=postgres)"
     )
 
+    def is_session_postgres(self) -> bool:
+        """Check if session storage uses PostgreSQL backend."""
+        return self.session_backend.lower() == "postgres"
+
+    def get_session_postgres_uri(self) -> str | None:
+        """Resolve the PostgreSQL URI for session storage.
+
+        Falls back to checkpointer URI when session_postgres_uri is not set.
+        """
+        if self.session_postgres_uri:
+            return self.session_postgres_uri
+        if self.checkpointer.is_postgres():
+            logger.warning(
+                "SESSION_POSTGRES_URI not set; falling back to checkpointer Postgres URI"
+            )
+            return self.checkpointer.postgres_uri
+        return None
+
     # ===== Code Context Configuration =====
     code_context_enabled: bool = Field(
         default=False, description="Enable code context retrieval for Text2SQL"

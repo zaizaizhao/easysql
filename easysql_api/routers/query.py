@@ -24,11 +24,11 @@ async def create_query(
     service: Annotated[QueryService, Depends(get_query_service_dep)],
 ) -> QueryResponse | StreamingResponse:
     if request.session_id:
-        session = service.get_session(request.session_id)
+        session = await service.get_session(request.session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
     else:
-        session = service.create_session(db_name=request.db_name)
+        session = await service.create_session(db_name=request.db_name)
 
     if request.stream:
         return StreamingResponse(
@@ -46,6 +46,9 @@ async def create_query(
         validation_error=result.get("validation_error"),
         clarification=result.get("clarification"),
         error=result.get("error"),
+        message_id=result.get("message_id"),
+        parent_message_id=result.get("parent_message_id"),
+        thread_id=result.get("thread_id"),
     )
 
 
@@ -55,17 +58,17 @@ async def continue_query(
     request: ContinueRequest,
     service: Annotated[QueryService, Depends(get_query_service_dep)],
 ) -> QueryResponse | StreamingResponse:
-    session = service.get_session(session_id)
+    session = await service.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
     if request.stream:
         return StreamingResponse(
-            _stream_continue_generator(service, session, request.answer),
+            _stream_continue_generator(service, session, request.answer, request.thread_id),
             media_type="text/event-stream",
         )
 
-    result = await service.continue_conversation(session, request.answer)
+    result = await service.continue_conversation(session, request.answer, thread_id=request.thread_id)
 
     return QueryResponse(
         session_id=session.session_id,
@@ -75,6 +78,9 @@ async def continue_query(
         validation_error=result.get("validation_error"),
         clarification=result.get("clarification"),
         error=result.get("error"),
+        message_id=result.get("message_id"),
+        parent_message_id=result.get("parent_message_id"),
+        thread_id=result.get("thread_id"),
     )
 
 
@@ -83,6 +89,8 @@ async def _stream_generator(service: QueryService, session, question: str):
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
-async def _stream_continue_generator(service: QueryService, session, answer: str):
-    async for event in service.stream_continue_conversation(session, answer):
+async def _stream_continue_generator(
+    service: QueryService, session, answer: str, thread_id: str | None
+):
+    async for event in service.stream_continue_conversation(session, answer, thread_id=thread_id):
         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"

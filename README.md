@@ -70,24 +70,32 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填入数据库连接信息和 API Key
+# 编辑 .env，填入最小必需配置
 ```
 
-主要配置项：
+最小可运行配置（完整跑通 Text2SQL 全流程）：
 ```ini
-# 要分析的业务数据库
+# 源数据库（至少一个 DB_<NAME>_*）
 DB_HIS_TYPE=mysql
 DB_HIS_HOST=localhost
+DB_HIS_PORT=3306
+DB_HIS_USER=root
+DB_HIS_PASSWORD=your_mysql_password
 DB_HIS_DATABASE=your_db
 
-# 基础设施
+# Neo4j & Milvus
 NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_neo4j_password
 MILVUS_URI=http://localhost:19530
 
-# LLM（三选一，按优先级自动选择）
+# LLM（选择一个提供商即可）
 OPENAI_API_KEY=sk-xxx
+# 如用 Google/Anthropic，请同时设置 *_API_KEY 和 *_LLM_MODEL
 # GOOGLE_API_KEY=xxx
+# GOOGLE_LLM_MODEL=gemini-1.5-pro
 # ANTHROPIC_API_KEY=xxx
+# ANTHROPIC_LLM_MODEL=claude-3-5-sonnet-20241022
 ```
 
 ### 初始化 Schema

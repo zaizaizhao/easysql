@@ -9,6 +9,7 @@ export interface StreamHandlerResult {
   status?: QueryStatus;
   error?: string | null;
   sessionId?: string;
+  threadId?: string | null;
 }
 
 const updateSessionState = (
@@ -41,6 +42,7 @@ export const processStreamEvent = (
   event: StreamEvent,
   currentState: {
     sessionId: string | null;
+    threadId: string | null;
     messages: ChatMessage[];
     messageMap: Map<string, ChatMessage>;
     sessionCache: Map<string, SessionCache>;
@@ -48,7 +50,7 @@ export const processStreamEvent = (
     status: QueryStatus;
   }
 ): StreamHandlerResult => {
-  const { sessionId, messages, messageMap, sessionCache, sessions } = currentState;
+  const { sessionId, threadId, messages, messageMap, sessionCache, sessions } = currentState;
   const eventSessionId = event.data?.session_id;
   
   const targetSessionId = eventSessionId || sessionId;
@@ -63,6 +65,7 @@ export const processStreamEvent = (
       if (isActive) {
         const result: StreamHandlerResult = {
           sessionId: targetSessionId,
+          threadId: event.data.thread_id ?? threadId ?? null,
           isLoading: true,
           status: 'processing',
         };
@@ -83,12 +86,34 @@ export const processStreamEvent = (
           }
         }
         
+        if (event.data.message_id || event.data.thread_id) {
+          const updates: Partial<ChatMessage> = {};
+          if (event.data.message_id) updates.serverId = event.data.message_id;
+          if (event.data.thread_id) updates.threadId = event.data.thread_id;
+          const updated = updateSessionState(messages, messageMap, updates);
+          if (updated) {
+            result.messages = updated.messages;
+            result.messageMap = updated.messageMap;
+          }
+        }
+
         return result;
       } else {
         const cached = sessionCache.get(targetSessionId);
         if (cached) {
           const newCache = new Map(sessionCache);
-          newCache.set(targetSessionId, { ...cached, status: 'processing' });
+          const nextCache = { ...cached, status: 'processing' };
+          if (event.data.message_id || event.data.thread_id) {
+            const updates: Partial<ChatMessage> = {};
+            if (event.data.message_id) updates.serverId = event.data.message_id;
+            if (event.data.thread_id) updates.threadId = event.data.thread_id;
+            const updated = updateSessionState(cached.messages, cached.messageMap, updates);
+            if (updated) {
+              nextCache.messages = updated.messages;
+              nextCache.messageMap = updated.messageMap;
+            }
+          }
+          newCache.set(targetSessionId, nextCache);
           return { sessionCache: newCache };
         }
       }
@@ -279,6 +304,8 @@ export const processStreamEvent = (
         sql: event.data.sql,
         validationPassed: event.data.validation_passed,
       };
+      if (event.data.message_id) updates.serverId = event.data.message_id;
+      if (event.data.thread_id) updates.threadId = event.data.thread_id;
 
       const clarificationQuestions =
         event.data.clarification_questions || event.data.clarification?.questions;
@@ -304,6 +331,7 @@ export const processStreamEvent = (
           return {
             messages: result.messages,
             messageMap: result.messageMap,
+            threadId: event.data.thread_id ?? threadId ?? null,
             isLoading: false,
             status: newStatus as QueryStatus,
           };

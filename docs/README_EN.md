@@ -70,24 +70,32 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env with your database connection info and API keys
+# Edit .env with the minimum required settings
 ```
 
-Key configuration items:
+Minimum configuration (to run the full Text2SQL pipeline end-to-end):
 ```ini
-# Target business database
+# Source database (at least one DB_<NAME>_*)
 DB_HIS_TYPE=mysql
 DB_HIS_HOST=localhost
+DB_HIS_PORT=3306
+DB_HIS_USER=root
+DB_HIS_PASSWORD=your_mysql_password
 DB_HIS_DATABASE=your_db
 
-# Infrastructure
+# Neo4j & Milvus
 NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_neo4j_password
 MILVUS_URI=http://localhost:19530
 
-# LLM (choose one, auto-selected by priority)
+# LLM (choose one provider)
 OPENAI_API_KEY=sk-xxx
+# For Google/Anthropic, set both *_API_KEY and *_LLM_MODEL
 # GOOGLE_API_KEY=xxx
+# GOOGLE_LLM_MODEL=gemini-1.5-pro
 # ANTHROPIC_API_KEY=xxx
+# ANTHROPIC_LLM_MODEL=claude-3-5-sonnet-20241022
 ```
 
 ### Initialize Schema

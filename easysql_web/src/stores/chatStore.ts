@@ -4,6 +4,7 @@ import { processStreamEvent } from './streamHandler';
 
 interface ChatState {
   sessionId: string | null;
+  threadId: string | null;
   messages: ChatMessage[];
   messageMap: Map<string, ChatMessage>;
   activeBranchPath: string[];
@@ -16,6 +17,7 @@ interface ChatState {
   isLoadingSessions: boolean;
 
   setSessionId: (id: string | null) => void;
+  setThreadId: (id: string | null) => void;
   addMessage: (message: ChatMessage, parentId?: string) => void;
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   setStatus: (status: QueryStatus) => void;
@@ -42,6 +44,7 @@ const generateMessageId = () => `msg_${Date.now()}_${++messageIdCounter}`;
 
 export const useChatStore = create<ChatState>((set, get) => ({
   sessionId: null,
+  threadId: null,
   messages: [],
   messageMap: new Map(),
   activeBranchPath: [],
@@ -54,11 +57,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isLoadingSessions: false,
 
   setSessionId: (id) => set({ sessionId: id }),
+  setThreadId: (id) => set({ threadId: id }),
   
   addMessage: (message, parentId) => set((state) => {
     const newMessage = { 
       ...message, 
       id: message.id || generateMessageId(),
+      threadId: message.threadId ?? state.threadId ?? undefined,
       parentId,
       childIds: [],
     };
@@ -113,6 +118,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearChat: () => set({
     sessionId: null,
+    threadId: null,
     messages: [],
     messageMap: new Map(),
     activeBranchPath: [],
@@ -148,7 +154,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return extendPath([...path, lastMsg.childIds[0]]);
     };
     
-    return { activeBranchPath: extendPath(pathToMessage) };
+    const activeBranchPath = extendPath(pathToMessage);
+    const lastId = activeBranchPath[activeBranchPath.length - 1];
+    const lastMsg = state.messageMap.get(lastId);
+    return { activeBranchPath, threadId: lastMsg?.threadId ?? state.threadId };
   }),
   
   getVisibleMessages: () => {
@@ -165,6 +174,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const state = get();
     const result = processStreamEvent(event, {
       sessionId: state.sessionId,
+      threadId: state.threadId,
       messages: state.messages,
       messageMap: state.messageMap,
       sessionCache: state.sessionCache,
@@ -222,6 +232,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return {
           sessionCache: newCache,
           sessionId: cached.sessionId,
+          threadId: cached.messages[cached.messages.length - 1]?.threadId ?? null,
           messages: cached.messages,
           messageMap: cached.messageMap,
           activeBranchPath: cached.activeBranchPath,
@@ -239,6 +250,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return {
           sessionCache: newCache,
           sessionId,
+          threadId: messages[messages.length - 1]?.threadId ?? null,
           messages,
           messageMap,
           activeBranchPath: branchPath,
@@ -251,6 +263,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return {
         sessionCache: newCache,
         sessionId,
+        threadId: null,
         messages: [],
         messageMap: new Map(),
         activeBranchPath: [],

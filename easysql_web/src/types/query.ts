@@ -8,6 +8,7 @@ export interface QueryRequest {
 export interface ContinueRequest {
   answer: string;
   stream?: boolean;
+  thread_id?: string;
 }
 
 export interface ClarificationInfo {
@@ -30,6 +31,9 @@ export interface QueryResponse {
   clarification?: ClarificationInfo;
   error?: string;
   stats?: Record<string, unknown>;
+  message_id?: string;
+  parent_message_id?: string;
+  thread_id?: string;
 }
 
 export interface StreamEvent {
@@ -37,7 +41,9 @@ export interface StreamEvent {
   data: {
     node?: string;
     session_id?: string;
+    thread_id?: string;
     message_id?: string;
+    parent_message_id?: string;
     generated_sql?: string;
     status?: string;
     validation_passed?: boolean;
@@ -75,17 +81,22 @@ export interface StreamEvent {
 export interface MessageRequest {
   question: string;
   stream?: boolean;
+  parent_message_id?: string;
+  thread_id?: string;
 }
 
 export interface BranchRequest {
   from_message_id: string;
   question: string;
   stream?: boolean;
+  thread_id?: string;
 }
 
 export interface MessageResponse {
   session_id: string;
   message_id?: string;
+  parent_message_id?: string;
+  thread_id?: string;
   status: QueryStatus;
   sql?: string;
   validation_passed?: boolean;

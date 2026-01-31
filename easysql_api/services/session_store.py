@@ -3,9 +3,10 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Protocol, TypeVar, Union, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, Union, runtime_checkable
 
 from easysql_api.models.query import QueryStatus
+from easysql_api.models.message import Message
 from easysql_api.models.turn import Turn
 
 
@@ -19,6 +20,7 @@ class SessionProtocol(Protocol):
     created_at: datetime
     updated_at: datetime
     turns: list[Turn]
+    messages: dict[str, Message]
 
     def create_turn(self, question: str) -> Turn: ...
     def get_current_turn(self) -> Turn | None: ...
@@ -26,6 +28,11 @@ class SessionProtocol(Protocol):
 
 
 SessionT = TypeVar("SessionT", bound=SessionProtocol)
+
+if TYPE_CHECKING:
+    from easysql_api.services.pg_session_store import PgSessionStore
+
+SessionStoreType = Union["SessionStore", "PgSessionStore"]
 
 
 @dataclass
@@ -41,6 +48,7 @@ class Session:
     clarification_questions: list[str] | None = None
     state: dict[str, Any] | None = None
     turns: list[Turn] = field(default_factory=list)
+    messages: dict[str, Message] = field(default_factory=dict)
     _turn_counter: int = 0
 
     def touch(self) -> None:
@@ -64,6 +72,9 @@ class Session:
             if turn.turn_id == turn_id:
                 return turn
         return None
+
+    def add_message(self, message: Message) -> None:
+        self.messages[message.message_id] = message
 
 
 class SessionStore:
@@ -92,6 +103,62 @@ class SessionStore:
                     setattr(session, key, value)
             session.touch()
         return session
+
+    def update_status(self, session_id: str, status: QueryStatus) -> Session | None:
+        return self.update(session_id, status=status)
+
+    def update_session_fields(self, session_id: str, **kwargs: Any) -> Session | None:
+        return self.update(session_id, **kwargs)
+
+    def save_turns(self, session_id: str, turns: list[Turn]) -> Session | None:
+        session = self._sessions.get(session_id)
+        if session:
+            session.turns = turns
+            session.touch()
+        return session
+
+    def add_message(
+        self,
+        session_id: str,
+        *,
+        message_id: str,
+        thread_id: str,
+        role: str,
+        content: str | None,
+        parent_id: str | None = None,
+        generated_sql: str | None = None,
+        tables_used: list[str] | None = None,
+        validation_passed: bool | None = None,
+        user_answer: str | None = None,
+        clarification_questions: list[str] | None = None,
+    ) -> str:
+        session = self._sessions.get(session_id)
+        if not session:
+            return message_id
+
+        message = Message(
+            message_id=message_id,
+            session_id=session_id,
+            thread_id=thread_id,
+            parent_id=parent_id,
+            role=role,
+            content=content,
+            generated_sql=generated_sql,
+            tables_used=tables_used or [],
+            validation_passed=validation_passed,
+            user_answer=user_answer,
+            clarification_questions=clarification_questions,
+        )
+        session.add_message(message)
+        session.touch()
+        return message_id
+
+    def get_message(self, message_id: str) -> Message | None:
+        for session in self._sessions.values():
+            message = session.messages.get(message_id)
+            if message:
+                return message
+        return None
 
     def delete(self, session_id: str) -> bool:
         with self._lock:
