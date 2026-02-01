@@ -262,7 +262,7 @@
                     }
                     break;
                 case 'complete':
-                    if (data.status === 'awaiting_clarification' && data.clarification) {
+                    if (data.status === 'awaiting_clarify' && data.clarification) {
                         addEventNode('Clarification Needed', 'node', { 
                             clarification_questions: data.clarification.questions 
                         }, { icon: 'fa-question-circle', color: 'text-amber-500' });
@@ -284,7 +284,7 @@
             if (data.session_id) {
                 currentSessionId = data.session_id;
             }
-            if (data.status === 'awaiting_clarification' && data.clarification) {
+            if (data.status === 'awaiting_clarify' && data.clarification) {
                 addEventNode('Clarification Needed', 'node', { 
                     clarification_questions: data.clarification.questions 
                 }, { icon: 'fa-question-circle', color: 'text-amber-500' });
@@ -425,7 +425,7 @@
 
                 const result = await response.json();
 
-                if (result.status === 'awaiting_clarification' && result.clarification) {
+                if (result.status === 'awaiting_clarify' && result.clarification) {
                     // More clarification needed
                     addEventNode('Clarification Needed', 'node', { 
                         clarification_questions: result.clarification.questions 

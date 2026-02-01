@@ -36,33 +36,37 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("  Checkpointer: In-memory")
 
-    if settings.is_session_postgres():
-        from easysql_api.deps import set_pg_session_store
-        from easysql_api.services.pg_session_store import PgSessionStore
+    if not settings.is_session_postgres():
+        raise RuntimeError("SESSION_BACKEND must be set to postgres.")
 
-        session_uri = settings.get_session_postgres_uri()
-        if not session_uri:
-            raise RuntimeError(
-                "SESSION_BACKEND=postgres requires SESSION_POSTGRES_URI or CHECKPOINTER_BACKEND=postgres"
-            )
+    session_uri = settings.get_session_postgres_uri()
+    if not session_uri:
+        raise RuntimeError(
+            "SESSION_POSTGRES_URI is required for session persistence (PostgreSQL only)."
+        )
 
-        pg_store = PgSessionStore(session_uri)
-        await pg_store.connect()
-        set_pg_session_store(pg_store)
-        logger.info("  Session Store: PostgreSQL")
-    else:
-        logger.info("  Session Store: In-memory")
+    from easysql_api.deps import set_session_repository
+    from easysql_api.infrastructure.db import init_engine
+    from easysql_api.infrastructure.persistence.session_repository import (
+        SqlAlchemySessionRepository,
+    )
+
+    init_engine(session_uri)
+    from easysql_api.infrastructure.db import get_sessionmaker
+
+    repository = SqlAlchemySessionRepository(get_sessionmaker())
+    set_session_repository(repository)
+    logger.info("  Session Store: PostgreSQL (SQLAlchemy ORM)")
 
     yield
 
     logger.info("EasySQL API shutting down...")
 
-    if settings.is_session_postgres():
-        from easysql_api.deps import _pg_session_store, clear_pg_session_store
+    from easysql_api.deps import clear_session_repository
+    from easysql_api.infrastructure.db import dispose_engine
 
-        if _pg_session_store is not None:
-            await _pg_session_store.close()
-            clear_pg_session_store()
+    clear_session_repository()
+    await dispose_engine()
 
     await close_checkpointer_pool()
 

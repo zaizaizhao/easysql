@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import inspect
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Any, cast
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately
@@ -12,16 +11,18 @@ from langgraph.types import Command
 from easysql.config import get_settings
 from easysql.llm import build_graph, get_langfuse_callbacks
 from easysql.utils.logger import get_logger
-from easysql_api.models.query import QueryStatus
-from easysql_api.services.session_store import Session, SessionStoreType, get_session_store
+from easysql_api.domain.entities.session import Session
+from easysql_api.domain.entities.turn import Turn
+from easysql_api.domain.repositories.session_repository import SessionRepository
+from easysql_api.domain.value_objects.query_status import QueryStatus
 
 logger = get_logger(__name__)
 
 
 class QueryService:
-    def __init__(self, store: SessionStoreType | None = None) -> None:
+    def __init__(self, repository: SessionRepository) -> None:
         self._graph: Any = None
-        self._store: SessionStoreType = store or get_session_store()
+        self._repo = repository
         self._callbacks: list[Any] | None = None
 
     @property
@@ -55,29 +56,21 @@ class QueryService:
                 logger.warning("No databases configured in settings!")
 
         session_id = str(uuid.uuid4())
-        session = await self._call_store_method("create", session_id, db_name)
-        assert session is not None
-        return cast(Session, session)
+        return await self._repo.create(session_id, db_name)
 
     async def get_session(self, session_id: str) -> Session | None:
-        session = await self._call_store_method("get", session_id)
-        return cast(Session | None, session)
-
-    async def _call_store_method(self, method_name: str, *args: Any, **kwargs: Any) -> Any:
-        method = getattr(self._store, method_name)
-        result = method(*args, **kwargs)
-        if inspect.iscoroutine(result):
-            return await result
-        return result
+        return await self._repo.get(session_id)
 
     async def _update_status(self, session_id: str, status: QueryStatus) -> None:
-        await self._call_store_method("update_status", session_id, status)
+        await self._repo.update_status(session_id, status)
 
-    async def _save_turns(self, session_id: str, turns: list[Any]) -> None:
-        await self._call_store_method("save_turns", session_id, turns)
+    async def _save_turns(self, session_id: str, turns: list[Turn]) -> None:
+        await self._repo.save_turns(session_id, turns)
 
     async def _update_session_fields(self, session_id: str, **kwargs: Any) -> None:
-        await self._call_store_method("update_session_fields", session_id, **kwargs)
+        if "state" in kwargs:
+            kwargs["state"] = self._sanitize_state(kwargs.get("state"))
+        await self._repo.update_session_fields(session_id, **kwargs)
 
     def _estimate_turn_tokens(self, question: str, sql: str | None) -> int:
         text = question + (sql or "")
@@ -92,11 +85,9 @@ class QueryService:
         if thread_id:
             return thread_id
         if parent_message_id:
-            message = await self._call_store_method("get_message", parent_message_id)
-            if message and isinstance(message, dict):
-                return message.get("thread_id") or session_id
-            if message and hasattr(message, "thread_id"):
-                return getattr(message, "thread_id") or session_id
+            message = await self._repo.get_message(parent_message_id)
+            if message and message.thread_id:
+                return message.thread_id
         return session_id
 
     async def _build_branch_history(
@@ -134,18 +125,38 @@ class QueryService:
         error: str | None,
         clarification_questions: list[str] | None,
     ) -> None:
-        await self._call_store_method(
-            "add_message",
+        normalized_parent_id: str | None = None
+        if parent_message_id:
+            try:
+                parent_message = await self._repo.get_message(parent_message_id)
+                if parent_message and parent_message.session_id == session_id:
+                    normalized_parent_id = parent_message_id
+                else:
+                    logger.warning(
+                        "Parent message not found or session mismatch; dropping parent_id "
+                        "session_id={} parent_message_id={}",
+                        session_id,
+                        parent_message_id,
+                    )
+            except Exception as exc:  # noqa: BLE001 - invalid UUID or repo error
+                logger.warning(
+                    "Invalid parent_message_id; dropping parent_id session_id={} "
+                    "parent_message_id={} error={}",
+                    session_id,
+                    parent_message_id,
+                    f"{type(exc).__name__}: {exc}",
+                )
+
+        await self._repo.add_message(
             session_id=session_id,
             message_id=user_message_id,
             thread_id=thread_id,
             role="user",
             content=question,
-            parent_id=parent_message_id,
+            parent_id=normalized_parent_id,
         )
 
-        await self._call_store_method(
-            "add_message",
+        await self._repo.add_message(
             session_id=session_id,
             message_id=assistant_message_id,
             thread_id=thread_id,
@@ -232,7 +243,7 @@ class QueryService:
         answer: str,
         thread_id: str | None = None,
     ) -> dict[str, Any]:
-        if session.status != QueryStatus.AWAITING_CLARIFICATION:
+        if session.status != QueryStatus.AWAITING_CLARIFY:
             return {
                 "status": QueryStatus.FAILED,
                 "error": "Session is not awaiting clarification",
@@ -283,7 +294,7 @@ class QueryService:
         answer: str,
         thread_id: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        if session.status != QueryStatus.AWAITING_CLARIFICATION:
+        if session.status != QueryStatus.AWAITING_CLARIFY:
             yield {
                 "event": "error",
                 "data": {
@@ -398,7 +409,7 @@ class QueryService:
         session: Session,
         result: dict[str, Any],
         config: dict[str, Any],
-        turn: Any,
+        turn: Turn,
         *,
         user_message_id: str | None,
         assistant_message_id: str | None,
@@ -406,8 +417,6 @@ class QueryService:
         thread_id: str,
         question: str,
     ) -> dict[str, Any]:
-        from easysql_api.models.turn import Turn
-
         if not isinstance(turn, Turn):
             raise TypeError("turn must be a Turn instance")
 
@@ -416,9 +425,9 @@ class QueryService:
         if snapshot.next and "clarify" in snapshot.next:
             questions = self._extract_clarification_questions(snapshot, result)
             turn.add_clarification(questions)
-            session.status = QueryStatus.AWAITING_CLARIFICATION
+            session.status = QueryStatus.AWAITING_CLARIFY
             session.clarification_questions = questions
-            session.state = dict(result) if result else None
+            session.state = self._sanitize_state(result)
             session.touch()
             await self._update_status(session.session_id, session.status)
             await self._update_session_fields(
@@ -431,7 +440,7 @@ class QueryService:
             await self._save_turns(session.session_id, session.turns)
 
             clarify_response: dict[str, Any] = {
-                "status": QueryStatus.AWAITING_CLARIFICATION.value,
+                "status": QueryStatus.AWAITING_CLARIFY.value,
                 "clarification": {"questions": questions},
                 "turn_id": turn.turn_id,
                 "message_id": assistant_message_id,
@@ -447,7 +456,7 @@ class QueryService:
         session.generated_sql = sql
         session.validation_passed = validation_passed
         session.status = QueryStatus.COMPLETED
-        session.state = dict(result) if result else None
+        session.state = self._sanitize_state(result)
         session.touch()
         await self._update_status(session.session_id, session.status)
         await self._update_session_fields(
@@ -674,6 +683,13 @@ class QueryService:
 
         return result
 
+    def _sanitize_state(self, state: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not state or not isinstance(state, dict):
+            return None
+        sanitized = dict(state)
+        sanitized.pop("messages", None)
+        return sanitized
+
     async def follow_up_query(
         self,
         session: Session,
@@ -682,7 +698,7 @@ class QueryService:
         thread_id: str | None = None,
         create_branch: bool = False,
     ) -> dict[str, Any]:
-        if session.status not in (QueryStatus.COMPLETED, QueryStatus.AWAITING_CLARIFICATION):
+        if session.status not in (QueryStatus.COMPLETED, QueryStatus.AWAITING_CLARIFY):
             return {
                 "status": QueryStatus.FAILED,
                 "error": "Session must be completed or awaiting clarification for follow-up",
@@ -794,7 +810,7 @@ class QueryService:
         thread_id: str | None = None,
         create_branch: bool = False,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        if session.status not in (QueryStatus.COMPLETED, QueryStatus.AWAITING_CLARIFICATION):
+        if session.status not in (QueryStatus.COMPLETED, QueryStatus.AWAITING_CLARIFY):
             yield {
                 "event": "error",
                 "data": {
@@ -967,10 +983,10 @@ class QueryService:
 _default_service: QueryService | None = None
 
 
-def get_query_service(store: SessionStoreType | None = None) -> QueryService:
+def get_query_service(repository: SessionRepository) -> QueryService:
     global _default_service
     if _default_service is None:
-        _default_service = QueryService(store=store)
-    elif store is not None and _default_service._store is not store:  # type: ignore[attr-defined]
-        _default_service = QueryService(store=store)
+        _default_service = QueryService(repository=repository)
+    elif _default_service._repo is not repository:  # type: ignore[attr-defined]
+        _default_service = QueryService(repository=repository)
     return _default_service

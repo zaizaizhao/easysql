@@ -102,9 +102,7 @@ export function SessionList({ collapsed }: SessionListProps) {
 
       switchSession(sessionId, messages);
 
-      if (!location.pathname.startsWith('/chat')) {
-        navigate(`/chat/${sessionId}`);
-      }
+      navigate(`/chat/${sessionId}`);
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         removeSession(sessionId);

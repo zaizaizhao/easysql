@@ -207,12 +207,12 @@ Note: `.env.example` lists `CODE_CONTEXT_ENUM_TOP_K`, but it is not used in code
 
 ---
 
-## 13) Session Persistence
+## 13) Session Persistence (PostgreSQL Only)
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `SESSION_BACKEND` | `memory` | `memory` / `postgres` |
-| `SESSION_POSTGRES_URI` | empty | PostgreSQL URI; falls back to Checkpointer if unset |
+| `SESSION_BACKEND` | `postgres` | Fixed to `postgres` |
+| `SESSION_POSTGRES_URI` | empty | **Required.** PostgreSQL URI for session storage |
 
 ---
 

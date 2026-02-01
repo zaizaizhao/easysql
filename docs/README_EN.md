@@ -89,6 +89,9 @@ NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_neo4j_password
 MILVUS_URI=http://localhost:19530
 
+# Session store (PostgreSQL)
+SESSION_POSTGRES_URI=postgresql+asyncpg://postgres:password@localhost:5432/easysql
+
 # LLM (choose one provider)
 OPENAI_API_KEY=sk-xxx
 # For Google/Anthropic, set both *_API_KEY and *_LLM_MODEL
@@ -96,6 +99,11 @@ OPENAI_API_KEY=sk-xxx
 # GOOGLE_LLM_MODEL=gemini-1.5-pro
 # ANTHROPIC_API_KEY=xxx
 # ANTHROPIC_LLM_MODEL=claude-3-5-sonnet-20241022
+```
+
+Session storage migration (PostgreSQL):
+```bash
+alembic upgrade head
 ```
 
 ### Initialize Schema

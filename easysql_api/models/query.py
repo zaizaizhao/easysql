@@ -1,17 +1,10 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-
-class QueryStatus(str, Enum):
-    PENDING = "pending"
-    PROCESSING = "processing"
-    AWAITING_CLARIFICATION = "awaiting_clarification"
-    COMPLETED = "completed"
-    FAILED = "failed"
+from easysql_api.domain.value_objects.query_status import QueryStatus
 
 
 class QueryRequest(BaseModel):

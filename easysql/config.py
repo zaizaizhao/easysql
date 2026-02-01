@@ -364,7 +364,7 @@ class Settings(BaseSettings):
 
     # ===== Session Persistence Configuration =====
     session_backend: str = Field(
-        default="memory", description="Session storage backend: memory or postgres"
+        default="postgres", description="Session storage backend: postgres"
     )
     session_postgres_uri: str | None = Field(
         default=None, description="PostgreSQL URI for session storage (if backend=postgres)"
@@ -511,7 +511,7 @@ class Settings(BaseSettings):
     @field_validator("session_backend")
     @classmethod
     def validate_session_backend(cls, v: str) -> str:
-        valid_backends = {"memory", "postgres"}
+        valid_backends = {"postgres"}
         if v.lower() not in valid_backends:
             raise ValueError(f"SESSION_BACKEND must be one of {valid_backends}")
         return v.lower()

@@ -1,4 +1,4 @@
-"""Message models for session-level conversation tracking."""
+"""Message entity for session-level conversation tracking."""
 
 from __future__ import annotations
 

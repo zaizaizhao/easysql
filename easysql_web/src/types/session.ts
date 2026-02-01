@@ -13,7 +13,7 @@ export interface SessionList {
   total: number;
 }
 
-export type TurnStatus = 'in_progress' | 'awaiting_clarification' | 'completed' | 'failed';
+export type TurnStatus = 'in_progress' | 'awaiting_clarify' | 'completed' | 'failed';
 
 export interface TurnClarification {
   questions: string[];

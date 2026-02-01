@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import inspect
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from easysql_api.deps import SessionStoreType, get_query_service_dep, get_session_store_dep
+from easysql_api.deps import get_query_service_dep, get_session_repository_dep
+from easysql_api.domain.repositories.session_repository import SessionRepository
+from easysql_api.domain.value_objects.query_status import QueryStatus
 from easysql_api.models.query import BranchRequest, MessageRequest
 from easysql_api.models.session import (
     SessionDetail,
@@ -15,25 +16,13 @@ from easysql_api.models.session import (
     SessionList,
 )
 from easysql_api.models.turn import TurnInfo
+from easysql_api.services.query_service import QueryService
 
 
 class CreateSessionRequest(BaseModel):
     db_name: str | None = None
 
-
-from easysql_api.services.query_service import QueryService
-
 router = APIRouter()
-
-
-async def call_store_method(
-    store: SessionStoreType, method_name: str, *args: Any, **kwargs: Any
-) -> Any:
-    method = getattr(store, method_name)
-    result = method(*args, **kwargs)
-    if inspect.iscoroutine(result):
-        return await result
-    return result
 
 
 @router.post("/sessions", response_model=SessionInfo)
@@ -54,12 +43,12 @@ async def create_session(
 
 @router.get("/sessions", response_model=SessionList)
 async def list_sessions(
-    store: Annotated[SessionStoreType, Depends(get_session_store_dep)],
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
     limit: int = 100,
     offset: int = 0,
 ) -> SessionList:
-    sessions = await call_store_method(store, "list_all", limit=limit, offset=offset)
-    total = await call_store_method(store, "count")
+    sessions = await repository.list_all(limit=limit, offset=offset)
+    total = await repository.count()
 
     session_infos = [
         SessionInfo(
@@ -80,9 +69,9 @@ async def list_sessions(
 @router.get("/sessions/{session_id}", response_model=SessionDetail)
 async def get_session(
     session_id: str,
-    store: Annotated[SessionStoreType, Depends(get_session_store_dep)],
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
 ) -> SessionDetail:
-    session = await call_store_method(store, "get", session_id)
+    session = await repository.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -105,9 +94,9 @@ async def get_session(
 @router.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: str,
-    store: Annotated[SessionStoreType, Depends(get_session_store_dep)],
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
 ) -> dict:
-    deleted = await call_store_method(store, "delete", session_id)
+    deleted = await repository.delete(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -118,12 +107,10 @@ async def delete_session(
 async def send_message(
     session_id: str,
     request: MessageRequest,
-    store: Annotated[SessionStoreType, Depends(get_session_store_dep)],
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
     service: Annotated[QueryService, Depends(get_query_service_dep)],
 ):
-    from easysql_api.models.query import QueryStatus
-
-    session = await call_store_method(store, "get", session_id)
+    session = await repository.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -165,10 +152,10 @@ async def send_message(
 async def create_branch(
     session_id: str,
     request: BranchRequest,
-    store: Annotated[SessionStoreType, Depends(get_session_store_dep)],
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
     service: Annotated[QueryService, Depends(get_query_service_dep)],
 ):
-    session = await call_store_method(store, "get", session_id)
+    session = await repository.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 

@@ -1,48 +1,38 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
-
 from easysql.config import Settings, get_settings
+from easysql_api.domain.repositories.session_repository import SessionRepository
 from easysql_api.services.execute_service import ExecuteService, get_execute_service
 from easysql_api.services.query_service import QueryService, get_query_service
-from easysql_api.services.session_store import SessionStore, get_session_store
 
-if TYPE_CHECKING:
-    from easysql_api.services.pg_session_store import PgSessionStore
-
-SessionStoreType = Union[SessionStore, "PgSessionStore"]
-
-_pg_session_store: "PgSessionStore | None" = None
+_session_repository: SessionRepository | None = None
 
 
 def get_settings_dep() -> Settings:
     return get_settings()
 
 
-def get_session_store_dep() -> SessionStoreType:
-    settings = get_settings()
-    if settings.is_session_postgres():
-        if _pg_session_store is None:
-            raise RuntimeError(
-                "PgSessionStore not initialized. Ensure app lifespan initialized it."
-            )
-        return _pg_session_store
-    return get_session_store()
+def get_session_repository_dep() -> SessionRepository:
+    if _session_repository is None:
+        raise RuntimeError(
+            "SessionRepository not initialized. Ensure app lifespan initialized it."
+        )
+    return _session_repository
 
 
-def set_pg_session_store(store: "PgSessionStore") -> None:
-    global _pg_session_store
-    _pg_session_store = store
+def set_session_repository(repository: SessionRepository) -> None:
+    global _session_repository
+    _session_repository = repository
 
 
-def clear_pg_session_store() -> None:
-    global _pg_session_store
-    _pg_session_store = None
+def clear_session_repository() -> None:
+    global _session_repository
+    _session_repository = None
 
 
 def get_query_service_dep() -> QueryService:
-    store = get_session_store_dep()
-    return get_query_service(store=store)
+    repository = get_session_repository_dep()
+    return get_query_service(repository=repository)
 
 
 def get_execute_service_dep() -> ExecuteService:

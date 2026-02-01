@@ -7,9 +7,13 @@ pyyaml>=6.0
 # Database drivers
 pymysql>=1.1.0
 psycopg2-binary>=2.9.0
+asyncpg>=0.29.0
 
 # SQLAlchemy ORM (for unified schema extraction)
-sqlalchemy>=2.0.0
+sqlalchemy[asyncio]>=2.0.0
+
+# Migrations
+alembic>=1.13.0
 
 # Optional: Oracle/SQLServer drivers
 # oracledb>=2.0.0

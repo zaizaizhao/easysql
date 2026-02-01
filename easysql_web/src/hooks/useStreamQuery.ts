@@ -3,6 +3,11 @@ import { streamQuery, streamContinueQuery, streamFollowUpMessage, streamBranchMe
 import { useChatStore } from '@/stores';
 import { useAppStore } from '@/stores';
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value?: string): boolean => !!value && UUID_REGEX.test(value);
+
 export function useStreamQuery() {
   const abortControllerRef = useRef<AbortController | null>(null);
   
@@ -103,7 +108,8 @@ export function useStreamQuery() {
     const parentMessage = parentLocalId
       ? useChatStore.getState().messageMap.get(parentLocalId)
       : undefined;
-    const parentServerId = parentMessage?.serverId || parentLocalId;
+    const parentServerId = parentMessage?.serverId;
+    const parentMessageUuid = isUuid(parentServerId) ? parentServerId : undefined;
     const parentThreadId = parentMessage?.threadId || threadId || undefined;
 
     const userMessageId = `user_${Date.now()}`;
@@ -124,10 +130,12 @@ export function useStreamQuery() {
     }, userMessageId);
 
     try {
-      const generator = streamFollowUpMessage(
-        sessionId,
-        { question, parent_message_id: parentServerId, thread_id: parentThreadId }
-      );
+      const request = {
+        question,
+        thread_id: parentThreadId,
+        ...(parentMessageUuid ? { parent_message_id: parentMessageUuid } : {}),
+      };
+      const generator = streamFollowUpMessage(sessionId, request);
 
       for await (const event of generator) {
         handleStreamEvent(event);

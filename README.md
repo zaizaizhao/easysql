@@ -89,6 +89,9 @@ NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_neo4j_password
 MILVUS_URI=http://localhost:19530
 
+# Session store (PostgreSQL)
+SESSION_POSTGRES_URI=postgresql+asyncpg://postgres:password@localhost:5432/easysql
+
 # LLM（选择一个提供商即可）
 OPENAI_API_KEY=sk-xxx
 # 如用 Google/Anthropic，请同时设置 *_API_KEY 和 *_LLM_MODEL
@@ -96,6 +99,11 @@ OPENAI_API_KEY=sk-xxx
 # GOOGLE_LLM_MODEL=gemini-1.5-pro
 # ANTHROPIC_API_KEY=xxx
 # ANTHROPIC_LLM_MODEL=claude-3-5-sonnet-20241022
+```
+
+会话存储迁移（PostgreSQL）：
+```bash
+alembic upgrade head
 ```
 
 ### 初始化 Schema

@@ -67,7 +67,7 @@ export default function HistoryPage() {
       render: (status: string) => {
         const statusMap: Record<string, { color: string; text: string }> = {
           completed: { color: 'success', text: t('history.statusCompleted') },
-          awaiting_clarification: { color: 'warning', text: t('history.statusAwaitingClarification') },
+          awaiting_clarify: { color: 'warning', text: t('history.statusAwaitingClarification') },
           processing: { color: 'processing', text: t('history.statusProcessing') },
           failed: { color: 'error', text: t('history.statusFailed') },
           pending: { color: 'default', text: t('history.statusPending') },

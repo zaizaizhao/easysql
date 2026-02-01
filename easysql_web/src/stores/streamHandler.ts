@@ -315,8 +315,8 @@ export const processStreamEvent = (
       }
 
       const newStatus =
-        event.data.status === 'awaiting_clarification' || clarificationQuestions
-          ? 'awaiting_clarification'
+        event.data.status === 'awaiting_clarify' || clarificationQuestions
+          ? 'awaiting_clarify'
           : 'completed';
 
       if (isActive) {

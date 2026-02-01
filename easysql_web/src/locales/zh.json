@@ -168,6 +168,27 @@
     "statsNeo4jTables": "Neo4j 表",
     "statsMilvusTables": "Milvus 表"
   },
+  "chart": {
+    "noData": "无数据可供可视化",
+    "notSuitable": "当前数据不适合图表展示",
+    "inferring": "正在分析数据，推荐最佳图表...",
+    "inferFailed": "无法推断合适的图表类型",
+    "retry": "重试",
+    "export": "导出为图片",
+    "types": {
+      "bar": "柱形图",
+      "horizontal_bar": "条形图",
+      "line": "折线图",
+      "area": "面积图",
+      "pie": "饼图",
+      "donut": "环形图",
+      "scatter": "散点图",
+      "metric_card": "指标卡",
+      "grouped_bar": "分组柱形图",
+      "stacked_bar": "堆叠柱形图",
+      "stacked_area": "堆叠面积图"
+    }
+  },
   "database": {
     "select": "选择数据库"
   },

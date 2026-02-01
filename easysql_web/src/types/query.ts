@@ -18,7 +18,7 @@ export interface ClarificationInfo {
 export type QueryStatus = 
   | 'pending'
   | 'processing'
-  | 'awaiting_clarification'
+  | 'awaiting_clarify'
   | 'completed'
   | 'failed';
 

@@ -166,6 +166,27 @@
     "statsNeo4jTables": "Neo4j Tables",
     "statsMilvusTables": "Milvus Tables"
   },
+  "chart": {
+    "noData": "No data to visualize",
+    "notSuitable": "Data is not suitable for chart visualization",
+    "inferring": "Analyzing data for best chart...",
+    "inferFailed": "Could not determine suitable chart type",
+    "retry": "Retry",
+    "export": "Export as image",
+    "types": {
+      "bar": "Bar Chart",
+      "horizontal_bar": "Horizontal Bar",
+      "line": "Line Chart",
+      "area": "Area Chart",
+      "pie": "Pie Chart",
+      "donut": "Donut Chart",
+      "scatter": "Scatter Plot",
+      "metric_card": "Metric Card",
+      "grouped_bar": "Grouped Bar",
+      "stacked_bar": "Stacked Bar",
+      "stacked_area": "Stacked Area"
+    }
+  },
   "database": {
     "select": "Select database"
   },
