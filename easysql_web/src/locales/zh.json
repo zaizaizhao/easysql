@@ -175,6 +175,27 @@
     "inferFailed": "无法推断合适的图表类型",
     "retry": "重试",
     "export": "导出为图片",
+    "suggestionsTitle": "图表建议",
+    "selectSuggestion": "请选择一个图表生成",
+    "changeSuggestion": "切换",
+    "generating": "正在生成图表建议...",
+    "noSuggestions": "暂无可用的图表建议",
+    "suggestion": "建议",
+    "intentPrefix": "图表意图：",
+    "intentSummary": "{chartType}，按 {groupBy} 做 {agg}",
+    "intentSummaryNoGroup": "{chartType}，{agg}",
+    "intentSummaryScatter": "{chartType}：{xField} vs {yField}",
+    "agg": {
+      "count": "数量",
+      "sum": "总和",
+      "avg": "平均值",
+      "min": "最小值",
+      "max": "最大值"
+    },
+    "views": {
+      "table": "表格",
+      "chart": "图表"
+    },
     "types": {
       "bar": "柱形图",
       "horizontal_bar": "条形图",

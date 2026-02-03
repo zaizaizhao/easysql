@@ -13,6 +13,9 @@ import type {
 } from '@/types/chart';
 import { inferChartConfig, analyzeColumns } from '@/utils/chartInfer';
 
+// LLM calls may take longer than default 30s timeout
+const LLM_TIMEOUT = 120000;
+
 /**
  * Request chart recommendation from backend LLM service
  */
@@ -21,7 +24,8 @@ async function recommendChart(
 ): Promise<ChartRecommendResponse> {
   const response = await apiClient.post<ChartRecommendResponse>(
     '/chart/recommend',
-    request
+    request,
+    { timeout: LLM_TIMEOUT }
   );
   return response.data;
 }

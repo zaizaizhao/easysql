@@ -1,6 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button, Tooltip, message, Space, theme } from 'antd';
-import { CopyOutlined, CheckCircleOutlined, CloseCircleOutlined, PlayCircleOutlined, LoadingOutlined, DownOutlined, RightOutlined, EditOutlined, TableOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
+import {
+  CopyOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  PlayCircleOutlined,
+  LoadingOutlined,
+  DownOutlined,
+  RightOutlined,
+  EditOutlined,
+  TableOutlined,
+  BarChartOutlined,
+  StarOutlined,
+  StarFilled,
+} from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import Editor from '@monaco-editor/react';
 import { useAppStore } from '@/stores';
@@ -8,6 +21,7 @@ import { executeApi } from '@/api/execute';
 import { fewShotApi } from '@/api/fewShot';
 import type { ExecuteResponse } from '@/types';
 import { ResultTable } from './ResultTable';
+import { ResultChart } from '@/components/Chart';
 
 interface SQLBlockProps {
   sql: string;
@@ -18,6 +32,7 @@ interface SQLBlockProps {
   messageId?: string;
   tablesUsed?: string[];
   isFewShot?: boolean;
+  enableLlmCharts?: boolean;
 }
 
 export function SQLBlock({ 
@@ -29,6 +44,7 @@ export function SQLBlock({
   messageId,
   tablesUsed,
   isFewShot: initialIsFewShot = false,
+  enableLlmCharts = false,
 }: SQLBlockProps) {
   const { t } = useTranslation();
   const { theme: appTheme, currentDatabase } = useAppStore();
@@ -277,23 +293,41 @@ export function SQLBlock({
             }}
             onClick={() => setResultCollapsed(!resultCollapsed)}
           >
-            {resultCollapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
-            <Space style={{ marginLeft: 8 }}>
-              <TableOutlined />
-              <span style={{ fontWeight: 500, fontSize: 13 }}>
-                {t('execute.resultTitle', 'Execution Result')}
-              </span>
-              {result && !executing && (
-                <span style={{ fontSize: 12, color: token.colorTextSecondary }}>
-                  ({result.row_count} rows, {result.execution_time_ms ? Math.round(result.execution_time_ms) : 0}ms)
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {resultCollapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
+              <Space>
+                <TableOutlined />
+                <span style={{ fontWeight: 500, fontSize: 13 }}>
+                  {t('execute.resultTitle', 'Execution Result')}
                 </span>
-              )}
-            </Space>
+                {result && !executing && (
+                  <span style={{ fontSize: 12, color: token.colorTextSecondary }}>
+                    ({result.row_count} rows, {result.execution_time_ms ? Math.round(result.execution_time_ms) : 0}ms)
+                  </span>
+                )}
+              </Space>
+            </div>
           </div>
 
           {!resultCollapsed && (
             <div style={{ padding: '0 12px 12px 12px' }}>
               <ResultTable result={result} loading={executing} />
+              <div style={{ marginTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <BarChartOutlined />
+                  <span style={{ fontWeight: 500, fontSize: 13 }}>
+                    {t('chart.views.chart', 'Chart')}
+                  </span>
+                </div>
+                <ResultChart
+                  result={result}
+                  loading={executing}
+                  question={question}
+                  sql={currentSql}
+                  useLlmRecommendation={enableLlmCharts}
+                  height={350}
+                />
+              </div>
             </div>
           )}
         </div>

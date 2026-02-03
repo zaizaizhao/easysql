@@ -173,6 +173,27 @@
     "inferFailed": "Could not determine suitable chart type",
     "retry": "Retry",
     "export": "Export as image",
+    "suggestionsTitle": "Suggested Charts",
+    "selectSuggestion": "Select a chart to generate",
+    "changeSuggestion": "Change",
+    "generating": "Generating chart suggestions...",
+    "noSuggestions": "No chart suggestions available",
+    "suggestion": "Suggestion",
+    "intentPrefix": "Intent: ",
+    "intentSummary": "{chartType} with {agg} by {groupBy}",
+    "intentSummaryNoGroup": "{chartType} with {agg}",
+    "intentSummaryScatter": "{chartType}: {xField} vs {yField}",
+    "agg": {
+      "count": "count",
+      "sum": "sum",
+      "avg": "average",
+      "min": "min",
+      "max": "max"
+    },
+    "views": {
+      "table": "Table",
+      "chart": "Chart"
+    },
     "types": {
       "bar": "Bar Chart",
       "horizontal_bar": "Horizontal Bar",

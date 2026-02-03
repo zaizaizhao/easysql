@@ -43,6 +43,14 @@ export type SortDirection = 'ascending' | 'descending' | 'none';
 /** Legend position */
 export type LegendPosition = 'top' | 'bottom' | 'left' | 'right' | 'none';
 
+/** Aggregation type for chart intents */
+export type AggType = 'count' | 'sum' | 'avg' | 'min' | 'max';
+
+/** Layout type for multi-chart plans */
+export type LayoutType = 'single' | 'grid' | 'tabs';
+
+export type TimeGrain = 'day' | 'week' | 'month' | 'quarter' | 'year';
+
 /**
  * Base chart configuration
  * This is the core structure that LLM will generate
@@ -126,11 +134,23 @@ export interface ChartRecommendRequest {
   /** Column data types (if known) */
   columnTypes?: ColumnDataType[];
 
+  /** Full result data for backend aggregation (optional) */
+  data?: Record<string, unknown>[];
+
   /** Sample data (first 5-10 rows) */
   sampleData: Record<string, unknown>[];
 
   /** Total row count */
   rowCount: number;
+
+  /** Previous visualization plan (for update/modify) */
+  previousPlan?: VizPlan;
+
+  /** Selected intent (skip planning and aggregate directly) */
+  selectedIntent?: ChartIntent;
+
+  /** Only return plan suggestions (no aggregation) */
+  planOnly?: boolean;
 }
 
 /**
@@ -144,6 +164,9 @@ export interface ChartRecommendResponse {
   /** Primary recommended chart configuration */
   config?: ChartConfig;
 
+  /** Aggregated chart data (backend computed) */
+  chartData?: ChartDataPoint[];
+
   /** Reasoning for the recommendation (can show as tooltip) */
   reasoning?: string;
 
@@ -152,6 +175,56 @@ export interface ChartRecommendResponse {
 
   /** Error message if recommendation failed */
   error?: string;
+
+  /** Primary intent used for aggregation */
+  intent?: ChartIntent;
+
+  /** Full visualization plan */
+  plan?: VizPlan;
+}
+
+/** Minimal chart intent (LLM output) */
+export interface ChartIntent {
+  label?: string;
+  chartType: ChartType;
+  groupBy?: string;
+  agg?: AggType;
+  valueField?: string;
+  seriesField?: string;
+  topN?: number;
+  sort?: SortDirection;
+  title?: string;
+  xField?: string;
+  yField?: string;
+  xAxisLabel?: string;
+  yAxisLabel?: string;
+  xUnit?: string;
+  yUnit?: string;
+  showPercentage?: boolean;
+  binning?: BinningConfig;
+  timeGrain?: TimeGrainConfig;
+}
+
+/** Visualization plan */
+export interface VizPlan {
+  suitable: boolean;
+  charts: ChartIntent[];
+  layout?: LayoutType;
+  narrative?: string[];
+  reasoning?: string;
+}
+
+export interface BinningConfig {
+  field: string;
+  binSize?: number;
+  bins?: number;
+  alias?: string;
+}
+
+export interface TimeGrainConfig {
+  field: string;
+  grain: TimeGrain;
+  alias?: string;
 }
 
 /**

@@ -19,6 +19,9 @@ export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTre
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
 
   const visibleMessages = getVisibleMessages();
+  const lastAssistantMessage = [...visibleMessages]
+    .filter((message) => message.role === 'assistant')
+    .at(-1);
 
   useEffect(() => {
     if (listRef.current) {
@@ -85,6 +88,7 @@ export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTre
               onClarificationSelect={onClarificationSelect}
               isLoading={isLoading}
               userQuestion={prevUserMessage?.content}
+              isLatestAssistant={message.role === 'assistant' && message.id === lastAssistantMessage?.id}
             />
             
             {hasBranches && (

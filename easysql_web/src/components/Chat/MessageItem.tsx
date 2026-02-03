@@ -15,9 +15,16 @@ interface MessageItemProps {
   onClarificationSelect?: (answer: string) => void;
   isLoading?: boolean;
   userQuestion?: string;
+  isLatestAssistant?: boolean;
 }
 
-export function MessageItem({ message, onClarificationSelect, isLoading, userQuestion }: MessageItemProps) {
+export function MessageItem({
+  message,
+  onClarificationSelect,
+  isLoading,
+  userQuestion,
+  isLatestAssistant,
+}: MessageItemProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const isUser = message.role === 'user';
@@ -43,7 +50,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading, userQue
       <Flex
         vertical
         align={isUser ? 'flex-end' : 'flex-start'}
-        style={{ maxWidth: '80%' }}
+        style={{ width: isUser ? undefined : '75%', maxWidth: isUser ? '60%' : undefined }}
       >
         {isUser ? (
           <div
@@ -86,7 +93,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading, userQue
                     <Tag key={table} style={{ marginBottom: 4 }}>{table}</Tag>
                   ))}
                   {!showAllTables && message.retrievalSummary.tables.length > 5 && (
-                    <Tag 
+                    <Tag
                       style={{ cursor: 'pointer', borderStyle: 'dashed' }}
                       onClick={() => setShowAllTables(true)}
                     >
@@ -94,7 +101,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading, userQue
                     </Tag>
                   )}
                   {showAllTables && message.retrievalSummary.tables.length > 5 && (
-                    <Tag 
+                    <Tag
                       style={{ cursor: 'pointer', borderStyle: 'dashed' }}
                       onClick={() => setShowAllTables(false)}
                     >
@@ -110,7 +117,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading, userQue
             )}
 
             {(message.agentSteps || message.thinkingContent) && (
-              <AgentThinking 
+              <AgentThinking
                 thinkingContent={message.thinkingContent}
                 agentSteps={message.agentSteps}
                 isStreaming={message.isStreaming}
@@ -124,27 +131,27 @@ export function MessageItem({ message, onClarificationSelect, isLoading, userQue
             )}
 
             {message.userAnswer && (
-              <div style={{ 
-                marginTop: 12, 
+              <div style={{
+                marginTop: 12,
                 marginBottom: 12,
-                padding: '12px', 
-                background: token.colorFillTertiary, 
+                padding: '12px',
+                background: token.colorFillTertiary,
                 borderRadius: 8,
                 borderLeft: `3px solid ${token.colorPrimary}`
               }}>
                 {message.clarificationQuestions && message.clarificationQuestions.length > 0 && (
-                   <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px dashed ${token.colorBorder}` }}>
-                     <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
-                       {message.clarificationQuestions.length > 1 ? t('clarification.answerQuestions') : t('clarification.needConfirm')}
-                     </Text>
-                     <div style={{ fontSize: 13, color: token.colorTextSecondary }}>
-                       {message.clarificationQuestions.map((q: string, idx: number) => (
-                         <div key={idx}>{message.clarificationQuestions!.length > 1 ? `${idx + 1}. ${q}` : q}</div>
-                       ))}
-                     </div>
-                   </div>
+                  <div style={{ marginBottom: 12, paddingBottom: 12, borderBottom: `1px dashed ${token.colorBorder}` }}>
+                    <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 4 }}>
+                      {message.clarificationQuestions.length > 1 ? t('clarification.answerQuestions') : t('clarification.needConfirm')}
+                    </Text>
+                    <div style={{ fontSize: 13, color: token.colorTextSecondary }}>
+                      {message.clarificationQuestions.map((q: string, idx: number) => (
+                        <div key={idx}>{message.clarificationQuestions!.length > 1 ? `${idx + 1}. ${q}` : q}</div>
+                      ))}
+                    </div>
+                  </div>
                 )}
-                
+
                 <Text type="secondary" style={{ fontSize: 12 }}>{t('chat.yourAnswer')}</Text>
                 <div style={{ fontSize: 14, fontWeight: 500, marginTop: 4 }}>{message.userAnswer}</div>
               </div>
@@ -169,6 +176,7 @@ export function MessageItem({ message, onClarificationSelect, isLoading, userQue
                   question={userQuestion}
                   messageId={message.id}
                   tablesUsed={message.retrievalSummary?.tables}
+                  enableLlmCharts={!!isLatestAssistant}
                 />
               </div>
             )}

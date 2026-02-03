@@ -2,6 +2,11 @@
 API Request/Response Models.
 """
 
+from easysql_api.models.chart import (
+    ChartConfig,
+    ChartRecommendRequest,
+    ChartRecommendResponse,
+)
 from easysql_api.models.execute import (
     ExecuteRequest,
     ExecuteResponse,
@@ -31,6 +36,9 @@ from easysql_api.models.turn import (
 )
 
 __all__ = [
+    "ChartConfig",
+    "ChartRecommendRequest",
+    "ChartRecommendResponse",
     "QueryRequest",
     "QueryResponse",
     "QueryStatus",

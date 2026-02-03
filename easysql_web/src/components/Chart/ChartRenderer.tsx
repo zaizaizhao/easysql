@@ -11,7 +11,7 @@ import { theme, Empty, Typography } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { ChartConfig, ChartDataPoint } from '@/types/chart';
 import { MetricCard } from './MetricCard';
-import { formatChartValue } from '@/utils/chartInfer';
+import { formatChartValue, validateChartConfig } from '@/utils/chartInfer';
 
 const { Text } = Typography;
 
@@ -105,6 +105,15 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
 
   if (!data || data.length === 0) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('chart.noData')} />;
+  }
+
+  const validation = useMemo(() => {
+    const columns = chartData.length > 0 ? Object.keys(chartData[0] ?? {}) : [];
+    return validateChartConfig(config, chartData, columns);
+  }, [chartData, config]);
+
+  if (!validation.valid) {
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('chart.inferFailed')} />;
   }
 
   const themeColors = [

@@ -35,6 +35,12 @@ export function MessageList({ onClarificationSelect }: MessageListProps) {
     );
   }
 
+  const lastAssistantIndex = [...messages]
+    .map((msg, idx) => ({ msg, idx }))
+    .filter(({ msg }) => msg.role === 'assistant')
+    .map(({ idx }) => idx)
+    .at(-1);
+
   return (
     <div
       ref={listRef}
@@ -54,6 +60,7 @@ export function MessageList({ onClarificationSelect }: MessageListProps) {
             message={message}
             onClarificationSelect={onClarificationSelect}
             userQuestion={prevUserMessage?.content}
+            isLatestAssistant={message.role === 'assistant' && index === lastAssistantIndex}
           />
         );
       })}

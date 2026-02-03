@@ -1,16 +1,24 @@
 import { apiClient, API_BASE_URL } from './client';
 import type { QueryRequest, QueryResponse, ContinueRequest, StreamEvent } from '@/types';
 
+// LLM calls may take longer than default 30s timeout
+const LLM_TIMEOUT = 120000;
+
 export async function createQuery(request: QueryRequest): Promise<QueryResponse> {
-  const response = await apiClient.post<QueryResponse>('/query', {
-    ...request,
-    stream: false,
-  });
+  const response = await apiClient.post<QueryResponse>(
+    '/query',
+    { ...request, stream: false },
+    { timeout: LLM_TIMEOUT }
+  );
   return response.data;
 }
 
 export async function continueQuery(sessionId: string, request: ContinueRequest): Promise<QueryResponse> {
-  const response = await apiClient.post<QueryResponse>(`/query/${sessionId}/continue`, request);
+  const response = await apiClient.post<QueryResponse>(
+    `/query/${sessionId}/continue`,
+    request,
+    { timeout: LLM_TIMEOUT }
+  );
   return response.data;
 }
 

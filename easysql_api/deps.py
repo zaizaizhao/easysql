@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from easysql.config import Settings, get_settings
 from easysql_api.domain.repositories.session_repository import SessionRepository
+from easysql_api.services.chart_service import ChartService, get_chart_service
 from easysql_api.services.execute_service import ExecuteService, get_execute_service
 from easysql_api.services.query_service import QueryService, get_query_service
 
@@ -37,3 +38,7 @@ def get_query_service_dep() -> QueryService:
 
 def get_execute_service_dep() -> ExecuteService:
     return get_execute_service()
+
+
+def get_chart_service_dep() -> ChartService:
+    return get_chart_service()
