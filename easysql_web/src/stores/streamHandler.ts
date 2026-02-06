@@ -86,10 +86,11 @@ export const processStreamEvent = (
           }
         }
         
-        if (event.data.message_id || event.data.thread_id) {
+        if (event.data.message_id || event.data.thread_id || event.data.turn_id) {
           const updates: Partial<ChatMessage> = {};
           if (event.data.message_id) updates.serverId = event.data.message_id;
           if (event.data.thread_id) updates.threadId = event.data.thread_id;
+          if (event.data.turn_id) updates.turnId = event.data.turn_id;
           const updated = updateSessionState(messages, messageMap, updates);
           if (updated) {
             result.messages = updated.messages;
@@ -103,10 +104,11 @@ export const processStreamEvent = (
         if (cached) {
           const newCache = new Map(sessionCache);
           const nextCache = { ...cached, status: 'processing' };
-          if (event.data.message_id || event.data.thread_id) {
+          if (event.data.message_id || event.data.thread_id || event.data.turn_id) {
             const updates: Partial<ChatMessage> = {};
             if (event.data.message_id) updates.serverId = event.data.message_id;
             if (event.data.thread_id) updates.threadId = event.data.thread_id;
+            if (event.data.turn_id) updates.turnId = event.data.turn_id;
             const updated = updateSessionState(cached.messages, cached.messageMap, updates);
             if (updated) {
               nextCache.messages = updated.messages;
@@ -306,6 +308,7 @@ export const processStreamEvent = (
       };
       if (event.data.message_id) updates.serverId = event.data.message_id;
       if (event.data.thread_id) updates.threadId = event.data.thread_id;
+      if (event.data.turn_id) updates.turnId = event.data.turn_id;
 
       const clarificationQuestions =
         event.data.clarification_questions || event.data.clarification?.questions;

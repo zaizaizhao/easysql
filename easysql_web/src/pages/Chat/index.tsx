@@ -48,6 +48,7 @@ export default function ChatPage() {
           role: 'user',
           content: turn.question,
           timestamp: new Date(turn.created_at),
+          isHistorical: true,
         });
 
         const assistantMsg: ChatMessage = {
@@ -57,6 +58,10 @@ export default function ChatPage() {
           timestamp: new Date(turn.created_at),
           sql: turn.final_sql,
           validationPassed: turn.validation_passed,
+          turnId: turn.turn_id,
+          chartPlan: turn.chart_plan,
+          chartReasoning: turn.chart_reasoning,
+          isHistorical: true,
         };
 
         if (turn.clarifications && turn.clarifications.length > 0) {

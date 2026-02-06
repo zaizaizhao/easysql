@@ -1,4 +1,5 @@
 import type { QueryStatus } from './query';
+import type { VizPlan } from './chart';
 
 export interface StepTrace {
   node: string;
@@ -20,6 +21,7 @@ export interface AgentStep {
 export interface ChatMessage {
   id: string;
   serverId?: string;
+  turnId?: string;
   threadId?: string;
   role: 'user' | 'assistant';
   content: string;
@@ -29,7 +31,11 @@ export interface ChatMessage {
   validationPassed?: boolean;
   validationError?: string;
   clarificationQuestions?: string[];
+  chartPlan?: VizPlan;
+  chartReasoning?: string;
   isStreaming?: boolean;
+  /** Indicates this message was loaded from history (not actively streaming) */
+  isHistorical?: boolean;
   steps?: string[];
   trace?: StepTrace[];
   agentSteps?: AgentStep[];

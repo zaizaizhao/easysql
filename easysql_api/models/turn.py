@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,8 @@ class TurnInfo(BaseModel):
     final_sql: str | None = None
     validation_passed: bool | None = None
     error: str | None = None
+    chart_plan: dict[str, Any] | None = None
+    chart_reasoning: str | None = None
     created_at: datetime
 
     @classmethod
@@ -42,5 +45,14 @@ class TurnInfo(BaseModel):
             final_sql=turn.final_sql,
             validation_passed=turn.validation_passed,
             error=turn.error,
+            chart_plan=turn.chart_plan,
+            chart_reasoning=turn.chart_reasoning,
             created_at=turn.created_at,
         )
+
+
+class ChartPlanUpdateRequest(BaseModel):
+    """API model for updating chart plan per turn."""
+
+    chart_plan: dict[str, Any]
+    chart_reasoning: str | None = None

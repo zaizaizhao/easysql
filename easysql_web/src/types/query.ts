@@ -31,9 +31,10 @@ export interface QueryResponse {
   clarification?: ClarificationInfo;
   error?: string;
   stats?: Record<string, unknown>;
-  message_id?: string;
-  parent_message_id?: string;
-  thread_id?: string;
+    message_id?: string;
+    parent_message_id?: string;
+    thread_id?: string;
+    turn_id?: string;
 }
 
 export interface StreamEvent {

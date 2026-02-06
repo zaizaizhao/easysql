@@ -43,6 +43,8 @@ class ChartConfig(BaseModel):
 class ChartRecommendRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
+    session_id: str | None = Field(default=None, alias="sessionId")
+    turn_id: str | None = Field(default=None, alias="turnId")
     question: str | None = None
     sql: str | None = None
     columns: list[str]

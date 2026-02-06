@@ -183,6 +183,7 @@ class QueryService:
             raw_query=session.raw_query,
             state=session.state,
         )
+        await self._save_turns(session.session_id, session.turns)
 
         thread_id = session.session_id
         user_message_id = str(uuid.uuid4())
@@ -327,6 +328,7 @@ class QueryService:
                 "data": {
                     "session_id": session.session_id,
                     "thread_id": thread_id or session.session_id,
+                    "turn_id": turn.turn_id,
                 },
             }
 
@@ -537,6 +539,7 @@ class QueryService:
             raw_query=session.raw_query,
             state=session.state,
         )
+        await self._save_turns(session.session_id, session.turns)
 
         thread_id = session.session_id
         user_message_id = str(uuid.uuid4())
@@ -571,6 +574,7 @@ class QueryService:
                     "thread_id": thread_id,
                     "message_id": assistant_message_id,
                     "parent_message_id": None,
+                    "turn_id": turn.turn_id,
                 },
             }
 
@@ -713,6 +717,7 @@ class QueryService:
             raw_query=session.raw_query,
             state=session.state,
         )
+        await self._save_turns(session.session_id, session.turns)
 
         user_message_id = str(uuid.uuid4())
         assistant_message_id = str(uuid.uuid4())
@@ -829,6 +834,7 @@ class QueryService:
             raw_query=session.raw_query,
             state=session.state,
         )
+        await self._save_turns(session.session_id, session.turns)
 
         user_message_id = str(uuid.uuid4())
         assistant_message_id = str(uuid.uuid4())
@@ -897,6 +903,7 @@ class QueryService:
                     "thread_id": effective_thread_id,
                     "message_id": assistant_message_id,
                     "parent_message_id": parent_message_id,
+                    "turn_id": turn.turn_id,
                 },
             }
 

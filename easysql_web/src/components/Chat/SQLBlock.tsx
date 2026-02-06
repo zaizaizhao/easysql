@@ -19,7 +19,7 @@ import Editor from '@monaco-editor/react';
 import { useAppStore } from '@/stores';
 import { executeApi } from '@/api/execute';
 import { fewShotApi } from '@/api/fewShot';
-import type { ExecuteResponse } from '@/types';
+import type { ExecuteResponse, VizPlan } from '@/types';
 import { ResultTable } from './ResultTable';
 import { ResultChart } from '@/components/Chart';
 
@@ -30,9 +30,12 @@ interface SQLBlockProps {
   autoExecute?: boolean;
   question?: string;
   messageId?: string;
+  turnId?: string;
   tablesUsed?: string[];
   isFewShot?: boolean;
   enableLlmCharts?: boolean;
+  chartPlan?: VizPlan;
+  chartReasoning?: string;
 }
 
 export function SQLBlock({ 
@@ -42,9 +45,12 @@ export function SQLBlock({
   autoExecute = false,
   question,
   messageId,
+  turnId,
   tablesUsed,
   isFewShot: initialIsFewShot = false,
   enableLlmCharts = false,
+  chartPlan,
+  chartReasoning,
 }: SQLBlockProps) {
   const { t } = useTranslation();
   const { theme: appTheme, currentDatabase } = useAppStore();
@@ -325,6 +331,9 @@ export function SQLBlock({
                   question={question}
                   sql={currentSql}
                   useLlmRecommendation={enableLlmCharts}
+                  storedPlan={chartPlan}
+                  storedReasoning={chartReasoning}
+                  turnId={turnId}
                   height={350}
                 />
               </div>

@@ -1,3 +1,5 @@
+import type { VizPlan } from './chart';
+
 export interface SessionInfo {
   session_id: string;
   db_name?: string;
@@ -28,6 +30,8 @@ export interface TurnInfo {
   final_sql?: string;
   validation_passed?: boolean;
   error?: string;
+  chart_plan?: VizPlan;
+  chart_reasoning?: string;
   created_at: string;
 }
 

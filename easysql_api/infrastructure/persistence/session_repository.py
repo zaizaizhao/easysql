@@ -100,6 +100,26 @@ class SqlAlchemySessionRepository(SessionRepository):
     async def save_turns(self, session_id: str, turns: list[Turn]) -> None:
         turns_payload = [turn_to_dict(t) for t in turns]
         async with self._sessionmaker() as db:
+            existing_result = await db.execute(
+                select(SessionModel.turns).where(SessionModel.id == uuid.UUID(session_id))
+            )
+            existing_turns = existing_result.scalar_one_or_none() or []
+            if isinstance(existing_turns, list) and existing_turns:
+                existing_by_id = {
+                    item.get("turn_id"): item
+                    for item in existing_turns
+                    if isinstance(item, dict) and item.get("turn_id")
+                }
+                for turn_data in turns_payload:
+                    if not isinstance(turn_data, dict):
+                        continue
+                    existing = existing_by_id.get(turn_data.get("turn_id"))
+                    if not existing:
+                        continue
+                    if not turn_data.get("chart_plan") and existing.get("chart_plan"):
+                        turn_data["chart_plan"] = existing.get("chart_plan")
+                    if not turn_data.get("chart_reasoning") and existing.get("chart_reasoning"):
+                        turn_data["chart_reasoning"] = existing.get("chart_reasoning")
             await db.execute(
                 update(SessionModel)
                 .where(SessionModel.id == uuid.UUID(session_id))

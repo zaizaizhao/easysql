@@ -1,5 +1,5 @@
 import { apiClient, API_BASE_URL } from './client';
-import type { SessionList, SessionDetail, SessionInfo, StreamEvent, MessageRequest, BranchRequest } from '@/types';
+import type { SessionList, SessionDetail, SessionInfo, StreamEvent, MessageRequest, BranchRequest, VizPlan } from '@/types';
 
 export interface CreateSessionRequest {
   db_name?: string;
@@ -24,6 +24,18 @@ export async function getSessionDetail(sessionId: string): Promise<SessionDetail
 
 export async function deleteSession(sessionId: string): Promise<void> {
   await apiClient.delete(`/sessions/${sessionId}`);
+}
+
+export async function saveTurnChartPlan(
+  sessionId: string,
+  turnId: string,
+  plan: VizPlan,
+  reasoning?: string | null
+): Promise<void> {
+  await apiClient.post(`/sessions/${sessionId}/turns/${turnId}/chart-plan`, {
+    chart_plan: plan,
+    chart_reasoning: reasoning ?? null,
+  });
 }
 
 export async function* streamFollowUpMessage(

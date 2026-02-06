@@ -122,6 +122,12 @@ export interface ChartConfig {
  * Sent to backend LLM service
  */
 export interface ChartRecommendRequest {
+  /** Session ID for persisting chart plan */
+  sessionId?: string;
+
+  /** Turn ID for persisting chart plan */
+  turnId?: string;
+
   /** Original user question (helps LLM understand intent) */
   question?: string;
 

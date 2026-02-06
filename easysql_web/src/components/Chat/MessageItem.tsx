@@ -175,8 +175,11 @@ export function MessageItem({
                   autoExecute={!message.isStreaming}
                   question={userQuestion}
                   messageId={message.id}
+                  turnId={message.turnId}
                   tablesUsed={message.retrievalSummary?.tables}
-                  enableLlmCharts={!!isLatestAssistant}
+                  enableLlmCharts={!!message.chartPlan || (!!isLatestAssistant && !message.isHistorical)}
+                  chartPlan={message.chartPlan}
+                  chartReasoning={message.chartReasoning}
                 />
               </div>
             )}

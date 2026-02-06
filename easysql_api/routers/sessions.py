@@ -15,12 +15,13 @@ from easysql_api.models.session import (
     SessionInfo,
     SessionList,
 )
-from easysql_api.models.turn import TurnInfo
+from easysql_api.models.turn import ChartPlanUpdateRequest, TurnInfo
 from easysql_api.services.query_service import QueryService
 
 
 class CreateSessionRequest(BaseModel):
     db_name: str | None = None
+
 
 router = APIRouter()
 
@@ -182,3 +183,25 @@ async def create_branch(
         create_branch=True,
     )
     return {"session_id": session_id, "from_message_id": request.from_message_id, **result}
+
+
+@router.post("/sessions/{session_id}/turns/{turn_id}/chart-plan")
+async def update_turn_chart_plan(
+    session_id: str,
+    turn_id: str,
+    request: ChartPlanUpdateRequest,
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
+) -> dict:
+    session = await repository.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    turn = session.get_turn(turn_id)
+    if not turn:
+        raise HTTPException(status_code=404, detail="Turn not found")
+
+    turn.chart_plan = request.chart_plan
+    turn.chart_reasoning = request.chart_reasoning
+    await repository.save_turns(session.session_id, session.turns)
+
+    return {"session_id": session_id, "turn_id": turn_id}

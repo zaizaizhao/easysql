@@ -23,6 +23,7 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { ExecuteResponse } from '@/types/execute';
+import { saveTurnChartPlan } from '@/api';
 import type {
   ChartConfig,
   ChartIntent,
@@ -30,6 +31,7 @@ import type {
   ChartRecommendResponse,
   VizPlan,
 } from '@/types/chart';
+import { useChatStore } from '@/stores';
 import { ChartRenderer } from './ChartRenderer';
 import { ChartTypeSelector } from './ChartTypeSelector';
 import { chartApi } from '@/api/chart';
@@ -54,6 +56,12 @@ interface ResultChartProps {
   height?: number;
   /** Whether to use LLM recommendation (requires backend API) */
   useLlmRecommendation?: boolean;
+  /** Stored chart plan (for history replay) */
+  storedPlan?: VizPlan;
+  /** Stored chart reasoning (for history replay) */
+  storedReasoning?: string;
+  /** Turn ID for persisting chart plan */
+  turnId?: string;
   /** External chart config (from LLM or parent component) */
   externalConfig?: ChartConfig;
   /** Callback when chart config changes */
@@ -67,12 +75,17 @@ export function ResultChart({
   sql,
   height = 350,
   useLlmRecommendation = false,
+  storedPlan,
+  storedReasoning,
+  turnId,
   externalConfig,
   onConfigChange,
 }: ResultChartProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
+  const sessionId = useChatStore((state) => state.sessionId);
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const persistedPlanKeyRef = useRef<string | null>(null);
 
   // Manual chart type override
   const [manualChartType, setManualChartType] = useState<ChartType | null>(null);
@@ -85,6 +98,9 @@ export function ResultChart({
   const [selectedResponse, setSelectedResponse] = useState<ChartRecommendResponse | null>(null);
   const [llmChartData, setLlmChartData] = useState<Record<string, unknown>[] | null>(null);
 
+  // Track if we've already made a recommend call for this turn to prevent duplicates
+  const recommendCalledRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (!useLlmRecommendation) {
       setLlmPlan(null);
@@ -94,6 +110,21 @@ export function ResultChart({
       setSelectedResponse(null);
       setPlanLoading(false);
       setSelectionLoading(false);
+      return;
+    }
+
+    if (storedPlan) {
+      setLlmPlan(storedPlan);
+      setLlmPlanReasoning(storedReasoning ?? null);
+      setSelectedIntent(null);
+      setSelectedResponse(null);
+      setLlmChartData(null);
+      setError(null);
+      setPlanLoading(false);
+      // Mark that we have a plan for this turn (prevent future calls)
+      if (turnId) {
+        recommendCalledRef.current = turnId;
+      }
       return;
     }
 
@@ -112,6 +143,17 @@ export function ResultChart({
       return;
     }
 
+    // Prevent duplicate API calls for the same turn
+    // This handles race conditions when storedPlan hasn't loaded yet
+    if (turnId && recommendCalledRef.current === turnId) {
+      return;
+    }
+
+    // Mark that we're making a recommend call for this turn
+    if (turnId) {
+      recommendCalledRef.current = turnId;
+    }
+
     let cancelled = false;
     setPlanLoading(true);
     setError(null);
@@ -123,6 +165,8 @@ export function ResultChart({
 
     chartApi
       .recommendChart({
+        sessionId,
+        turnId,
         question,
         sql,
         columns: result.columns,
@@ -151,7 +195,39 @@ export function ResultChart({
     return () => {
       cancelled = true;
     };
-  }, [useLlmRecommendation, result, question, sql, externalConfig, manualChartType]);
+  }, [
+    useLlmRecommendation,
+    storedPlan,
+    storedReasoning,
+    result,
+    question,
+    sql,
+    externalConfig,
+    manualChartType,
+    sessionId,
+    turnId,
+  ]);
+
+  useEffect(() => {
+    if (!useLlmRecommendation || storedPlan || !llmPlan || !sessionId || !turnId) {
+      return;
+    }
+    const planKey = `${sessionId}:${turnId}:${JSON.stringify(llmPlan)}`;
+    if (persistedPlanKeyRef.current === planKey) {
+      return;
+    }
+    persistedPlanKeyRef.current = planKey;
+    saveTurnChartPlan(sessionId, turnId, llmPlan, llmPlanReasoning).catch(() => {
+      persistedPlanKeyRef.current = null;
+    });
+  }, [
+    useLlmRecommendation,
+    storedPlan,
+    llmPlan,
+    llmPlanReasoning,
+    sessionId,
+    turnId,
+  ]);
 
   const llmModeActive = useLlmRecommendation && !!llmPlan?.charts?.length;
   const llmSelectedReady =
@@ -324,6 +400,8 @@ export function ResultChart({
 
       chartApi
         .recommendChart({
+          sessionId,
+          turnId,
           question,
           sql,
           columns: result.columns,
@@ -346,7 +424,7 @@ export function ResultChart({
           setSelectionLoading(false);
         });
     },
-    [result, question, sql]
+    [result, question, sql, sessionId, turnId]
   );
 
   const handleResetSuggestion = useCallback(() => {
