@@ -48,7 +48,7 @@ async def list_sessions(
     limit: int = 100,
     offset: int = 0,
 ) -> SessionList:
-    sessions = await repository.list_all(limit=limit, offset=offset)
+    sessions = await repository.list_summaries(limit=limit, offset=offset)
     total = await repository.count()
 
     session_infos = [
@@ -58,8 +58,8 @@ async def list_sessions(
             status=s.status,
             created_at=s.created_at,
             updated_at=s.updated_at,
-            question_count=len(s.turns),
-            title=s.turns[0].question if s.turns else None,
+            question_count=s.question_count,
+            title=s.title,
         )
         for s in sessions
     ]

@@ -72,17 +72,11 @@ class ChartService:
             error_msg = errors[0] if errors else "Chart plan generation failed"
             return ChartRecommendResponse(suitable=False, error=error_msg)
 
+        if fallback_applied:
+            error_msg = errors[0] if errors else "No suitable chart suggestions"
+            return ChartRecommendResponse(suitable=False, error=error_msg)
+
         if request.plan_only:
-            if fallback_applied:
-                return ChartRecommendResponse(
-                    suitable=False,
-                    config=None,
-                    chartData=None,
-                    reasoning=None,
-                    intent=None,
-                    plan=None,
-                    error="No suitable chart suggestions",
-                )
             suitable = bool(plan.suitable and plan.charts)
             reasoning = plan.reasoning
             if errors and not reasoning:
@@ -135,6 +129,19 @@ class ChartService:
             "metric_card",
         }:
             return None
+        group_by = intent.group_by
+        if isinstance(intent.binning, BinningConfig):
+            bin_alias = intent.binning.alias or f"{intent.binning.field}_bin"
+            if group_by is None or group_by == intent.binning.field:
+                group_by = bin_alias
+        if isinstance(intent.time_grain, TimeGrainConfig):
+            grain_alias = (
+                intent.time_grain.alias
+                or f"{intent.time_grain.field}_{intent.time_grain.grain}"
+            )
+            if group_by is None or group_by == intent.time_grain.field:
+                group_by = grain_alias
+
         if intent.chart_type in {
             "bar",
             "line",
@@ -143,7 +150,6 @@ class ChartService:
             "stacked_bar",
             "stacked_area",
         }:
-            group_by = intent.group_by
             if not group_by and isinstance(intent.binning, BinningConfig):
                 group_by = intent.binning.alias or f"{intent.binning.field}_bin"
             if not group_by and isinstance(intent.time_grain, TimeGrainConfig):
@@ -153,14 +159,11 @@ class ChartService:
                 )
             if not group_by:
                 return None
-            x_axis_label = _format_axis_label(intent.x_axis_label or group_by, intent.x_unit)
-            y_axis_label = _format_axis_label(
-                intent.y_axis_label or intent.value_field or "Value",
-                intent.y_unit,
-            )
+            x_axis_label = _format_axis_label(intent.x_axis_label, intent.x_unit)
+            y_axis_label = _format_axis_label(intent.y_axis_label, intent.y_unit)
             return ChartConfig(
                 chartType=intent.chart_type,
-                title=intent.title or intent.label,
+                title=intent.title,
                 xField=group_by,
                 yField=AGG_VALUE_ALIAS,
                 seriesField=intent.series_field,
@@ -171,7 +174,6 @@ class ChartService:
             )
 
         if intent.chart_type == "horizontal_bar":
-            group_by = intent.group_by
             if not group_by and isinstance(intent.binning, BinningConfig):
                 group_by = intent.binning.alias or f"{intent.binning.field}_bin"
             if not group_by and isinstance(intent.time_grain, TimeGrainConfig):
@@ -181,14 +183,11 @@ class ChartService:
                 )
             if not group_by:
                 return None
-            x_axis_label = _format_axis_label(
-                intent.y_axis_label or intent.value_field or "Value",
-                intent.y_unit,
-            )
-            y_axis_label = _format_axis_label(intent.x_axis_label or group_by, intent.x_unit)
+            x_axis_label = _format_axis_label(intent.y_axis_label, intent.y_unit)
+            y_axis_label = _format_axis_label(intent.x_axis_label, intent.x_unit)
             return ChartConfig(
                 chartType=intent.chart_type,
-                title=intent.title or intent.label,
+                title=intent.title,
                 xField=AGG_VALUE_ALIAS,
                 yField=group_by,
                 seriesField=intent.series_field,
@@ -198,7 +197,6 @@ class ChartService:
             )
 
         if intent.chart_type in {"pie", "donut"}:
-            group_by = intent.group_by
             if not group_by and isinstance(intent.binning, BinningConfig):
                 group_by = intent.binning.alias or f"{intent.binning.field}_bin"
             if not group_by and isinstance(intent.time_grain, TimeGrainConfig):
@@ -210,7 +208,7 @@ class ChartService:
                 return None
             return ChartConfig(
                 chartType=intent.chart_type,
-                title=intent.title or intent.label,
+                title=intent.title,
                 angleField=AGG_VALUE_ALIAS,
                 colorField=group_by,
                 showLegend=True,
@@ -223,7 +221,7 @@ class ChartService:
         if intent.chart_type == "metric_card":
             return ChartConfig(
                 chartType=intent.chart_type,
-                title=intent.title or intent.label,
+                title=intent.title,
                 valueField=AGG_VALUE_ALIAS,
                 labelField=intent.group_by,
             )
@@ -231,11 +229,11 @@ class ChartService:
         if intent.chart_type == "scatter":
             if not intent.x_field or not intent.y_field:
                 return None
-            x_axis_label = _format_axis_label(intent.x_axis_label or intent.x_field, intent.x_unit)
-            y_axis_label = _format_axis_label(intent.y_axis_label or intent.y_field, intent.y_unit)
+            x_axis_label = _format_axis_label(intent.x_axis_label, intent.x_unit)
+            y_axis_label = _format_axis_label(intent.y_axis_label, intent.y_unit)
             return ChartConfig(
                 chartType=intent.chart_type,
-                title=intent.title or intent.label,
+                title=intent.title,
                 xField=intent.x_field,
                 yField=intent.y_field,
                 seriesField=intent.series_field,

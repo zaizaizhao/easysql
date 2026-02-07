@@ -334,6 +334,7 @@ export function SQLBlock({
                   storedPlan={chartPlan}
                   storedReasoning={chartReasoning}
                   turnId={turnId}
+                  messageId={messageId}
                   height={350}
                 />
               </div>

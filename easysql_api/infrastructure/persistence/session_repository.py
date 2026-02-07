@@ -6,15 +6,21 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, inspect, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import selectinload
 
 from easysql_api.domain.entities.message import Message
-from easysql_api.domain.entities.session import Session
-from easysql_api.domain.entities.turn import Turn, turn_from_dict, turn_to_dict
+from easysql_api.domain.entities.session import Session, SessionSummary
+from easysql_api.domain.entities.turn import Clarification, Turn, TurnStatus
 from easysql_api.domain.repositories.session_repository import SessionRepository
 from easysql_api.domain.value_objects.query_status import QueryStatus
-from easysql_api.infrastructure.persistence.models import MessageModel, SessionModel
+from easysql_api.infrastructure.persistence.models import (
+    ClarificationModel,
+    MessageModel,
+    SessionModel,
+    TurnModel,
+)
 
 
 class SqlAlchemySessionRepository(SessionRepository):
@@ -36,7 +42,11 @@ class SqlAlchemySessionRepository(SessionRepository):
     async def get(self, session_id: str) -> Session | None:
         async with self._sessionmaker() as db:
             result = await db.execute(
-                select(SessionModel).where(SessionModel.id == uuid.UUID(session_id))
+                select(SessionModel)
+                .where(SessionModel.id == uuid.UUID(session_id))
+                .options(
+                    selectinload(SessionModel.turns).selectinload(TurnModel.clarifications)
+                )
             )
             model = result.scalar_one_or_none()
             if model is None:
@@ -47,12 +57,64 @@ class SqlAlchemySessionRepository(SessionRepository):
         async with self._sessionmaker() as db:
             result = await db.execute(
                 select(SessionModel)
+                .options(
+                    selectinload(SessionModel.turns).selectinload(TurnModel.clarifications)
+                )
                 .order_by(SessionModel.updated_at.desc())
                 .limit(limit)
                 .offset(offset)
             )
             models = result.scalars().all()
             return [_map_session(m) for m in models]
+
+    async def list_summaries(self, limit: int = 100, offset: int = 0) -> list[SessionSummary]:
+        question_count_subq = (
+            select(func.count(TurnModel.id))
+            .where(TurnModel.session_id == SessionModel.id)
+            .scalar_subquery()
+        )
+        title_subq = (
+            select(TurnModel.question)
+            .where(TurnModel.session_id == SessionModel.id)
+            .order_by(TurnModel.position.asc(), TurnModel.created_at.asc())
+            .limit(1)
+            .scalar_subquery()
+        )
+        question_count = func.coalesce(question_count_subq, 0).label("question_count")
+        title = func.coalesce(SessionModel.title, title_subq).label("title")
+
+        async with self._sessionmaker() as db:
+            result = await db.execute(
+                select(
+                    SessionModel.id,
+                    SessionModel.db_name,
+                    SessionModel.status,
+                    SessionModel.created_at,
+                    SessionModel.updated_at,
+                    question_count,
+                    title,
+                )
+                .order_by(SessionModel.updated_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            rows = result.all()
+
+        summaries: list[SessionSummary] = []
+        for row in rows:
+            data = row._mapping
+            summaries.append(
+                SessionSummary(
+                    session_id=str(data["id"]),
+                    db_name=data["db_name"],
+                    status=QueryStatus(data["status"]),
+                    created_at=data["created_at"],
+                    updated_at=data["updated_at"],
+                    question_count=int(data["question_count"] or 0),
+                    title=data["title"],
+                )
+            )
+        return summaries
 
     async def count(self) -> int:
         async with self._sessionmaker() as db:
@@ -98,32 +160,76 @@ class SqlAlchemySessionRepository(SessionRepository):
             await db.commit()
 
     async def save_turns(self, session_id: str, turns: list[Turn]) -> None:
-        turns_payload = [turn_to_dict(t) for t in turns]
         async with self._sessionmaker() as db:
             existing_result = await db.execute(
-                select(SessionModel.turns).where(SessionModel.id == uuid.UUID(session_id))
+                select(TurnModel)
+                .where(TurnModel.session_id == uuid.UUID(session_id))
+                .options(selectinload(TurnModel.clarifications))
             )
-            existing_turns = existing_result.scalar_one_or_none() or []
-            if isinstance(existing_turns, list) and existing_turns:
-                existing_by_id = {
-                    item.get("turn_id"): item
-                    for item in existing_turns
-                    if isinstance(item, dict) and item.get("turn_id")
-                }
-                for turn_data in turns_payload:
-                    if not isinstance(turn_data, dict):
-                        continue
-                    existing = existing_by_id.get(turn_data.get("turn_id"))
-                    if not existing:
-                        continue
-                    if not turn_data.get("chart_plan") and existing.get("chart_plan"):
-                        turn_data["chart_plan"] = existing.get("chart_plan")
-                    if not turn_data.get("chart_reasoning") and existing.get("chart_reasoning"):
-                        turn_data["chart_reasoning"] = existing.get("chart_reasoning")
+            existing_turns = {turn.turn_id: turn for turn in existing_result.scalars().all()}
+            incoming_ids = {turn.turn_id for turn in turns}
+
+            for turn_id, model in existing_turns.items():
+                if turn_id not in incoming_ids:
+                    await db.delete(model)
+
+            for position, turn in enumerate(turns):
+                model = existing_turns.get(turn.turn_id)
+                chart_plan = turn.chart_plan
+                chart_reasoning = turn.chart_reasoning
+
+                if model:
+                    if chart_plan is None and model.chart_plan is not None:
+                        chart_plan = model.chart_plan
+                    if chart_reasoning is None and model.chart_reasoning is not None:
+                        chart_reasoning = model.chart_reasoning
+
+                    model.question = turn.question
+                    model.status = turn.status.value
+                    model.final_sql = turn.final_sql
+                    model.validation_passed = turn.validation_passed
+                    model.error = turn.error
+                    model.chart_plan = chart_plan
+                    model.chart_reasoning = chart_reasoning
+                    model.position = position
+
+                    model.clarifications.clear()
+                    for idx, clarification in enumerate(turn.clarifications):
+                        model.clarifications.append(
+                            ClarificationModel(
+                                position=idx,
+                                questions=clarification.questions,
+                                answer=clarification.answer,
+                            )
+                        )
+                else:
+                    model = TurnModel(
+                        session_id=uuid.UUID(session_id),
+                        turn_id=turn.turn_id,
+                        question=turn.question,
+                        status=turn.status.value,
+                        final_sql=turn.final_sql,
+                        validation_passed=turn.validation_passed,
+                        error=turn.error,
+                        chart_plan=chart_plan,
+                        chart_reasoning=chart_reasoning,
+                        position=position,
+                        created_at=turn.created_at,
+                    )
+                    model.clarifications = [
+                        ClarificationModel(
+                            position=idx,
+                            questions=clarification.questions,
+                            answer=clarification.answer,
+                        )
+                        for idx, clarification in enumerate(turn.clarifications)
+                    ]
+                    db.add(model)
+
             await db.execute(
                 update(SessionModel)
                 .where(SessionModel.id == uuid.UUID(session_id))
-                .values(turns=turns_payload, updated_at=_utc_now())
+                .values(updated_at=_utc_now())
             )
             await db.commit()
 
@@ -199,8 +305,8 @@ def _map_session(model: SessionModel) -> Session:
         title=model.title,
     )
 
-    if model.turns:
-        session.turns = [turn_from_dict(t) for t in model.turns]
+    if "turns" not in inspect(model).unloaded:
+        session.turns = [_map_turn(t) for t in model.turns]
         session._turn_counter = len(session.turns)
 
     return session
@@ -221,3 +327,23 @@ def _map_message(model: MessageModel) -> Message:
         clarification_questions=model.clarification_questions,
         created_at=model.created_at,
     )
+
+
+def _map_turn(model: TurnModel) -> Turn:
+    clarifications = [_map_clarification(c) for c in model.clarifications]
+    return Turn(
+        turn_id=model.turn_id,
+        question=model.question,
+        status=TurnStatus(model.status),
+        clarifications=clarifications,
+        final_sql=model.final_sql,
+        validation_passed=model.validation_passed,
+        error=model.error,
+        chart_plan=model.chart_plan,
+        chart_reasoning=model.chart_reasoning,
+        created_at=model.created_at,
+    )
+
+
+def _map_clarification(model: ClarificationModel) -> Clarification:
+    return Clarification(questions=model.questions or [], answer=model.answer)

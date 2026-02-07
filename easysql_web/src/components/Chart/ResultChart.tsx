@@ -40,6 +40,8 @@ import {
   inferChartConfig,
   getAlternativeChartTypes,
 } from '@/utils/chartInfer';
+import { aggregateChartData } from '@/utils/chartAggregate';
+import { buildChartConfigFromIntent } from '@/utils/chartIntentConfig';
 
 const { Text } = Typography;
 
@@ -62,6 +64,8 @@ interface ResultChartProps {
   storedReasoning?: string;
   /** Turn ID for persisting chart plan */
   turnId?: string;
+  /** Chat message ID for local plan caching */
+  messageId?: string;
   /** External chart config (from LLM or parent component) */
   externalConfig?: ChartConfig;
   /** Callback when chart config changes */
@@ -78,12 +82,14 @@ export function ResultChart({
   storedPlan,
   storedReasoning,
   turnId,
+  messageId,
   externalConfig,
   onConfigChange,
 }: ResultChartProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const sessionId = useChatStore((state) => state.sessionId);
+  const updateMessage = useChatStore((state) => state.updateMessage);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const persistedPlanKeyRef = useRef<string | null>(null);
 
@@ -228,6 +234,17 @@ export function ResultChart({
     sessionId,
     turnId,
   ]);
+
+  useEffect(() => {
+    if (!messageId || !llmPlan) {
+      return;
+    }
+
+    updateMessage(messageId, {
+      chartPlan: llmPlan,
+      chartReasoning: llmPlanReasoning ?? undefined,
+    });
+  }, [messageId, llmPlan, llmPlanReasoning, updateMessage]);
 
   const llmModeActive = useLlmRecommendation && !!llmPlan?.charts?.length;
   const llmSelectedReady =
@@ -395,36 +412,37 @@ export function ResultChart({
       setSelectionLoading(true);
       setError(null);
 
-      const sampleData = result.data.slice(0, 10);
-      const columnTypes = analyzeColumns(sampleData, result.columns).map((col) => col.type);
+      try {
+        const chartData = aggregateChartData(result.data, intent);
+        const config = buildChartConfigFromIntent(intent);
+        const suitable = !!config && chartData.length > 0;
 
-      chartApi
-        .recommendChart({
-          sessionId,
-          turnId,
-          question,
-          sql,
-          columns: result.columns,
-          columnTypes,
-          data: result.data,
-          sampleData,
-          rowCount: result.row_count,
-          selectedIntent: intent,
-        })
-        .then((response) => {
-          setSelectedResponse(response);
-          setLlmChartData(response.chartData || null);
-        })
-        .catch((err) => {
-          setError(err instanceof Error ? err.message : String(err));
+        if (!suitable) {
+          setError('Selected intent not suitable for data');
           setSelectedResponse(null);
           setLlmChartData(null);
-        })
-        .finally(() => {
-          setSelectionLoading(false);
-        });
+          return;
+        }
+
+        const response: ChartRecommendResponse = {
+          suitable,
+          config,
+          chartData,
+          intent,
+          reasoning: llmPlanReasoning || undefined,
+        };
+
+        setSelectedResponse(response);
+        setLlmChartData(chartData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        setSelectedResponse(null);
+        setLlmChartData(null);
+      } finally {
+        setSelectionLoading(false);
+      }
     },
-    [result, question, sql, sessionId, turnId]
+    [result, llmPlanReasoning]
   );
 
   const handleResetSuggestion = useCallback(() => {

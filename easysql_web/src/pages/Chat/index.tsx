@@ -15,8 +15,6 @@ export default function ChatPage() {
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const {
     sessionId,
-    sessionCache,
-    status,
     switchSession,
     removeSession,
   } = useChatStore();
@@ -28,9 +26,16 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!routeSessionId) return;
-    if (routeSessionId === sessionId && status !== 'pending') return;
 
-    const cached = sessionCache.get(routeSessionId);
+    const {
+      sessionId: currentSessionId,
+      status: currentStatus,
+      sessionCache: currentSessionCache,
+    } = useChatStore.getState();
+
+    if (routeSessionId === currentSessionId && currentStatus !== 'pending') return;
+
+    const cached = currentSessionCache.get(routeSessionId);
     if (cached) {
       switchSession(routeSessionId);
       return;
@@ -103,7 +108,7 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [routeSessionId, sessionId, status, sessionCache, switchSession, removeSession, t]);
+  }, [routeSessionId, switchSession, removeSession, t]);
 
   const handleSend = (message: string) => {
     if (sessionId) {

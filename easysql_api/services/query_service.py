@@ -687,12 +687,74 @@ class QueryService:
 
         return result
 
+    def _summarize_schema_hint(self, schema_hint: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(schema_hint, dict):
+            return {}
+        tables = schema_hint.get("tables", [])
+        table_names: list[str] = []
+        if isinstance(tables, list):
+            for item in tables:
+                if isinstance(item, dict):
+                    name = item.get("name")
+                    if isinstance(name, str) and name:
+                        table_names.append(name)
+        semantic_columns = schema_hint.get("semantic_columns", [])
+        semantic_count = len(semantic_columns) if isinstance(semantic_columns, list) else 0
+
+        summary = {"tables_count": len(table_names), "tables": table_names[:10]}
+        if semantic_count:
+            summary["semantic_columns_count"] = semantic_count
+        return summary
+
     def _sanitize_state(self, state: dict[str, Any] | None) -> dict[str, Any] | None:
         if not state or not isinstance(state, dict):
             return None
-        sanitized = dict(state)
-        sanitized.pop("messages", None)
-        return sanitized
+        sanitized: dict[str, Any] = {}
+        safe_keys = {
+            "generated_sql",
+            "validation_passed",
+            "validation_result",
+            "clarification_questions",
+            "clarified_query",
+            "error",
+        }
+        for key in safe_keys:
+            value = state.get(key)
+            if value is not None:
+                sanitized[key] = value
+
+        if state.get("schema_hint"):
+            schema_hint_summary = self._summarize_schema_hint(state["schema_hint"])
+            if schema_hint_summary:
+                sanitized["schema_hint_summary"] = schema_hint_summary
+
+        if state.get("retrieval_result"):
+            rr = state["retrieval_result"]
+            if isinstance(rr, dict):
+                sanitized["retrieval_summary"] = {
+                    "tables_count": len(rr.get("tables", [])),
+                    "tables": rr.get("tables", [])[:10],
+                }
+
+        if state.get("context_output"):
+            co = state["context_output"]
+            if isinstance(co, dict):
+                sanitized["context_summary"] = {
+                    "total_tokens": co.get("total_tokens"),
+                    "has_system_prompt": bool(co.get("system_prompt")),
+                    "has_user_prompt": bool(co.get("user_prompt")),
+                }
+
+        if state.get("history_summary"):
+            sanitized["history_summary"] = state["history_summary"]
+
+        if state.get("shift_reason"):
+            sanitized["shift_reason"] = state["shift_reason"]
+
+        if state.get("needs_new_retrieval") is not None:
+            sanitized["needs_new_retrieval"] = state["needs_new_retrieval"]
+
+        return sanitized or None
 
     async def follow_up_query(
         self,

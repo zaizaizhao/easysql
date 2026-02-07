@@ -63,9 +63,25 @@ class VizPlanNode:
 
         for i, intent in enumerate(plan.charts):
             prefix = f"Chart {i + 1}"
+            chart_type = str(intent.chart_type)
 
             if not intent.title:
                 errors.append(f"{prefix}: title is required but empty")
+
+            if chart_type in {
+                "bar",
+                "line",
+                "area",
+                "horizontal_bar",
+                "grouped_bar",
+                "stacked_bar",
+                "stacked_area",
+                "scatter",
+            }:
+                if not intent.x_axis_label:
+                    errors.append(f"{prefix}: xAxisLabel is required for axis charts")
+                if not intent.y_axis_label:
+                    errors.append(f"{prefix}: yAxisLabel is required for axis charts")
 
             if intent.group_by and intent.group_by not in columns:
                 errors.append(

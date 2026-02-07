@@ -177,7 +177,11 @@ export function MessageItem({
                   messageId={message.id}
                   turnId={message.turnId}
                   tablesUsed={message.retrievalSummary?.tables}
-                  enableLlmCharts={!!message.chartPlan || (!!isLatestAssistant && !message.isHistorical)}
+                  enableLlmCharts={
+                    !!message.chartPlan ||
+                    (!!message.turnId && !message.isHistorical) ||
+                    (!!isLatestAssistant && !message.isHistorical)
+                  }
                   chartPlan={message.chartPlan}
                   chartReasoning={message.chartReasoning}
                 />

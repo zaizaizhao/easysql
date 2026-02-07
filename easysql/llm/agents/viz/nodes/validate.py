@@ -32,6 +32,16 @@ _ALLOWED_CHART_TYPES: set[str] = {
 }
 _ALLOWED_AGGS: set[str] = {"count", "sum", "avg", "min", "max"}
 _ALLOWED_SORT: set[str] = {"ascending", "descending", "none"}
+_AXIS_LABEL_REQUIRED_TYPES: set[str] = {
+    "bar",
+    "line",
+    "area",
+    "horizontal_bar",
+    "grouped_bar",
+    "stacked_bar",
+    "stacked_area",
+    "scatter",
+}
 
 PIE_MAX_CATEGORIES = 7
 TOP_N_DEFAULT = 10
@@ -254,52 +264,40 @@ def _fallback_plan(
     )
 
 
-def _ensure_title(intent: ChartIntent, question: str | None) -> None:
-    """Ensure chart has a title, generate one if missing."""
-    if intent.title:
-        return
-
-    x_col = intent.group_by or intent.x_field
-    y_col = intent.value_field or intent.y_field
-    agg = str(intent.agg) if intent.agg else None
-
-    intent.title = _generate_fallback_title(
-        str(intent.chart_type),
-        x_col,
-        y_col,
-        agg,
-        question,
-    )
-
-
 def _validate_intent(
     intent: ChartIntent,
     columns: list[str],
     type_map: dict[str, ColumnDataType],
 ) -> list[str]:
     errors: list[str] = []
+    chart_type = str(intent.chart_type)
 
     if not intent.group_by:
-        if str(intent.chart_type) == "horizontal_bar" and intent.y_field:
+        if chart_type == "horizontal_bar" and intent.y_field:
             intent.group_by = intent.y_field
-        elif (
-            str(intent.chart_type)
-            in {
-                "bar",
-                "line",
-                "area",
-                "grouped_bar",
-                "stacked_bar",
-                "stacked_area",
-                "pie",
-                "donut",
-            }
-            and intent.x_field
-        ):
+        elif chart_type in {
+            "bar",
+            "line",
+            "area",
+            "grouped_bar",
+            "stacked_bar",
+            "stacked_area",
+            "pie",
+            "donut",
+        } and intent.x_field:
             intent.group_by = intent.x_field
 
-    if str(intent.chart_type) not in _ALLOWED_CHART_TYPES:
+    if chart_type not in _ALLOWED_CHART_TYPES:
         errors.append(f"chartType invalid: {intent.chart_type}")
+
+    if not intent.title:
+        errors.append("title is required")
+
+    if chart_type in _AXIS_LABEL_REQUIRED_TYPES:
+        if not intent.x_axis_label:
+            errors.append("xAxisLabel is required for axis charts")
+        if not intent.y_axis_label:
+            errors.append("yAxisLabel is required for axis charts")
 
     if intent.agg and str(intent.agg) not in _ALLOWED_AGGS:
         errors.append(f"agg invalid: {intent.agg}")
@@ -329,7 +327,7 @@ def _validate_intent(
     if intent.series_field and intent.series_field not in columns:
         errors.append(f"seriesField not found: {intent.series_field}")
 
-    if intent.chart_type == "scatter":
+    if chart_type == "scatter":
         if not intent.x_field or not intent.y_field:
             errors.append("scatter requires xField and yField")
         if intent.x_field and intent.x_field not in columns:
@@ -391,7 +389,6 @@ def validate_plan_node(state: VizState) -> dict[str, Any]:
             continue
 
         _enforce_pie_topn(intent, profile)
-        _ensure_title(intent, question)
         valid_charts.append(intent)
 
     if not valid_charts:

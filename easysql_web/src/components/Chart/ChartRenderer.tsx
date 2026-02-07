@@ -276,8 +276,8 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
         colorField={config.colorField}
         height={height}
         axis={{
-          x: buildAxisConfig(config.xAxisLabel || config.xField),
-          y: buildAxisConfig(config.yAxisLabel || config.yField),
+          x: buildAxisConfig(config.xAxisLabel),
+          y: buildAxisConfig(config.yAxisLabel),
         }}
         legend={config.showLegend ? { position: config.legendPosition || 'top' } : false}
       />

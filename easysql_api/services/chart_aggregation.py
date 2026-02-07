@@ -78,9 +78,25 @@ def aggregate_chart_data(
 
     agg: AggType = intent.agg or ("count" if not intent.value_field else "sum")
     series_field = intent.series_field
+    value_field = intent.value_field
+
+    if agg == "count" and not value_field:
+        should_infer = False
+        if group_by:
+            should_infer = _is_grouped_once(processed_rows, group_by)
+        elif len(processed_rows) == 1:
+            should_infer = True
+
+        if should_infer:
+            value_field = _infer_value_field(
+                processed_rows,
+                exclude_fields={group_by, series_field},
+            )
+            if value_field:
+                agg = "sum"
 
     if str(intent.chart_type) == "metric_card":
-        return _aggregate_metric_card(processed_rows, intent, agg, group_by)
+        return _aggregate_metric_card(processed_rows, intent, agg, group_by, value_field)
 
     if not group_by:
         return []
@@ -102,7 +118,7 @@ def aggregate_chart_data(
             state.update(1.0)
             continue
 
-        numeric = _coerce_numeric(row.get(intent.value_field or ""))
+        numeric = _coerce_numeric(row.get(value_field or ""))
         if numeric is None:
             continue
         state.update(numeric)
@@ -124,6 +140,7 @@ def _aggregate_metric_card(
     intent: ChartIntent,
     agg: AggType,
     group_by: str | None,
+    value_field: str | None,
 ) -> list[dict[str, Any]]:
     if not group_by:
         state = _AggState()
@@ -131,7 +148,7 @@ def _aggregate_metric_card(
             if agg == "count":
                 state.update(1.0)
                 continue
-            numeric = _coerce_numeric(row.get(intent.value_field or ""))
+            numeric = _coerce_numeric(row.get(value_field or ""))
             if numeric is None:
                 continue
             state.update(numeric)
@@ -145,7 +162,7 @@ def _aggregate_metric_card(
         if agg == "count":
             state.update(1.0)
             continue
-        numeric = _coerce_numeric(row.get(intent.value_field or ""))
+        numeric = _coerce_numeric(row.get(value_field or ""))
         if numeric is None:
             continue
         state.update(numeric)
@@ -235,16 +252,116 @@ def _apply_transforms(
         processed = _apply_binning(
             processed, intent.binning.field, alias, intent.binning.bin_size, intent.binning.bins
         )
-        group_by = group_by or alias
+        if group_by is None or group_by == intent.binning.field:
+            group_by = alias
 
     if isinstance(intent.time_grain, TimeGrainConfig):
         alias = intent.time_grain.alias or f"{intent.time_grain.field}_{intent.time_grain.grain}"
         processed = _apply_time_grain(
             processed, intent.time_grain.field, intent.time_grain.grain, alias
         )
-        group_by = group_by or alias
+        if group_by is None or group_by == intent.time_grain.field:
+            group_by = alias
 
     return processed, group_by
+
+
+def _is_grouped_once(rows: list[dict[str, Any]], group_by: str, sample_size: int = 50) -> bool:
+    if not rows:
+        return False
+    sample = rows[:sample_size]
+    counts: dict[str, int] = {}
+    for row in sample:
+        key = row.get(group_by)
+        key_str = "NULL" if key is None else str(key)
+        counts[key_str] = counts.get(key_str, 0) + 1
+        if counts[key_str] > 1:
+            return False
+    return True
+
+
+def _infer_value_field(
+    rows: list[dict[str, Any]],
+    exclude_fields: set[str | None],
+    sample_size: int = 50,
+) -> str | None:
+    if not rows:
+        return None
+
+    hints = (
+        "count",
+        "cnt",
+        "num",
+        "total",
+        "sum",
+        "qty",
+        "quantity",
+        "amount",
+        "people",
+        "users",
+        "orders",
+        "人数",
+        "人次",
+        "数量",
+        "次数",
+        "用户数",
+        "订单数",
+    )
+
+    exclude = {field for field in exclude_fields if field}
+    sample = rows[:sample_size]
+    numeric_hits: dict[str, int] = {}
+
+    for row in sample:
+        for key, value in row.items():
+            if key in exclude:
+                continue
+            if _coerce_numeric(value) is not None:
+                numeric_hits[key] = numeric_hits.get(key, 0) + 1
+
+    if not numeric_hits:
+        return None
+
+    threshold = max(1, int(len(sample) * 0.6))
+    numeric_fields = [key for key, hits in numeric_hits.items() if hits >= threshold]
+    if not numeric_fields:
+        return None
+
+    for key in numeric_fields:
+        lower_key = key.lower()
+        if any(hint in lower_key for hint in hints):
+            return key
+
+    if len(numeric_fields) == 1:
+        return numeric_fields[0]
+
+    return None
+
+
+def _build_binning_value_parser(field: str):
+    lower_field = field.lower()
+    is_birth_field = any(token in lower_field for token in ("birth", "dob", "birthday"))
+
+    def _parse(value: object) -> float | None:
+        numeric = _coerce_numeric(value)
+        if numeric is not None:
+            return numeric
+        dt = _parse_datetime(value)
+        if not dt:
+            return None
+        if is_birth_field:
+            return _age_years(dt)
+        return float(dt.year)
+
+    return _parse
+
+
+def _age_years(dt: datetime) -> float:
+    today = datetime.utcnow().date()
+    years = today.year - dt.year
+    if (today.month, today.day) < (dt.month, dt.day):
+        years -= 1
+    return float(max(years, 0))
 
 
 def _apply_binning(
@@ -254,10 +371,11 @@ def _apply_binning(
     bin_size: int | None,
     bins: int | None,
 ) -> list[dict[str, Any]]:
+    value_parser = _build_binning_value_parser(field)
     values = [
-        _coerce_numeric(row.get(field))
+        value_parser(row.get(field))
         for row in rows
-        if _coerce_numeric(row.get(field)) is not None
+        if value_parser(row.get(field)) is not None
     ]
     if not values:
         return []
@@ -274,7 +392,7 @@ def _apply_binning(
 
     processed: list[dict[str, Any]] = []
     for row in rows:
-        numeric = _coerce_numeric(row.get(field))
+        numeric = value_parser(row.get(field))
         label = "NULL"
         if numeric is not None and bin_size:
             start = int(numeric // bin_size) * bin_size

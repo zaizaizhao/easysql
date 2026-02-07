@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from easysql_api.domain.entities.message import Message
-from easysql_api.domain.entities.session import Session
+from easysql_api.domain.entities.session import Session, SessionSummary
 from easysql_api.domain.entities.turn import Turn
 from easysql_api.domain.value_objects.query_status import QueryStatus
 
@@ -16,6 +16,10 @@ class SessionRepository(Protocol):
     async def get(self, session_id: str) -> Session | None: ...
 
     async def list_all(self, limit: int = 100, offset: int = 0) -> list[Session]: ...
+
+    async def list_summaries(
+        self, limit: int = 100, offset: int = 0
+    ) -> list[SessionSummary]: ...
 
     async def count(self) -> int: ...
 

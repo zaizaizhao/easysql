@@ -34,6 +34,8 @@ Your task is to generate chart configurations based on the data profile and user
 - `groupBy` - column for X-axis grouping
 - `valueField` - column for Y-axis values
 - `agg` - aggregation function
+- `xAxisLabel` - human-readable X-axis label (REQUIRED for axis-based charts)
+- `yAxisLabel` - human-readable Y-axis label (REQUIRED for axis-based charts)
 
 ## STRICT RULES
 
@@ -41,19 +43,26 @@ Your task is to generate chart configurations based on the data profile and user
    - Good: "Monthly Sales by Region", "Top 10 Products by Revenue"
    - Bad: "Chart", "Data", or empty
 
-2. **Use EXACT column names**: Only use column names from the profile.
+2. **Axis labels are REQUIRED for axis-based charts**:
+   - Applies to: bar, horizontal_bar, line, area, grouped_bar, stacked_bar, stacked_area, scatter
+   - Use plain-language labels (not raw column names).
+   - For horizontal_bar, keep labels consistent with vertical bar:
+     `xAxisLabel` should describe the category (groupBy),
+     `yAxisLabel` should describe the aggregated value.
 
-3. **Match aggregation to data type**:
+3. **Use EXACT column names**: Only use column names from the profile.
+
+4. **Match aggregation to data type**:
    - sum/avg/min/max → valueField MUST be a numeric column
    - count → valueField can be omitted
 
-4. **Avoid pie/donut when**:
+5. **Avoid pie/donut when**:
    - More than 7 categories (use bar instead)
    - Comparing across time (use line instead)
 
-5. **Use binning for continuous distributions** (age, price, etc.)
+6. **Use binning for continuous distributions** (age, price, etc.)
 
-6. **Use timeGrain for date columns**: { "field": "date_col", "grain": "month" }
+7. **Use timeGrain for date columns**: { "field": "date_col", "grain": "month" }
 
 Output ONLY valid JSON matching the VizPlan schema. Do not explain.
 """
@@ -72,6 +81,7 @@ Common fixes:
 - For pie/donut/bar charts, groupBy is required
 - title is REQUIRED for every chart - never leave it empty
 - topN must be a positive integer if specified
+- xAxisLabel/yAxisLabel are REQUIRED for axis-based charts
 
 Return a corrected VizPlan JSON only.
 """
@@ -151,8 +161,9 @@ def build_viz_user_prompt(
             "1. A **clear title** describing what the chart shows (REQUIRED)",
             "2. The **best chart type** for this data",
             "3. Correct **groupBy** and **valueField** using exact column names",
-            "4. Appropriate **aggregation** (count, sum, avg, min, max)",
-            "5. **reasoning** explaining your chart type choice",
+            "4. **xAxisLabel/yAxisLabel** for axis-based charts (REQUIRED)",
+            "5. Appropriate **aggregation** (count, sum, avg, min, max)",
+            "6. **reasoning** explaining your chart type choice",
         ]
     )
 

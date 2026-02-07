@@ -18,26 +18,54 @@ router = APIRouter()
 logger = get_logger(__name__)
 
 
+def _resolve_turn(session, request: ChartRecommendRequest):
+    turn = session.get_turn(request.turn_id) if request.turn_id else None
+    if not turn and request.sql:
+        for candidate in reversed(session.turns):
+            if candidate.final_sql == request.sql:
+                turn = candidate
+                break
+    if not turn and session.turns:
+        turn = session.turns[-1]
+    return turn
+
+
 @router.post("/chart/recommend", response_model=ChartRecommendResponse)
 async def recommend_chart(
     request: ChartRecommendRequest,
     service: Annotated[ChartService, Depends(get_chart_service_dep)],
     repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
 ) -> ChartRecommendResponse:
+    session = None
+    turn = None
+    if request.plan_only and request.session_id:
+        session = await repository.get(request.session_id)
+        if session:
+            turn = _resolve_turn(session, request)
+            if turn and turn.chart_plan:
+                plan_data = turn.chart_plan
+                if isinstance(plan_data, dict):
+                    suitable = bool(plan_data.get("suitable", True) and plan_data.get("charts"))
+                    reasoning = turn.chart_reasoning or plan_data.get("reasoning")
+                    return ChartRecommendResponse(
+                        suitable=suitable,
+                        config=None,
+                        chartData=None,
+                        reasoning=reasoning,
+                        intent=None,
+                        plan=plan_data,
+                        error=None if suitable else "No suitable chart suggestions",
+                    )
+
     response = await service.recommend(request)
 
     if request.plan_only and request.session_id and response.plan:
         try:
-            session = await repository.get(request.session_id)
+            if session is None:
+                session = await repository.get(request.session_id)
             if session:
-                turn = session.get_turn(request.turn_id) if request.turn_id else None
-                if not turn and request.sql:
-                    for candidate in reversed(session.turns):
-                        if candidate.final_sql == request.sql:
-                            turn = candidate
-                            break
-                if not turn and session.turns:
-                    turn = session.turns[-1]
+                if turn is None:
+                    turn = _resolve_turn(session, request)
                 if turn:
                     turn.chart_plan = response.plan.model_dump(by_alias=True)
                     turn.chart_reasoning = response.reasoning

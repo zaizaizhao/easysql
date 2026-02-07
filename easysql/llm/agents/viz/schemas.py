@@ -208,12 +208,12 @@ class ChartIntent(BaseModel):
     x_axis_label: str | None = Field(
         default=None,
         alias="xAxisLabel",
-        description="Human-readable label for X-axis",
+        description="Human-readable label for X-axis (required for axis-based charts)",
     )
     y_axis_label: str | None = Field(
         default=None,
         alias="yAxisLabel",
-        description="Human-readable label for Y-axis",
+        description="Human-readable label for Y-axis (required for axis-based charts)",
     )
     x_unit: str | None = Field(
         default=None,

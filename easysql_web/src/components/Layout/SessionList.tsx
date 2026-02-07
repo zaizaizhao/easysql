@@ -15,6 +15,12 @@ interface SessionListProps {
   collapsed?: boolean;
 }
 
+interface UnsavedCurrentSession {
+  session_id: string;
+  updated_at: string;
+  isCurrentUnsaved: true;
+}
+
 export function SessionList({ collapsed }: SessionListProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
@@ -73,6 +79,7 @@ export function SessionList({ collapsed }: SessionListProps) {
           role: 'user',
           content: turn.question,
           timestamp: new Date(turn.created_at),
+          isHistorical: true,
         });
 
         // Build assistant message from turn data
@@ -83,6 +90,10 @@ export function SessionList({ collapsed }: SessionListProps) {
           timestamp: new Date(turn.created_at),
           sql: turn.final_sql,
           validationPassed: turn.validation_passed,
+          turnId: turn.turn_id,
+          chartPlan: turn.chart_plan,
+          chartReasoning: turn.chart_reasoning,
+          isHistorical: true,
         };
 
         // Handle clarifications if any
@@ -141,7 +152,7 @@ export function SessionList({ collapsed }: SessionListProps) {
   };
 
   const groupedSessions = useMemo(() => {
-    const groups: Record<string, (SessionInfo | { session_id: string; isCurrentUnsaved: boolean })[]> = {
+    const groups: Record<string, Array<SessionInfo | UnsavedCurrentSession>> = {
       today: [],
       yesterday: [],
       previous7Days: [],
@@ -149,11 +160,16 @@ export function SessionList({ collapsed }: SessionListProps) {
     };
 
     const currentInStore = storeSessions.find(s => s.session_id === currentSessionId);
-    let allSessions = [...storeSessions];
+    let allSessions: Array<SessionInfo | UnsavedCurrentSession> = [...storeSessions];
     
     if (currentSessionId && !currentInStore) {
         // Add unsaved current session to the top
-        allSessions = [{ session_id: currentSessionId, isCurrentUnsaved: true, updated_at: new Date().toISOString() } as any, ...allSessions];
+        const unsavedSession: UnsavedCurrentSession = {
+          session_id: currentSessionId,
+          updated_at: new Date().toISOString(),
+          isCurrentUnsaved: true,
+        };
+        allSessions = [unsavedSession, ...allSessions];
     }
 
     const now = new Date();
