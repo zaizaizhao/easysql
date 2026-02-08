@@ -111,7 +111,10 @@ alembic upgrade head
 首次运行需要把数据库 Schema 同步到 Neo4j 和 Milvus：
 
 ```bash
-python main.py run
+python main.py
+
+# 仅提取，不写入 Neo4j / Milvus
+python main.py --no-neo4j --no-milvus
 ```
 
 ### 启动服务

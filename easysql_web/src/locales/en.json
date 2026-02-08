@@ -66,7 +66,8 @@
     "modalTitle": "Follow up from this message",
     "modalOk": "Send",
     "modalCancel": "Cancel",
-    "modalPlaceholder": "Enter your follow-up question..."
+    "modalPlaceholder": "Enter your follow-up question...",
+    "fewShotRetrieved": "Retrieved {{count}} few-shot examples"
   },
   "clarification": {
     "needConfirm": "Need your confirmation:",
@@ -111,7 +112,8 @@
     "shift_detect": "Analyze Intent",
     "sql_agent": "SQL Agent",
     "validationPassed": "Validation passed",
-    "validationFailed": "Validation failed"
+    "validationFailed": "Validation failed",
+    "retrieve_few_shot": "Retrieve Few-Shot"
   },
   "agent": {
     "thinking": "Thinking",
@@ -178,6 +180,9 @@
     "retry": "Retry",
     "export": "Export as image",
     "suggestionsTitle": "Suggested Charts",
+    "thinkingPhaseProfile": "Profiling result columns",
+    "thinkingPhaseIntent": "Inferring visual intent",
+    "thinkingPhaseCompose": "Drafting chart suggestions",
     "selectSuggestion": "Select a chart to generate",
     "changeSuggestion": "Change",
     "generating": "Generating chart suggestions...",

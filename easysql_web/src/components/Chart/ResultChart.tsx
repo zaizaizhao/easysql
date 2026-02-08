@@ -15,7 +15,20 @@
  */
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Alert, Empty, Spin, Space, Button, Tooltip, Typography, theme, Card, Tag, message } from 'antd';
+import {
+  Alert,
+  Empty,
+  Spin,
+  Space,
+  Button,
+  Tooltip,
+  Typography,
+  theme,
+  Card,
+  Tag,
+  message,
+  Skeleton,
+} from 'antd';
 import {
   DownloadOutlined,
   InfoCircleOutlined,
@@ -103,9 +116,38 @@ export function ResultChart({
   const [selectedIntent, setSelectedIntent] = useState<ChartIntent | null>(null);
   const [selectedResponse, setSelectedResponse] = useState<ChartRecommendResponse | null>(null);
   const [llmChartData, setLlmChartData] = useState<Record<string, unknown>[] | null>(null);
+  const [planThinkingTick, setPlanThinkingTick] = useState(0);
 
   // Track if we've already made a recommend call for this turn to prevent duplicates
   const recommendCalledRef = useRef<string | null>(null);
+
+  const chartThinkingPhases = useMemo(
+    () => [
+      t('chart.thinkingPhaseProfile', 'Profiling result columns'),
+      t('chart.thinkingPhaseIntent', 'Inferring visual intent'),
+      t('chart.thinkingPhaseCompose', 'Drafting chart suggestions'),
+    ],
+    [t]
+  );
+
+  const chartThinkingText =
+    `${chartThinkingPhases[planThinkingTick % chartThinkingPhases.length]}` +
+    '.'.repeat((planThinkingTick % 3) + 1);
+
+  useEffect(() => {
+    if (!planLoading) {
+      setPlanThinkingTick(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setPlanThinkingTick((value) => value + 1);
+    }, 700);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [planLoading]);
 
   useEffect(() => {
     if (!useLlmRecommendation) {
@@ -527,6 +569,54 @@ export function ResultChart({
           image={Empty.PRESENTED_IMAGE_SIMPLE}
           description={t('execute.noData')}
         />
+      </div>
+    );
+  }
+
+  if (useLlmRecommendation && planLoading && !llmSelectedReady) {
+    return (
+      <div
+        style={{
+          padding: 24,
+          border: `1px solid ${token.colorBorder}`,
+          borderRadius: 8,
+          background: token.colorBgContainer,
+        }}
+      >
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Space size={8}>
+            <Text strong>{t('chart.suggestionsTitle')}</Text>
+            <Spin size="small" />
+          </Space>
+
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {chartThinkingText}
+          </Text>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: 12,
+            }}
+          >
+            {[0, 1, 2].map((index) => (
+              <Card
+                key={`chart-thinking-${index}`}
+                size="small"
+                style={{ borderColor: token.colorBorder }}
+              >
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <Skeleton.Button active size="small" shape="round" style={{ width: '45%' }} />
+                  <Skeleton.Input active size="small" style={{ width: '100%' }} />
+                  <Skeleton.Input active size="small" style={{ width: '70%' }} />
+                </Space>
+              </Card>
+            ))}
+          </div>
+
+          <Text type="secondary">{t('chart.generating')}</Text>
+        </Space>
       </div>
     );
   }

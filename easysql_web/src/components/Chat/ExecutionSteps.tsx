@@ -11,6 +11,7 @@ import {
   LoadingOutlined,
   QuestionCircleOutlined,
   SafetyCertificateOutlined,
+  StarOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
 import type { StepTrace } from '@/types';
@@ -28,6 +29,7 @@ const STEP_ICONS: Record<string, React.ReactNode> = {
   analyze: <RobotOutlined />,
   clarify: <QuestionCircleOutlined />,
   retrieve: <DatabaseOutlined />,
+  retrieve_few_shot: <StarOutlined />,
   build_context: <BuildOutlined />,
   retrieve_code: <CodeOutlined />,
   generate_sql: <CodeOutlined />,
@@ -41,6 +43,7 @@ const PIPELINE_FULL = [
   'analyze',
   'clarify',
   'retrieve',
+  'retrieve_few_shot',
   'build_context',
   'retrieve_code',
   'generate_sql',
@@ -50,6 +53,7 @@ const PIPELINE_FULL = [
 // Fast flow (Fast Mode) - Legacy
 const PIPELINE_FAST = [
   'retrieve',
+  'retrieve_few_shot',
   'build_context',
   'retrieve_code',
   'generate_sql',
@@ -62,6 +66,7 @@ const PIPELINE_AGENT_FULL = [
   'analyze',
   'clarify',
   'retrieve',
+  'retrieve_few_shot',
   'build_context',
   'retrieve_code',
   'sql_agent'
@@ -69,6 +74,7 @@ const PIPELINE_AGENT_FULL = [
 
 const PIPELINE_AGENT_FAST = [
   'retrieve',
+  'retrieve_few_shot',
   'build_context',
   'retrieve_code',
   'sql_agent'
@@ -94,6 +100,7 @@ const PIPELINE_FOLLOWUP_LONG = [
   'analyze',
   'clarify',
   'retrieve',
+  'retrieve_few_shot',
   'build_context',
   'retrieve_code',
   'generate_sql',
@@ -107,6 +114,7 @@ const PIPELINE_FOLLOWUP_LONG_AGENT = [
   'analyze',
   'clarify',
   'retrieve',
+  'retrieve_few_shot',
   'build_context',
   'retrieve_code',
   'sql_agent'
@@ -181,6 +189,9 @@ export function ExecutionSteps({ trace = [], isStreaming }: ExecutionStepsProps)
       }
       if (stepKey === 'retrieve' && data.retrieval_summary) {
           return <Text type="secondary" style={{fontSize: 12}}>{t('chat.tablesRetrieved', { count: data.retrieval_summary.tables_count })}</Text>;
+      }
+      if (stepKey === 'retrieve_few_shot' && Array.isArray(data.few_shot_examples)) {
+          return <Text type="secondary" style={{fontSize: 12}}>{t('chat.fewShotRetrieved', { count: data.few_shot_examples.length })}</Text>;
       }
       if (stepKey === 'validate_sql') {
           return data.validation_passed ? 

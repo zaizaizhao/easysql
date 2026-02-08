@@ -7,6 +7,7 @@ SQL is validated inside the agent loop before returning to frontend.
 
 from __future__ import annotations
 
+import json
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
@@ -321,17 +322,19 @@ class SqlAgentNode(BaseNode):
         """Stream LLM response and collect full message."""
         content_parts: list[str] = []
         tool_calls: list[dict] = []
-        tool_call_chunks: dict[int, dict] = {}
+        tool_call_chunks: dict[int, dict[str, str]] = {}
 
         async for chunk in llm.astream(messages):
             if chunk.content:
-                content_parts.append(chunk.content)
-                if writer:
+                chunk_text = self._normalize_message_content(chunk.content)
+                if chunk_text:
+                    content_parts.append(chunk_text)
+                if writer and chunk_text:
                     writer(
                         {
                             "type": "token",
                             "iteration": iteration,
-                            "content": chunk.content,
+                            "content": chunk_text,
                         }
                     )
 
@@ -346,13 +349,13 @@ class SqlAgentNode(BaseNode):
                     if tc_chunk.get("id"):
                         tool_call_chunks[idx]["id"] = tc_chunk["id"]
                     if tc_chunk.get("args"):
-                        tool_call_chunks[idx]["args"] += tc_chunk["args"]
+                        tool_call_chunks[idx]["args"] += self._normalize_tool_args_chunk(
+                            tc_chunk["args"]
+                        )
 
         for idx in sorted(tool_call_chunks.keys()):
             tc = tool_call_chunks[idx]
             if tc["name"]:
-                import json
-
                 try:
                     args = json.loads(tc["args"]) if tc["args"] else {}
                 except json.JSONDecodeError:
@@ -379,6 +382,39 @@ class SqlAgentNode(BaseNode):
             )
 
         return AIMessage(content=full_content, tool_calls=tool_calls)
+
+    def _normalize_message_content(self, content: Any) -> str:
+        """Normalize provider-specific message content into plain text."""
+        if content is None:
+            return ""
+
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            return "".join(self._normalize_message_content(part) for part in content)
+
+        if isinstance(content, dict):
+            text_fragments = []
+            for key in ("text", "content", "output_text"):
+                value = content.get(key)
+                if value:
+                    text_fragments.append(self._normalize_message_content(value))
+            if text_fragments:
+                return "".join(text_fragments)
+            return ""
+
+        return str(content)
+
+    def _normalize_tool_args_chunk(self, args_chunk: Any) -> str:
+        """Normalize tool-call argument chunks to JSON/string segments."""
+        if isinstance(args_chunk, str):
+            return args_chunk
+
+        try:
+            return json.dumps(args_chunk, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(args_chunk)
 
     async def _force_validate(
         self,

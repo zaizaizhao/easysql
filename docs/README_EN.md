@@ -111,7 +111,10 @@ alembic upgrade head
 First run syncs database schema to Neo4j and Milvus:
 
 ```bash
-python main.py run
+python main.py
+
+# Extract only, skip Neo4j / Milvus writes
+python main.py --no-neo4j --no-milvus
 ```
 
 ### Start Services

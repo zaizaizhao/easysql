@@ -68,7 +68,8 @@
     "modalTitle": "基于此消息追问",
     "modalOk": "发送",
     "modalCancel": "取消",
-    "modalPlaceholder": "输入您的追问..."
+    "modalPlaceholder": "输入您的追问...",
+    "fewShotRetrieved": "检索到 {{count}} 条 Few-Shot 示例"
   },
   "clarification": {
     "needConfirm": "需要您确认：",
@@ -113,7 +114,8 @@
     "shift_detect": "意图分析",
     "sql_agent": "SQL Agent",
     "validationPassed": "验证通过",
-    "validationFailed": "验证失败"
+    "validationFailed": "验证失败",
+    "retrieve_few_shot": "Few-Shot 检索"
   },
   "agent": {
     "thinking": "Thinking",
@@ -180,6 +182,9 @@
     "retry": "重试",
     "export": "导出为图片",
     "suggestionsTitle": "图表建议",
+    "thinkingPhaseProfile": "正在解析结果字段",
+    "thinkingPhaseIntent": "正在推断可视化意图",
+    "thinkingPhaseCompose": "正在生成候选图表",
     "selectSuggestion": "请选择一个图表生成",
     "changeSuggestion": "切换",
     "generating": "正在生成图表建议...",
@@ -189,7 +194,14 @@
     "intentSummary": "{chartType}，按 {groupBy} 做 {agg}",
     "intentSummaryNoGroup": "{chartType}，{agg}",
     "intentSummaryScatter": "{chartType}：{xField} vs {yField}",
-    "valueFieldHints": ["人数", "人次", "数量", "次数", "用户数", "订单数"],
+    "valueFieldHints": [
+      "人数",
+      "人次",
+      "数量",
+      "次数",
+      "用户数",
+      "订单数"
+    ],
     "agg": {
       "count": "数量",
       "sum": "总和",
