@@ -19,6 +19,10 @@
     "collapse": "Collapse",
     "expand": "Expand"
   },
+  "language": {
+    "zh": "Chinese",
+    "en": "English"
+  },
   "nav": {
     "chat": "Chat",
     "history": "History",
@@ -183,6 +187,7 @@
     "intentSummary": "{chartType} with {agg} by {groupBy}",
     "intentSummaryNoGroup": "{chartType} with {agg}",
     "intentSummaryScatter": "{chartType}: {xField} vs {yField}",
+    "valueFieldHints": [],
     "agg": {
       "count": "count",
       "sum": "sum",
@@ -206,6 +211,29 @@
       "grouped_bar": "Grouped Bar",
       "stacked_bar": "Stacked Bar",
       "stacked_area": "Stacked Area"
+    },
+    "recommendation": {
+      "separator": ", ",
+      "dataRows": "Data contains {{count}} rows",
+      "numericColumns": "{{count}} numeric columns",
+      "categoryColumns": "{{count}} categorical columns",
+      "dateColumns": "{{count}} date columns",
+      "typeReason": {
+        "bar": "Bar chart is suitable for category comparison",
+        "horizontal_bar": "Horizontal bar chart is suitable for ranking",
+        "line": "Line chart is suitable for trend changes",
+        "area": "Area chart is suitable for cumulative trends",
+        "pie": "Pie chart is suitable for proportion distribution",
+        "donut": "Donut chart is suitable for proportion distribution",
+        "scatter": "Scatter plot is suitable for correlation analysis",
+        "metric_card": "Metric card is suitable for key indicators",
+        "grouped_bar": "Grouped bar chart is suitable for multi-dimensional comparison",
+        "stacked_bar": "Stacked bar chart is suitable for composition analysis",
+        "stacked_area": "Stacked area chart is suitable for cumulative composition"
+      },
+      "noData": "No data available for visualization",
+      "noNumericColumns": "No numeric columns found for visualization",
+      "inferFailed": "Could not determine suitable chart type for this data"
     }
   },
   "database": {

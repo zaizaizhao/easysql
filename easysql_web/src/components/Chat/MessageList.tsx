@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Empty } from 'antd';
+import { useTranslation } from 'react-i18next';
 import { MessageItem } from './MessageItem';
 import { useChatStore } from '@/stores';
 
@@ -8,6 +9,7 @@ interface MessageListProps {
 }
 
 export function MessageList({ onClarificationSelect }: MessageListProps) {
+  const { t } = useTranslation();
   const { messages } = useChatStore();
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -28,7 +30,7 @@ export function MessageList({ onClarificationSelect }: MessageListProps) {
         }}
       >
         <Empty
-          description="开始一个新的对话"
+          description={t('chat.startNewConversation')}
           image={Empty.PRESENTED_IMAGE_SIMPLE}
         />
       </div>

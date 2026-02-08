@@ -480,6 +480,12 @@ class QueryService:
             "thread_id": thread_id,
         }
 
+        # Include chart plan and reasoning if available
+        if turn.chart_plan is not None:
+            response["chart_plan"] = turn.chart_plan
+        if turn.chart_reasoning is not None:
+            response["chart_reasoning"] = turn.chart_reasoning
+
         if not session.validation_passed:
             validation_result = result.get("validation_result", {})
             response["validation_error"] = result.get("error") or validation_result.get("error")

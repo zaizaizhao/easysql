@@ -6,7 +6,7 @@ import { useAppStore } from '@/stores';
 import { supportedLanguages, type SupportedLanguage } from '@/i18n';
 
 export function LanguageSwitcher() {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const { locale, setLocale } = useAppStore();
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function LanguageSwitcher() {
 
   const options = supportedLanguages.map((lang) => ({
     value: lang.code,
-    label: lang.label,
+    label: t(lang.labelKey),
   }));
 
   return (

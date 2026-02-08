@@ -15,8 +15,8 @@ export const resources = {
 } as const;
 
 export const supportedLanguages = [
-  { code: 'zh', label: '中文' },
-  { code: 'en', label: 'English' },
+  { code: 'zh', labelKey: 'language.zh' },
+  { code: 'en', labelKey: 'language.en' },
 ] as const;
 
 export type SupportedLanguage = (typeof supportedLanguages)[number]['code'];

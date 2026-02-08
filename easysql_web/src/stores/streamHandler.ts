@@ -309,6 +309,8 @@ export const processStreamEvent = (
       if (event.data.message_id) updates.serverId = event.data.message_id;
       if (event.data.thread_id) updates.threadId = event.data.thread_id;
       if (event.data.turn_id) updates.turnId = event.data.turn_id;
+      if (event.data.chart_plan) updates.chartPlan = event.data.chart_plan;
+      if (event.data.chart_reasoning) updates.chartReasoning = event.data.chart_reasoning;
 
       const clarificationQuestions =
         event.data.clarification_questions || event.data.clarification?.questions;

@@ -8,33 +8,33 @@
 
 /** Supported chart types */
 export type ChartType =
-  | 'bar'           // 柱形图 - 分类对比
-  | 'line'          // 折线图 - 趋势变化
-  | 'pie'           // 饼图 - 占比分布
-  | 'scatter'       // 散点图 - 相关性分析
-  | 'area'          // 面积图 - 累积趋势
-  | 'horizontal_bar' // 横向柱形图 - 排名对比
-  | 'donut'         // 环形图 - 占比分布（带中心）
-  | 'grouped_bar'   // 分组柱形图 - 多维对比
-  | 'stacked_bar'   // 堆叠柱形图 - 组成分析
-  | 'stacked_area'  // 堆叠面积图 - 累积组成
-  | 'metric_card';  // 数字卡片 - 单一指标
+  | 'bar'            // Bar chart - category comparison
+  | 'line'           // Line chart - trend changes
+  | 'pie'            // Pie chart - proportion distribution
+  | 'scatter'        // Scatter plot - correlation analysis
+  | 'area'           // Area chart - cumulative trends
+  | 'horizontal_bar' // Horizontal bar chart - ranking comparison
+  | 'donut'          // Donut chart - proportion distribution (with center)
+  | 'grouped_bar'    // Grouped bar chart - multi-dimensional comparison
+  | 'stacked_bar'    // Stacked bar chart - composition analysis
+  | 'stacked_area'   // Stacked area chart - cumulative composition
+  | 'metric_card';   // Metric card - single value
 
 /** Data column type for inference */
 export type ColumnDataType =
-  | 'number'    // 数值型
-  | 'string'    // 字符串/分类
-  | 'date'      // 日期时间
-  | 'boolean'   // 布尔值
-  | 'unknown';  // 未知类型
+  | 'number'    // Numeric
+  | 'string'    // String / categorical
+  | 'date'      // Date / time
+  | 'boolean'   // Boolean
+  | 'unknown';  // Unknown
 
 /** Column metadata with inferred type */
 export interface ColumnMeta {
   name: string;
   type: ColumnDataType;
-  distinctCount?: number;  // 不同值的数量
-  hasNull?: boolean;       // 是否包含空值
-  sample?: unknown[];      // 采样值
+  distinctCount?: number;  // Number of distinct values
+  hasNull?: boolean;       // Whether any null values exist
+  sample?: unknown[];      // Sample values
 }
 
 /** Sort direction */

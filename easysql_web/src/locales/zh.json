@@ -21,6 +21,10 @@
     "switchToLight": "切换到浅色模式",
     "switchToDark": "切换到深色模式"
   },
+  "language": {
+    "zh": "中文",
+    "en": "英文"
+  },
   "nav": {
     "chat": "对话",
     "history": "历史",
@@ -185,6 +189,7 @@
     "intentSummary": "{chartType}，按 {groupBy} 做 {agg}",
     "intentSummaryNoGroup": "{chartType}，{agg}",
     "intentSummaryScatter": "{chartType}：{xField} vs {yField}",
+    "valueFieldHints": ["人数", "人次", "数量", "次数", "用户数", "订单数"],
     "agg": {
       "count": "数量",
       "sum": "总和",
@@ -208,6 +213,29 @@
       "grouped_bar": "分组柱形图",
       "stacked_bar": "堆叠柱形图",
       "stacked_area": "堆叠面积图"
+    },
+    "recommendation": {
+      "separator": "，",
+      "dataRows": "数据包含 {{count}} 行",
+      "numericColumns": "{{count}} 个数值列",
+      "categoryColumns": "{{count}} 个分类列",
+      "dateColumns": "{{count}} 个日期列",
+      "typeReason": {
+        "bar": "柱形图适合展示分类对比",
+        "horizontal_bar": "横向柱形图适合展示排名",
+        "line": "折线图适合展示趋势变化",
+        "area": "面积图适合展示累积趋势",
+        "pie": "饼图适合展示占比分布",
+        "donut": "环形图适合展示占比分布",
+        "scatter": "散点图适合分析相关性",
+        "metric_card": "数字卡片适合展示关键指标",
+        "grouped_bar": "分组柱形图适合多维对比",
+        "stacked_bar": "堆叠柱形图适合组成分析",
+        "stacked_area": "堆叠面积图适合累积组成"
+      },
+      "noData": "暂无可用于可视化的数据",
+      "noNumericColumns": "未找到可用于可视化的数值列",
+      "inferFailed": "无法确定适合当前数据的图表类型"
     }
   },
   "database": {

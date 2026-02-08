@@ -12,6 +12,7 @@ import type {
   ChartConfig,
 } from '@/types/chart';
 import { inferChartConfig, analyzeColumns } from '@/utils/chartInfer';
+import i18n from '@/i18n';
 
 // LLM calls may take longer than default 30s timeout
 const LLM_TIMEOUT = 120000;
@@ -69,7 +70,7 @@ function getLocalRecommendation(
   if (!sampleData || sampleData.length === 0 || !columns || columns.length === 0) {
     return {
       suitable: false,
-      reasoning: 'No data available for visualization',
+      reasoning: tChart('chart.recommendation.noData'),
     };
   }
 
@@ -82,7 +83,7 @@ function getLocalRecommendation(
   if (numericColumns.length === 0) {
     return {
       suitable: false,
-      reasoning: 'No numeric columns found for visualization',
+      reasoning: tChart('chart.recommendation.noNumericColumns'),
     };
   }
 
@@ -92,7 +93,7 @@ function getLocalRecommendation(
   if (!config) {
     return {
       suitable: false,
-      reasoning: 'Could not determine suitable chart type for this data',
+      reasoning: tChart('chart.recommendation.inferFailed'),
     };
   }
 
@@ -113,6 +114,10 @@ function getLocalRecommendation(
 /**
  * Generate human-readable reasoning for chart recommendation
  */
+function tChart(key: string, options?: Record<string, unknown>): string {
+  return String(i18n.t(key, options));
+}
+
 function generateReasoning(
   config: ChartConfig,
   columnMetas: ReturnType<typeof analyzeColumns>,
@@ -124,34 +129,34 @@ function generateReasoning(
 
   const parts: string[] = [];
 
-  parts.push(`数据包含 ${rowCount} 行`);
-  parts.push(`${numericCols} 个数值列`);
+  parts.push(tChart('chart.recommendation.dataRows', { count: rowCount }));
+  parts.push(tChart('chart.recommendation.numericColumns', { count: numericCols }));
 
   if (categoryCols > 0) {
-    parts.push(`${categoryCols} 个分类列`);
+    parts.push(tChart('chart.recommendation.categoryColumns', { count: categoryCols }));
   }
 
   if (dateCols > 0) {
-    parts.push(`${dateCols} 个日期列`);
+    parts.push(tChart('chart.recommendation.dateColumns', { count: dateCols }));
   }
 
   const chartTypeNames: Record<string, string> = {
-    bar: '柱形图适合展示分类对比',
-    horizontal_bar: '横向柱形图适合展示排名',
-    line: '折线图适合展示趋势变化',
-    area: '面积图适合展示累积趋势',
-    pie: '饼图适合展示占比分布',
-    donut: '环形图适合展示占比分布',
-    scatter: '散点图适合分析相关性',
-    metric_card: '数字卡片适合展示关键指标',
-    grouped_bar: '分组柱形图适合多维对比',
-    stacked_bar: '堆叠柱形图适合组成分析',
-    stacked_area: '堆叠面积图适合累积组成',
+    bar: tChart('chart.recommendation.typeReason.bar'),
+    horizontal_bar: tChart('chart.recommendation.typeReason.horizontal_bar'),
+    line: tChart('chart.recommendation.typeReason.line'),
+    area: tChart('chart.recommendation.typeReason.area'),
+    pie: tChart('chart.recommendation.typeReason.pie'),
+    donut: tChart('chart.recommendation.typeReason.donut'),
+    scatter: tChart('chart.recommendation.typeReason.scatter'),
+    metric_card: tChart('chart.recommendation.typeReason.metric_card'),
+    grouped_bar: tChart('chart.recommendation.typeReason.grouped_bar'),
+    stacked_bar: tChart('chart.recommendation.typeReason.stacked_bar'),
+    stacked_area: tChart('chart.recommendation.typeReason.stacked_area'),
   };
 
   parts.push(chartTypeNames[config.chartType] || '');
 
-  return parts.filter(Boolean).join('，');
+  return parts.filter(Boolean).join(tChart('chart.recommendation.separator'));
 }
 
 /**

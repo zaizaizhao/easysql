@@ -1,8 +1,33 @@
+import i18n from '@/i18n';
 import type { ChartDataPoint, ChartIntent, TimeGrain } from '@/types/chart';
 
 type AggType = 'count' | 'sum' | 'avg' | 'min' | 'max';
 
 export const AGG_VALUE_ALIAS = '__value';
+
+const BASE_VALUE_FIELD_HINTS = [
+  'count',
+  'cnt',
+  'num',
+  'total',
+  'sum',
+  'qty',
+  'quantity',
+  'amount',
+  'people',
+  'users',
+  'orders',
+];
+
+function getLocaleValueFieldHints(): string[] {
+  const localized = i18n.t('chart.valueFieldHints', { returnObjects: true }) as unknown;
+  if (!Array.isArray(localized)) return [];
+  return localized.filter((item): item is string => typeof item === 'string');
+}
+
+function getValueFieldHints(): string[] {
+  return Array.from(new Set([...BASE_VALUE_FIELD_HINTS, ...getLocaleValueFieldHints()]));
+}
 
 export function aggregateChartData(
   rows: ChartDataPoint[],
@@ -417,25 +442,7 @@ function inferValueField(
   excludeFields: Set<string | null>,
   sampleSize = 50
 ): string | null {
-  const hints = [
-    'count',
-    'cnt',
-    'num',
-    'total',
-    'sum',
-    'qty',
-    'quantity',
-    'amount',
-    'people',
-    'users',
-    'orders',
-    '人数',
-    '人次',
-    '数量',
-    '次数',
-    '用户数',
-    '订单数',
-  ];
+  const hints = getValueFieldHints();
 
   const exclude = new Set(Array.from(excludeFields).filter(Boolean) as string[]);
   const sample = rows.slice(0, sampleSize);
