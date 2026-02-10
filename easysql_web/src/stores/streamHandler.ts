@@ -103,7 +103,7 @@ export const processStreamEvent = (
         const cached = sessionCache.get(targetSessionId);
         if (cached) {
           const newCache = new Map(sessionCache);
-          const nextCache = { ...cached, status: 'processing' };
+          const nextCache: SessionCache = { ...cached, status: 'processing' };
           if (event.data.message_id || event.data.thread_id || event.data.turn_id) {
             const updates: Partial<ChatMessage> = {};
             if (event.data.message_id) updates.serverId = event.data.message_id;

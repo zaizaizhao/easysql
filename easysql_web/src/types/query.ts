@@ -1,3 +1,5 @@
+import type { VizPlan } from './chart';
+
 export interface QueryRequest {
   question: string;
   db_name?: string;
@@ -31,10 +33,10 @@ export interface QueryResponse {
   clarification?: ClarificationInfo;
   error?: string;
   stats?: Record<string, unknown>;
-    message_id?: string;
-    parent_message_id?: string;
-    thread_id?: string;
-    turn_id?: string;
+  message_id?: string;
+  parent_message_id?: string;
+  thread_id?: string;
+  turn_id?: string;
 }
 
 export interface StreamEvent {
@@ -45,8 +47,9 @@ export interface StreamEvent {
     thread_id?: string;
     message_id?: string;
     parent_message_id?: string;
+    turn_id?: string;
     generated_sql?: string;
-    status?: string;
+    status?: QueryStatus;
     validation_passed?: boolean;
     validation_result?: {
       valid: boolean;
@@ -66,9 +69,11 @@ export interface StreamEvent {
       has_system_prompt: boolean;
       has_user_prompt: boolean;
     };
+    chart_plan?: VizPlan;
+    chart_reasoning?: string;
     sql?: string;
     error?: string;
-    type?: string;
+    type?: 'tool_start' | 'tool_end' | 'thinking' | 'token' | 'thought_complete';
     iteration?: number;
     action?: 'tool_start' | 'tool_end' | 'thinking';
     tool?: string;
@@ -91,6 +96,17 @@ export interface BranchRequest {
   question: string;
   stream?: boolean;
   thread_id?: string;
+}
+
+export interface ForkSessionRequest {
+  from_message_id?: string;
+  thread_id?: string;
+  turn_ids?: string[];
+}
+
+export interface ForkSessionResponse extends QueryResponse {
+  source_session_id: string;
+  cloned_turn_ids: string[];
 }
 
 export interface MessageResponse {

@@ -439,12 +439,14 @@ function isGroupedOnce(rows: ChartDataPoint[], groupBy: string, sampleSize = 50)
 
 function inferValueField(
   rows: ChartDataPoint[],
-  excludeFields: Set<string | null>,
+  excludeFields: Set<string | null | undefined>,
   sampleSize = 50
-): string | null {
+): string | undefined {
   const hints = getValueFieldHints();
 
-  const exclude = new Set(Array.from(excludeFields).filter(Boolean) as string[]);
+  const exclude = new Set(
+    Array.from(excludeFields).filter((value): value is string => Boolean(value))
+  );
   const sample = rows.slice(0, sampleSize);
   const numericHits = new Map<string, number>();
 
@@ -457,7 +459,7 @@ function inferValueField(
     }
   }
 
-  if (!numericHits.size) return null;
+  if (!numericHits.size) return undefined;
   const threshold = Math.max(1, Math.floor(sample.length * 0.6));
   const numericFields = Array.from(numericHits.entries())
     .filter(([, hits]) => hits >= threshold)
@@ -474,5 +476,5 @@ function inferValueField(
     return numericFields[0];
   }
 
-  return null;
+  return undefined;
 }

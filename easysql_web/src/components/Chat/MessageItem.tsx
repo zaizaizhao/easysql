@@ -6,6 +6,7 @@ import { SQLBlock } from './SQLBlock';
 import { ExecutionSteps } from './ExecutionSteps';
 import { ClarificationButtons } from './ClarificationButtons';
 import { AgentThinking } from './AgentThinking';
+import { useChatStore } from '@/stores';
 import type { ChatMessage } from '@/types';
 
 const { Text, Paragraph } = Typography;
@@ -27,8 +28,18 @@ export function MessageItem({
 }: MessageItemProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
+  const { sessionId } = useChatStore();
   const isUser = message.role === 'user';
   const [showAllTables, setShowAllTables] = useState(false);
+  const turnScopedMessageId =
+    sessionId && message.turnId ? `turn_${sessionId}_${message.turnId}` : undefined;
+  const fewShotMessageIds = Array.from(
+    new Set(
+      [message.serverId, turnScopedMessageId, message.id].filter(
+        (value): value is string => Boolean(value)
+      )
+    )
+  );
 
   return (
     <Flex
@@ -174,7 +185,7 @@ export function MessageItem({
                   validationError={message.validationError}
                   autoExecute={!message.isStreaming}
                   question={userQuestion}
-                  messageId={message.id}
+                  messageIds={fewShotMessageIds}
                   turnId={message.turnId}
                   tablesUsed={message.retrievalSummary?.tables}
                   enableLlmCharts={

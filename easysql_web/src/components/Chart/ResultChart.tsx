@@ -213,7 +213,7 @@ export function ResultChart({
 
     chartApi
       .recommendChart({
-        sessionId,
+        sessionId: sessionId ?? undefined,
         turnId,
         question,
         sql,
@@ -291,32 +291,6 @@ export function ResultChart({
   const llmModeActive = useLlmRecommendation && !!llmPlan?.charts?.length;
   const llmSelectedReady =
     llmModeActive && !!selectedResponse?.config && !!selectedResponse?.suitable && !!llmChartData;
-  const activeIntent = selectedResponse?.intent || selectedIntent || null;
-
-  const intentSummary = useMemo(() => {
-    if (!activeIntent) return null;
-    const agg = (activeIntent.agg || (activeIntent.valueField ? 'sum' : 'count')) as string;
-    const aggLabel = t(`chart.agg.${agg}`, agg);
-    const chartTypeLabel = t(`chart.types.${activeIntent.chartType}`, activeIntent.chartType);
-    if (activeIntent.chartType === 'scatter' && activeIntent.xField && activeIntent.yField) {
-      return t('chart.intentSummaryScatter', {
-        chartType: chartTypeLabel,
-        xField: activeIntent.xField,
-        yField: activeIntent.yField,
-      });
-    }
-    if (activeIntent.groupBy) {
-      return t('chart.intentSummary', {
-        chartType: chartTypeLabel,
-        groupBy: activeIntent.groupBy,
-        agg: aggLabel,
-      });
-    }
-    return t('chart.intentSummaryNoGroup', {
-      chartType: chartTypeLabel,
-      agg: aggLabel,
-    });
-  }, [activeIntent, t]);
 
   const renderSuggestionMeta = useCallback(
     (intent: ChartIntent) => {

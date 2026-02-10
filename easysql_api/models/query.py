@@ -34,6 +34,12 @@ class BranchRequest(BaseModel):
     thread_id: str | None = Field(default=None, description="Parent thread ID for branching")
 
 
+class ForkSessionRequest(BaseModel):
+    from_message_id: str | None = Field(default=None, description="Source assistant message ID")
+    thread_id: str | None = Field(default=None, description="Source thread ID for branching")
+    turn_ids: list[str] = Field(default_factory=list, description="Ordered turn IDs to clone")
+
+
 class ClarificationInfo(BaseModel):
     questions: list[str]
 

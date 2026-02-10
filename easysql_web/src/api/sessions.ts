@@ -1,5 +1,17 @@
 import { apiClient, API_BASE_URL } from './client';
-import type { SessionList, SessionDetail, SessionInfo, StreamEvent, MessageRequest, BranchRequest, VizPlan } from '@/types';
+import type {
+  SessionList,
+  SessionDetail,
+  SessionInfo,
+  StreamEvent,
+  MessageRequest,
+  BranchRequest,
+  ForkSessionRequest,
+  ForkSessionResponse,
+  VizPlan,
+} from '@/types';
+
+const LLM_TIMEOUT = 120000;
 
 export interface CreateSessionRequest {
   db_name?: string;
@@ -122,4 +134,16 @@ export async function* streamBranchMessage(
       }
     }
   }
+}
+
+export async function forkSessionFromMessage(
+  sessionId: string,
+  request: ForkSessionRequest
+): Promise<ForkSessionResponse> {
+  const response = await apiClient.post<ForkSessionResponse>(
+    `/sessions/${sessionId}/fork`,
+    request,
+    { timeout: LLM_TIMEOUT }
+  );
+  return response.data;
 }

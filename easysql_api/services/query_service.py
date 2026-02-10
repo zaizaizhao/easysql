@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncGenerator
+from copy import deepcopy
 from typing import Any
 
 from langchain_core.messages import HumanMessage
@@ -12,7 +13,7 @@ from easysql.config import get_settings
 from easysql.llm import build_graph, get_langfuse_callbacks
 from easysql.utils.logger import get_logger
 from easysql_api.domain.entities.session import Session
-from easysql_api.domain.entities.turn import Turn
+from easysql_api.domain.entities.turn import Clarification, Turn
 from easysql_api.domain.repositories.session_repository import SessionRepository
 from easysql_api.domain.value_objects.query_status import QueryStatus
 
@@ -109,6 +110,122 @@ class QueryService:
                 return history[: idx + 1]
 
         return history
+
+    @staticmethod
+    def _derive_turn_counter(turns: list[Turn]) -> int:
+        max_counter = 0
+        for turn in turns:
+            parts = turn.turn_id.split("-")
+            if len(parts) != 2:
+                continue
+            try:
+                max_counter = max(max_counter, int(parts[1]))
+            except ValueError:
+                continue
+        return max_counter or len(turns)
+
+    @staticmethod
+    def _clone_turn(turn: Turn) -> Turn:
+        return Turn(
+            turn_id=turn.turn_id,
+            question=turn.question,
+            status=turn.status,
+            clarifications=[
+                Clarification(questions=list(item.questions), answer=item.answer)
+                for item in turn.clarifications
+            ],
+            final_sql=turn.final_sql,
+            validation_passed=turn.validation_passed,
+            error=turn.error,
+            chart_plan=deepcopy(turn.chart_plan),
+            chart_reasoning=turn.chart_reasoning,
+            created_at=turn.created_at,
+        )
+
+    def _clone_turns_by_ids(self, source_session: Session, turn_ids: list[str]) -> list[Turn]:
+        if not turn_ids:
+            return []
+
+        turn_map = {turn.turn_id: turn for turn in source_session.turns}
+        ordered_ids = list(dict.fromkeys(turn_ids))
+
+        missing_ids = [turn_id for turn_id in ordered_ids if turn_id not in turn_map]
+        if missing_ids:
+            raise ValueError(f"Turn IDs not found in source session: {', '.join(missing_ids)}")
+
+        return [self._clone_turn(turn_map[turn_id]) for turn_id in ordered_ids]
+
+    async def fork_session_with_branch_context(
+        self,
+        source_session: Session,
+        *,
+        from_message_id: str | None,
+        thread_id: str | None,
+        turn_ids: list[str],
+    ) -> dict[str, Any]:
+        target_session = await self.create_session(db_name=source_session.db_name)
+
+        cloned_turns = self._clone_turns_by_ids(source_session, turn_ids)
+        parent_thread_id = await self._resolve_parent_thread_id(
+            source_session.session_id,
+            from_message_id,
+            thread_id,
+        )
+
+        parent_snapshot = await self.graph.aget_state(
+            self._make_config(source_session.session_id, parent_thread_id)
+        )
+        parent_state = parent_snapshot.values if parent_snapshot else {}
+
+        conversation_history = await self._build_branch_history(
+            source_session.session_id,
+            parent_thread_id,
+            from_message_id,
+        )
+
+        if cloned_turns:
+            target_session.turns = cloned_turns
+            target_session._turn_counter = self._derive_turn_counter(cloned_turns)
+            latest_turn = cloned_turns[-1]
+            target_session.raw_query = latest_turn.question
+            target_session.generated_sql = latest_turn.final_sql
+            target_session.validation_passed = latest_turn.validation_passed
+        elif conversation_history:
+            latest_history_turn = conversation_history[-1]
+            target_session.raw_query = latest_history_turn.get("question")
+            target_session.generated_sql = latest_history_turn.get("sql")
+            target_session.validation_passed = latest_history_turn.get("validation_passed")
+
+        target_session.state = self._sanitize_state(
+            {
+                "fork_conversation_history": conversation_history,
+                "fork_cached_context": parent_state.get("cached_context"),
+                "fork_retrieval_result": parent_state.get("retrieval_result"),
+            }
+        )
+
+        if cloned_turns or conversation_history:
+            target_session.status = QueryStatus.COMPLETED
+            await self._update_status(target_session.session_id, target_session.status)
+
+        await self._update_session_fields(
+            target_session.session_id,
+            raw_query=target_session.raw_query,
+            generated_sql=target_session.generated_sql,
+            validation_passed=target_session.validation_passed,
+            state=target_session.state,
+        )
+
+        if cloned_turns:
+            await self._save_turns(target_session.session_id, target_session.turns)
+
+        return {
+            "session_id": target_session.session_id,
+            "thread_id": target_session.session_id,
+            "status": target_session.status.value,
+            "source_session_id": source_session.session_id,
+            "cloned_turn_ids": [turn.turn_id for turn in cloned_turns],
+        }
 
     async def _persist_messages(
         self,
@@ -723,6 +840,9 @@ class QueryService:
             "clarification_questions",
             "clarified_query",
             "error",
+            "fork_conversation_history",
+            "fork_cached_context",
+            "fork_retrieval_result",
         }
         for key in safe_keys:
             value = state.get(key)
@@ -811,9 +931,13 @@ class QueryService:
             snapshot = await self.graph.aget_state(
                 self._make_config(session.session_id, effective_thread_id)
             )
-            prev_state = snapshot.values if snapshot else {}
+            session_state = session.state if isinstance(session.state, dict) else {}
+            prev_state = snapshot.values if snapshot else session_state
 
-            conversation_history = prev_state.get("conversation_history") or []
+            fallback_history = session_state.get("fork_conversation_history")
+            conversation_history = prev_state.get("conversation_history") or (
+                fallback_history if isinstance(fallback_history, list) else []
+            )
             if not conversation_history and prev_state.get("generated_sql"):
                 token_count = self._estimate_turn_tokens(
                     prev_state.get("raw_query", ""), prev_state.get("generated_sql")
@@ -828,7 +952,11 @@ class QueryService:
                     }
                 ]
             cached_context = prev_state.get("cached_context")
+            if cached_context is None:
+                cached_context = session_state.get("fork_cached_context")
             retrieval_result = prev_state.get("retrieval_result")
+            if retrieval_result is None:
+                retrieval_result = session_state.get("fork_retrieval_result")
 
         input_state: dict[str, Any] = {
             "raw_query": question,
@@ -928,9 +1056,13 @@ class QueryService:
             snapshot = await self.graph.aget_state(
                 self._make_config(session.session_id, effective_thread_id)
             )
-            prev_state = snapshot.values if snapshot else {}
+            session_state = session.state if isinstance(session.state, dict) else {}
+            prev_state = snapshot.values if snapshot else session_state
 
-            conversation_history = prev_state.get("conversation_history") or []
+            fallback_history = session_state.get("fork_conversation_history")
+            conversation_history = prev_state.get("conversation_history") or (
+                fallback_history if isinstance(fallback_history, list) else []
+            )
             if not conversation_history and prev_state.get("generated_sql"):
                 token_count = self._estimate_turn_tokens(
                     prev_state.get("raw_query", ""), prev_state.get("generated_sql")
@@ -945,7 +1077,11 @@ class QueryService:
                     }
                 ]
             cached_context = prev_state.get("cached_context")
+            if cached_context is None:
+                cached_context = session_state.get("fork_cached_context")
             retrieval_result = prev_state.get("retrieval_result")
+            if retrieval_result is None:
+                retrieval_result = session_state.get("fork_retrieval_result")
 
         input_state: dict[str, Any] = {
             "raw_query": question,

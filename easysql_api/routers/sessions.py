@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from easysql_api.deps import get_query_service_dep, get_session_repository_dep
 from easysql_api.domain.repositories.session_repository import SessionRepository
 from easysql_api.domain.value_objects.query_status import QueryStatus
-from easysql_api.models.query import BranchRequest, MessageRequest
+from easysql_api.models.query import BranchRequest, ForkSessionRequest, MessageRequest
 from easysql_api.models.session import (
     SessionDetail,
     SessionInfo,
@@ -183,6 +183,30 @@ async def create_branch(
         create_branch=True,
     )
     return {"session_id": session_id, "from_message_id": request.from_message_id, **result}
+
+
+@router.post("/sessions/{session_id}/fork")
+async def fork_to_new_session(
+    session_id: str,
+    request: ForkSessionRequest,
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
+    service: Annotated[QueryService, Depends(get_query_service_dep)],
+):
+    source_session = await repository.get(session_id)
+    if not source_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    try:
+        result = await service.fork_session_with_branch_context(
+            source_session,
+            from_message_id=request.from_message_id,
+            thread_id=request.thread_id,
+            turn_ids=request.turn_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return result
 
 
 @router.post("/sessions/{session_id}/turns/{turn_id}/chart-plan")

@@ -9,7 +9,7 @@ import type { ChatMessage } from '@/types';
 
 interface MessageTreeProps {
   onClarificationSelect?: (answer: string) => void;
-  onBranchClick?: (messageId: string) => void;
+  onBranchClick?: (messageId: string) => Promise<void> | void;
 }
 
 export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTreeProps) {
@@ -112,6 +112,7 @@ export function MessageTree({ onClarificationSelect, onBranchClick }: MessageTre
                   messageId={message.id}
                   onClick={(id) => onBranchClick?.(id)}
                   visible={hoveredMessageId === message.id}
+                  disabled={isLoading}
                 />
               </div>
             )}

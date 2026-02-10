@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Modal, Input, theme, message as antMessage } from 'antd';
-import { useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { theme, message as antMessage } from 'antd';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { MessageTree, ChatInput, WelcomeScreen } from '@/components/Chat';
 import { getSessionDetail } from '@/api';
@@ -12,6 +12,7 @@ import axios from 'axios';
 export default function ChatPage() {
   const { t } = useTranslation();
   const { sendQuery, continueStream, sendFollowUp, createBranch } = useStreamQuery();
+  const navigate = useNavigate();
   const { sessionId: routeSessionId } = useParams<{ sessionId?: string }>();
   const {
     sessionId,
@@ -19,10 +20,6 @@ export default function ChatPage() {
     removeSession,
   } = useChatStore();
   const { token } = theme.useToken();
-  
-  const [branchModalVisible, setBranchModalVisible] = useState(false);
-  const [branchFromMessageId, setBranchFromMessageId] = useState<string | null>(null);
-  const [branchQuestion, setBranchQuestion] = useState('');
 
   useEffect(() => {
     if (!routeSessionId) return;
@@ -123,24 +120,33 @@ export default function ChatPage() {
     continueStream(answer);
   };
 
-  const handleBranchClick = (messageId: string) => {
-    setBranchFromMessageId(messageId);
-    setBranchModalVisible(true);
-  };
+  const handleBranchClick = async (messageId: string) => {
+    const noticeKey = `fork-${messageId}`;
+    antMessage.open({
+      key: noticeKey,
+      type: 'loading',
+      content: t('chat.forkCreating'),
+      duration: 0,
+    });
 
-  const handleBranchSubmit = () => {
-    if (branchFromMessageId && branchQuestion.trim()) {
-      createBranch(branchQuestion.trim(), branchFromMessageId);
-      setBranchModalVisible(false);
-      setBranchQuestion('');
-      setBranchFromMessageId(null);
+    const newSessionId = await createBranch(messageId);
+    if (newSessionId) {
+      antMessage.open({
+        key: noticeKey,
+        type: 'success',
+        content: t('chat.forkCreated'),
+        duration: 1.5,
+      });
+      navigate(`/chat/${newSessionId}`);
+      return;
     }
-  };
 
-  const handleBranchCancel = () => {
-    setBranchModalVisible(false);
-    setBranchQuestion('');
-    setBranchFromMessageId(null);
+    antMessage.open({
+      key: noticeKey,
+      type: 'error',
+      content: t('chat.forkFailed'),
+      duration: 2,
+    });
   };
 
   return (
@@ -158,36 +164,13 @@ export default function ChatPage() {
         <WelcomeScreen onSend={handleSend} />
       ) : (
         <>
-          <MessageTree 
+          <MessageTree
             onClarificationSelect={handleClarificationAnswer}
             onBranchClick={handleBranchClick}
           />
           <ChatInput onSend={handleSend} />
         </>
       )}
-      
-      <Modal
-        title={t('chat.modalTitle')}
-        open={branchModalVisible}
-        onOk={handleBranchSubmit}
-        onCancel={handleBranchCancel}
-        okText={t('chat.modalOk')}
-        cancelText={t('chat.modalCancel')}
-        okButtonProps={{ disabled: !branchQuestion.trim() }}
-      >
-        <Input.TextArea
-          value={branchQuestion}
-          onChange={(e) => setBranchQuestion(e.target.value)}
-          placeholder={t('chat.modalPlaceholder') + '…'}
-          rows={4}
-          autoFocus
-          onPressEnter={(e) => {
-            if (e.ctrlKey || e.metaKey) {
-              handleBranchSubmit();
-            }
-          }}
-        />
-      </Modal>
     </div>
   );
 }

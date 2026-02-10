@@ -29,7 +29,7 @@ interface SQLBlockProps {
   validationError?: string;
   autoExecute?: boolean;
   question?: string;
-  messageId?: string;
+  messageIds?: string[];
   turnId?: string;
   tablesUsed?: string[];
   isFewShot?: boolean;
@@ -44,7 +44,7 @@ export function SQLBlock({
   validationError, 
   autoExecute = false,
   question,
-  messageId,
+  messageIds,
   turnId,
   tablesUsed,
   isFewShot: initialIsFewShot = false,
@@ -67,21 +67,37 @@ export function SQLBlock({
   const { token } = theme.useToken();
   const hasAutoExecutedRef = useRef(false);
   const hasCheckedFewShotRef = useRef(false);
+  const effectiveMessageIds = Array.from(new Set((messageIds || []).filter(Boolean)));
+  const primaryMessageId = effectiveMessageIds[0];
 
   const currentSql = isEditing ? editedSql : initialSql;
 
   useEffect(() => {
-    if (messageId && !hasCheckedFewShotRef.current && !initialIsFewShot) {
+    if (effectiveMessageIds.length > 0 && !hasCheckedFewShotRef.current && !initialIsFewShot) {
       hasCheckedFewShotRef.current = true;
-      fewShotApi.checkByMessageId(messageId)
-        .then((response) => {
-          if (response.is_few_shot) {
-            setIsFewShot(true);
+      let cancelled = false;
+
+      const runCheck = async () => {
+        for (const messageId of effectiveMessageIds) {
+          try {
+            const response = await fewShotApi.checkByMessageId(messageId);
+            if (!cancelled && response.is_few_shot) {
+              setIsFewShot(true);
+              break;
+            }
+          } catch {
+            continue;
           }
-        })
-        .catch(() => {});
+        }
+      };
+
+      void runCheck();
+
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [messageId, initialIsFewShot]);
+  }, [effectiveMessageIds, initialIsFewShot]);
 
   const handleCopy = async () => {
     try {
@@ -147,7 +163,7 @@ export function SQLBlock({
         question: question,
         sql: currentSql,
         tables_used: tablesUsed,
-        message_id: messageId,
+        ...(primaryMessageId ? { message_id: primaryMessageId } : {}),
       });
       setIsFewShot(true);
       message.success(t('fewShot.saveSuccess', 'Saved as example'));
@@ -334,7 +350,7 @@ export function SQLBlock({
                   storedPlan={chartPlan}
                   storedReasoning={chartReasoning}
                   turnId={turnId}
-                  messageId={messageId}
+                  messageId={primaryMessageId}
                   height={350}
                 />
               </div>
