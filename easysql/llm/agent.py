@@ -210,6 +210,8 @@ def get_langfuse_callbacks() -> list[Any]:
 
         os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse.public_key or "")
         os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse.secret_key or "")
+        os.environ.setdefault("LANGFUSE_BASE_URL", settings.langfuse.host)
+        # Keep legacy name for compatibility with existing deployments.
         os.environ.setdefault("LANGFUSE_HOST", settings.langfuse.host)
 
         return [CallbackHandler()]
@@ -296,7 +298,9 @@ def build_graph() -> "CompiledStateGraph":
         builder.add_edge("retrieve_code", "generate_sql")
         builder.add_edge("generate_sql", "validate_sql")
         builder.add_conditional_edges(
-            "validate_sql", route_validate, {"update_history": "update_history", "repair_sql": "repair_sql"}
+            "validate_sql",
+            route_validate,
+            {"update_history": "update_history", "repair_sql": "repair_sql"},
         )
         builder.add_edge("repair_sql", "validate_sql")
         builder.add_edge("update_history", END)

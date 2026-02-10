@@ -188,7 +188,8 @@ Note: `.env.example` lists `CODE_CONTEXT_ENUM_TOP_K`, but it is not used in code
 | `LANGFUSE_ENABLED` | `false` | Enable Langfuse |
 | `LANGFUSE_PUBLIC_KEY` | empty | Public key |
 | `LANGFUSE_SECRET_KEY` | empty | Secret key |
-| `LANGFUSE_HOST` | `https://cloud.langfuse.com` | Host URL |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Base URL (Langfuse SDK standard) |
+| `LANGFUSE_HOST` | `https://cloud.langfuse.com` | Legacy alias, still supported for compatibility |
 
 ---
 

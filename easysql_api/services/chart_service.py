@@ -8,9 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from langchain_core.runnables import RunnableConfig
+
 from easysql.llm.agent import get_langfuse_callbacks
 from easysql.llm.agents.viz.agent import build_viz_graph
 from easysql.llm.agents.viz.schemas import BinningConfig, ChartIntent, TimeGrainConfig
+from easysql.llm.agents.viz.state import VizState
 from easysql_api.models.chart import ChartConfig, ChartRecommendRequest, ChartRecommendResponse
 from easysql_api.services.chart_aggregation import AGG_VALUE_ALIAS, aggregate_chart_data
 
@@ -49,7 +52,7 @@ class ChartService:
                 error=None if suitable else "Selected intent not suitable for data",
             )
 
-        input_state: dict[str, Any] = {
+        input_state: VizState = {
             "question": request.question,
             "sql": request.sql,
             "columns": request.columns,
@@ -59,7 +62,7 @@ class ChartService:
             "previous_plan": request.previous_plan,
         }
 
-        config: dict[str, Any] = {}
+        config: RunnableConfig = {}
         if self.callbacks:
             config["callbacks"] = self.callbacks
 

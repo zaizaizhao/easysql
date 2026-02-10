@@ -7,6 +7,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.messages.utils import count_tokens_approximately
+from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
 from easysql.config import get_settings
@@ -38,9 +39,9 @@ class QueryService:
             self._callbacks = get_langfuse_callbacks()
         return self._callbacks
 
-    def _make_config(self, session_id: str, thread_id: str | None = None) -> dict[str, Any]:
+    def _make_config(self, session_id: str, thread_id: str | None = None) -> RunnableConfig:
         effective_thread_id = thread_id or session_id
-        config: dict[str, Any] = {"configurable": {"thread_id": effective_thread_id}}
+        config: RunnableConfig = {"configurable": {"thread_id": effective_thread_id}}
         if self.callbacks:
             config["callbacks"] = self.callbacks
             logger.debug(f"LangFuse callbacks attached: {len(self.callbacks)} handler(s)")
@@ -527,7 +528,7 @@ class QueryService:
         self,
         session: Session,
         result: dict[str, Any],
-        config: dict[str, Any],
+        config: RunnableConfig,
         turn: Turn,
         *,
         user_message_id: str | None,

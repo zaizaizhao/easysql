@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from easysql.utils.logger import get_logger
@@ -164,8 +164,8 @@ class LangfuseConfig(BaseSettings):
     )
     host: str = Field(
         default="https://cloud.langfuse.com",
-        alias="langfuse_host",
-        description="LangFuse host URL (cloud or self-hosted)",
+        validation_alias=AliasChoices("langfuse_base_url", "langfuse_host"),
+        description="LangFuse base URL (cloud or self-hosted)",
     )
 
     def is_configured(self) -> bool:
