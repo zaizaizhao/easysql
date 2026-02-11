@@ -519,7 +519,7 @@ export function ResultChart({
   if (result.status !== 'success') {
     return (
       <Alert
-        message={t('execute.error')}
+        title={t('execute.error')}
         description={result.error}
         type="error"
         showIcon
@@ -557,7 +557,7 @@ export function ResultChart({
           background: token.colorBgContainer,
         }}
       >
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
           <Space size={8}>
             <Text strong>{t('chart.suggestionsTitle')}</Text>
             <Spin size="small" />
@@ -580,7 +580,7 @@ export function ResultChart({
                 size="small"
                 style={{ borderColor: token.colorBorder }}
               >
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Space orientation="vertical" size={8} style={{ width: '100%' }}>
                   <Skeleton.Button active size="small" shape="round" style={{ width: '45%' }} />
                   <Skeleton.Input active size="small" style={{ width: '100%' }} />
                   <Skeleton.Input active size="small" style={{ width: '70%' }} />
@@ -606,7 +606,7 @@ export function ResultChart({
         }}
       >
         <Alert
-          message={t('chart.noSuggestions')}
+          title={t('chart.noSuggestions')}
           description={error || llmPlanReasoning || t('chart.inferFailed')}
           type="warning"
           showIcon
@@ -626,7 +626,7 @@ export function ResultChart({
           background: token.colorBgContainer,
         }}
       >
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+        <Space orientation="vertical" size={12} style={{ width: '100%' }}>
           <Space size={8}>
             <Text strong>{t('chart.suggestionsTitle')}</Text>
             {llmPlanReasoning && (
@@ -644,7 +644,7 @@ export function ResultChart({
             </div>
           ) : error ? (
             <Alert
-              message={t('chart.inferFailed')}
+              title={t('chart.inferFailed')}
               description={error}
               type="error"
               showIcon
@@ -673,7 +673,7 @@ export function ResultChart({
                       opacity: selectionLoading && !isLoading ? 0.6 : 1,
                     }}
                   >
-                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                    <Space orientation="vertical" size={6} style={{ width: '100%' }}>
                       <Space size={6} wrap>
                         <Text strong style={{ fontSize: 13 }}>
                           {label}

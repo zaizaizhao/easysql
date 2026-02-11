@@ -27,7 +27,7 @@ export function ResultTable({ result, loading }: ResultTableProps) {
   if (result.status !== 'success') {
     return (
       <Alert
-        message={t('execute.error')}
+        title={t('execute.error')}
         description={result.error}
         type="error"
         showIcon
@@ -96,7 +96,7 @@ export function ResultTable({ result, loading }: ResultTableProps) {
           size: 'small',
           hideOnSinglePage: true
         }}
-        rowKey={(record, index) => record?.id ?? `row_${index}`}
+        rowKey={(record) => record?.id ?? JSON.stringify(record)}
         style={{ border: `1px solid ${token.colorBorder}`, borderRadius: 8 }}
       />
     </div>

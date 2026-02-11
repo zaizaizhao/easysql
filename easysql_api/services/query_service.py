@@ -44,6 +44,10 @@ class QueryService:
         config: RunnableConfig = {"configurable": {"thread_id": effective_thread_id}}
         if self.callbacks:
             config["callbacks"] = self.callbacks
+            config["metadata"] = {
+                "langfuse_session_id": session_id,
+                "langfuse_tags": ["text2sql"],
+            }
             logger.debug(f"LangFuse callbacks attached: {len(self.callbacks)} handler(s)")
         return config
 
