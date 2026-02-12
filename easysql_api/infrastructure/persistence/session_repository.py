@@ -44,9 +44,7 @@ class SqlAlchemySessionRepository(SessionRepository):
             result = await db.execute(
                 select(SessionModel)
                 .where(SessionModel.id == uuid.UUID(session_id))
-                .options(
-                    selectinload(SessionModel.turns).selectinload(TurnModel.clarifications)
-                )
+                .options(selectinload(SessionModel.turns).selectinload(TurnModel.clarifications))
             )
             model = result.scalar_one_or_none()
             if model is None:
@@ -57,9 +55,7 @@ class SqlAlchemySessionRepository(SessionRepository):
         async with self._sessionmaker() as db:
             result = await db.execute(
                 select(SessionModel)
-                .options(
-                    selectinload(SessionModel.turns).selectinload(TurnModel.clarifications)
-                )
+                .options(selectinload(SessionModel.turns).selectinload(TurnModel.clarifications))
                 .order_by(SessionModel.updated_at.desc())
                 .limit(limit)
                 .offset(offset)
@@ -123,11 +119,17 @@ class SqlAlchemySessionRepository(SessionRepository):
 
     async def delete(self, session_id: str) -> bool:
         async with self._sessionmaker() as db:
-            result = await db.execute(
-                delete(SessionModel).where(SessionModel.id == uuid.UUID(session_id))
+            target_id = uuid.UUID(session_id)
+            count_result = await db.execute(
+                select(func.count()).select_from(SessionModel).where(SessionModel.id == target_id)
             )
+            exists = int(count_result.scalar_one()) > 0
+            if not exists:
+                return False
+
+            await db.execute(delete(SessionModel).where(SessionModel.id == target_id))
             await db.commit()
-            return result.rowcount == 1
+            return True
 
     async def update_status(self, session_id: str, status: QueryStatus) -> None:
         async with self._sessionmaker() as db:
@@ -169,12 +171,12 @@ class SqlAlchemySessionRepository(SessionRepository):
             existing_turns = {turn.turn_id: turn for turn in existing_result.scalars().all()}
             incoming_ids = {turn.turn_id for turn in turns}
 
-            for turn_id, model in existing_turns.items():
+            for turn_id, existing_model in existing_turns.items():
                 if turn_id not in incoming_ids:
-                    await db.delete(model)
+                    await db.delete(existing_model)
 
             for position, turn in enumerate(turns):
-                model = existing_turns.get(turn.turn_id)
+                model: TurnModel | None = existing_turns.get(turn.turn_id)
                 chart_plan = turn.chart_plan
                 chart_reasoning = turn.chart_reasoning
 

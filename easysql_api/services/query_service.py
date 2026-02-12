@@ -98,12 +98,13 @@ class QueryService:
 
     async def _build_branch_history(
         self,
+        graph: Any,
         session_id: str,
         parent_thread_id: str,
         parent_message_id: str | None,
     ) -> list[dict[str, Any]]:
         config = self._make_config(session_id, parent_thread_id)
-        snapshot = await self.graph.aget_state(config)
+        snapshot = await graph.aget_state(config)
         prev_state = snapshot.values if snapshot else {}
         history = list(prev_state.get("conversation_history", []) or [])
 
@@ -169,6 +170,7 @@ class QueryService:
         turn_ids: list[str],
     ) -> dict[str, Any]:
         target_session = await self.create_session(db_name=source_session.db_name)
+        graph = self.graph
 
         cloned_turns = self._clone_turns_by_ids(source_session, turn_ids)
         parent_thread_id = await self._resolve_parent_thread_id(
@@ -177,12 +179,13 @@ class QueryService:
             thread_id,
         )
 
-        parent_snapshot = await self.graph.aget_state(
+        parent_snapshot = await graph.aget_state(
             self._make_config(source_session.session_id, parent_thread_id)
         )
         parent_state = parent_snapshot.values if parent_snapshot else {}
 
         conversation_history = await self._build_branch_history(
+            graph,
             source_session.session_id,
             parent_thread_id,
             from_message_id,
@@ -296,6 +299,7 @@ class QueryService:
         session: Session,
         question: str,
     ) -> dict[str, Any]:
+        graph = self.graph
         session.raw_query = question
         session.status = QueryStatus.PROCESSING
         turn = session.create_turn(question)
@@ -333,8 +337,9 @@ class QueryService:
         config = self._make_config(session.session_id, thread_id)
 
         try:
-            result = await self.graph.ainvoke(input_state, config)
+            result = await graph.ainvoke(input_state, config)
             return await self._process_result(
+                graph,
                 session,
                 result,
                 config,
@@ -366,6 +371,7 @@ class QueryService:
         answer: str,
         thread_id: str | None = None,
     ) -> dict[str, Any]:
+        graph = self.graph
         if session.status != QueryStatus.AWAITING_CLARIFY:
             return {
                 "status": QueryStatus.FAILED,
@@ -386,8 +392,9 @@ class QueryService:
         config = self._make_config(session.session_id, thread_id)
 
         try:
-            result = await self.graph.ainvoke(Command(resume=answer), config)
+            result = await graph.ainvoke(Command(resume=answer), config)
             return await self._process_result(
+                graph,
                 session,
                 result,
                 config,
@@ -417,6 +424,7 @@ class QueryService:
         answer: str,
         thread_id: str | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
+        graph = self.graph
         if session.status != QueryStatus.AWAITING_CLARIFY:
             yield {
                 "event": "error",
@@ -455,7 +463,7 @@ class QueryService:
             }
 
             last_state: dict[str, Any] = {}
-            async for chunk in self.graph.astream(
+            async for chunk in graph.astream(
                 Command(resume=answer), config, stream_mode=["updates", "custom"]
             ):
                 if isinstance(chunk, tuple) and len(chunk) == 2:
@@ -494,10 +502,11 @@ class QueryService:
                             },
                         }
 
-            snapshot = await self.graph.aget_state(config)
+            snapshot = await graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
 
             final_result = await self._process_result(
+                graph,
                 session,
                 dict(final_state),
                 config,
@@ -530,6 +539,7 @@ class QueryService:
 
     async def _process_result(
         self,
+        graph: Any,
         session: Session,
         result: dict[str, Any],
         config: RunnableConfig,
@@ -544,7 +554,7 @@ class QueryService:
         if not isinstance(turn, Turn):
             raise TypeError("turn must be a Turn instance")
 
-        snapshot = await self.graph.aget_state(config)
+        snapshot = await graph.aget_state(config)
 
         if snapshot.next and "clarify" in snapshot.next:
             questions = self._extract_clarification_questions(snapshot, result)
@@ -658,6 +668,7 @@ class QueryService:
         session: Session,
         question: str,
     ) -> AsyncGenerator[dict[str, Any], None]:
+        graph = self.graph
         session.raw_query = question
         session.status = QueryStatus.PROCESSING
         turn = session.create_turn(question)
@@ -707,7 +718,7 @@ class QueryService:
             }
 
             last_state: dict[str, Any] = {}
-            async for chunk in self.graph.astream(
+            async for chunk in graph.astream(
                 input_state, config, stream_mode=["updates", "custom"]
             ):
                 if isinstance(chunk, tuple) and len(chunk) == 2:
@@ -746,10 +757,11 @@ class QueryService:
                             },
                         }
 
-            snapshot = await self.graph.aget_state(config)
+            snapshot = await graph.aget_state(config)
             final_state = snapshot.values if snapshot else last_state
 
             final_result = await self._process_result(
+                graph,
                 session,
                 dict(final_state),
                 config,
@@ -895,6 +907,7 @@ class QueryService:
         thread_id: str | None = None,
         create_branch: bool = False,
     ) -> dict[str, Any]:
+        graph = self.graph
         if session.status not in (QueryStatus.COMPLETED, QueryStatus.AWAITING_CLARIFY):
             return {
                 "status": QueryStatus.FAILED,
@@ -921,19 +934,19 @@ class QueryService:
             )
             effective_thread_id = f"{session.session_id}:{uuid.uuid4()}"
 
-            parent_snapshot = await self.graph.aget_state(
+            parent_snapshot = await graph.aget_state(
                 self._make_config(session.session_id, parent_thread_id)
             )
             parent_state = parent_snapshot.values if parent_snapshot else {}
 
             conversation_history = await self._build_branch_history(
-                session.session_id, parent_thread_id, parent_message_id
+                graph, session.session_id, parent_thread_id, parent_message_id
             )
             cached_context = parent_state.get("cached_context")
             retrieval_result = parent_state.get("retrieval_result")
         else:
             effective_thread_id = thread_id or session.session_id
-            snapshot = await self.graph.aget_state(
+            snapshot = await graph.aget_state(
                 self._make_config(session.session_id, effective_thread_id)
             )
             session_state = session.state if isinstance(session.state, dict) else {}
@@ -981,8 +994,9 @@ class QueryService:
 
         try:
             config = self._make_config(session.session_id, effective_thread_id)
-            result = await self.graph.ainvoke(input_state, config)
+            result = await graph.ainvoke(input_state, config)
             return await self._process_result(
+                graph,
                 session,
                 result,
                 config,
@@ -1016,6 +1030,7 @@ class QueryService:
         thread_id: str | None = None,
         create_branch: bool = False,
     ) -> AsyncGenerator[dict[str, Any], None]:
+        graph = self.graph
         if session.status not in (QueryStatus.COMPLETED, QueryStatus.AWAITING_CLARIFY):
             yield {
                 "event": "error",
@@ -1046,19 +1061,19 @@ class QueryService:
             )
             effective_thread_id = f"{session.session_id}:{uuid.uuid4()}"
 
-            parent_snapshot = await self.graph.aget_state(
+            parent_snapshot = await graph.aget_state(
                 self._make_config(session.session_id, parent_thread_id)
             )
             parent_state = parent_snapshot.values if parent_snapshot else {}
 
             conversation_history = await self._build_branch_history(
-                session.session_id, parent_thread_id, parent_message_id
+                graph, session.session_id, parent_thread_id, parent_message_id
             )
             cached_context = parent_state.get("cached_context")
             retrieval_result = parent_state.get("retrieval_result")
         else:
             effective_thread_id = thread_id or session.session_id
-            snapshot = await self.graph.aget_state(
+            snapshot = await graph.aget_state(
                 self._make_config(session.session_id, effective_thread_id)
             )
             session_state = session.state if isinstance(session.state, dict) else {}
@@ -1117,7 +1132,7 @@ class QueryService:
             }
 
             last_state: dict[str, Any] = {}
-            async for chunk in self.graph.astream(
+            async for chunk in graph.astream(
                 input_state,
                 self._make_config(session.session_id, effective_thread_id),
                 stream_mode=["updates", "custom"],
@@ -1158,11 +1173,12 @@ class QueryService:
                             },
                         }
 
-            snapshot = await self.graph.aget_state(
+            snapshot = await graph.aget_state(
                 self._make_config(session.session_id, effective_thread_id)
             )
             final_state = snapshot.values if snapshot else last_state
             final_result = await self._process_result(
+                graph,
                 session,
                 dict(final_state),
                 self._make_config(session.session_id, effective_thread_id),
@@ -1206,3 +1222,27 @@ def get_query_service(repository: SessionRepository) -> QueryService:
     elif _default_service._repo is not repository:  # type: ignore[attr-defined]
         _default_service = QueryService(repository=repository)
     return _default_service
+
+
+def reset_query_service_graph() -> None:
+    global _default_service
+    if _default_service is not None:
+        _default_service._graph = None
+
+
+def reset_query_service_callbacks() -> None:
+    global _default_service
+    if _default_service is not None:
+        _default_service._callbacks = None
+
+
+def warm_query_service_graph() -> None:
+    global _default_service
+    if _default_service is not None:
+        _ = _default_service.graph
+
+
+def warm_query_service_callbacks() -> None:
+    global _default_service
+    if _default_service is not None:
+        _ = _default_service.callbacks

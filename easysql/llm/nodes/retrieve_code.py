@@ -20,9 +20,12 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_code_retrieval_repo: MilvusRepository | None = None
+
 
 @lru_cache(maxsize=1)
 def get_code_retrieval_service() -> "CodeRetrievalService | None":
+    global _code_retrieval_repo
     settings = get_settings()
 
     if not settings.code_context_enabled:
@@ -39,6 +42,7 @@ def get_code_retrieval_service() -> "CodeRetrievalService | None":
             collection_prefix=settings.milvus_collection_prefix,
         )
         milvus_repo.connect()
+        _code_retrieval_repo = milvus_repo
 
         return CodeContextFactory.create_retrieval_service(
             client=milvus_repo.client,
@@ -46,6 +50,7 @@ def get_code_retrieval_service() -> "CodeRetrievalService | None":
             settings=settings,
         )
     except Exception as e:
+        _code_retrieval_repo = None
         logger.warning(f"Failed to initialize code retrieval service: {e}")
         return None
 
@@ -114,3 +119,16 @@ def retrieve_code_node(
 ) -> dict[Any, Any]:
     node = RetrieveCodeNode()
     return node(state, config, writer=writer)
+
+
+def reset_code_retrieval_service_cache() -> None:
+    global _code_retrieval_repo
+    if _code_retrieval_repo is not None:
+        _code_retrieval_repo.close()
+        _code_retrieval_repo = None
+
+    get_code_retrieval_service.cache_clear()
+
+
+def warm_code_retrieval_service_cache() -> None:
+    get_code_retrieval_service()

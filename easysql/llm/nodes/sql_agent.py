@@ -11,7 +11,14 @@ import json
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+    convert_to_openai_messages,
+)
+from langchain_core.utils.function_calling import convert_to_openai_tool
 from langgraph.types import StreamWriter
 
 from easysql.config import get_settings
@@ -118,9 +125,9 @@ class SqlAgentNode(BaseNode):
     async def __call__(
         self,
         state: EasySQLState,
-        config: "RunnableConfig | None" = None,
+        config: RunnableConfig | None = None,
         *,
-        writer: "StreamWriter | None" = None,
+        writer: StreamWriter | None = None,
     ) -> dict[str, Any]:
         logger.info("[SqlAgent] START - Initializing SQL Agent node")
 
@@ -146,7 +153,7 @@ class SqlAgentNode(BaseNode):
             llm = get_llm(self.settings.llm, "generation")
             llm_with_tools = llm.bind_tools(tools)
 
-            messages = self._build_messages(state, context)
+            messages: list[BaseMessage | dict[str, Any]] = list(self._build_messages(state, context))
             system_prompt = self._build_system_prompt(context, db_name)
 
             max_iterations = self.settings.llm.agent_max_iterations
@@ -173,8 +180,14 @@ class SqlAgentNode(BaseNode):
                     full_messages = [{"role": "system", "content": system_prompt}] + messages
 
                     ai_response = await self._stream_llm_response(
-                        llm_with_tools, full_messages, writer, iteration
+                        llm_with_tools,
+                        full_messages,
+                        writer,
+                        iteration,
+                        base_llm=llm,
+                        tools=tools,
                     )
+                    replay_message = self._get_replay_message(ai_response)
 
                     if not ai_response.tool_calls:
                         content = ai_response.content
@@ -199,7 +212,7 @@ class SqlAgentNode(BaseNode):
                                     break
                                 else:
                                     last_error = validation_result["error"]
-                                    messages.append(ai_response)
+                                    messages.append(replay_message)
                                     messages.append(
                                         HumanMessage(
                                             content=f"验证失败: {last_error}\n请修复SQL并再次验证。"
@@ -210,12 +223,12 @@ class SqlAgentNode(BaseNode):
                             logger.warning("[SqlAgent] No SQL or tool calls in response")
                             break
 
-                    messages.append(ai_response)
+                    messages.append(replay_message)
 
                     for tool_call in ai_response.tool_calls:
                         tool_name = tool_call["name"]
                         tool_args = tool_call["args"]
-                        tool_id = tool_call["id"]
+                        tool_id = tool_call.get("id") or f"call_{iteration}_{tool_name}"
 
                         logger.info(f"[SqlAgent] Tool call: {tool_name}")
                         if writer:
@@ -264,11 +277,17 @@ class SqlAgentNode(BaseNode):
                                 }
                             )
 
-                        messages.append(ToolMessage(content=str(tool_result), tool_call_id=tool_id))
+                        messages.append(
+                            self._build_tool_result_message(
+                                tool_result=tool_result,
+                                tool_call_id=tool_id,
+                                replay_message=replay_message,
+                            )
+                        )
 
                     # If validation failed during tool calls, add explicit retry instruction
                     if not validation_passed and last_error:
-                        logger.info(f"[SqlAgent] Validation failed, adding retry instruction")
+                        logger.info("[SqlAgent] Validation failed, adding retry instruction")
                         messages.append(
                             HumanMessage(
                                 content=f"SQL验证失败，错误信息: {last_error}\n\n请根据错误信息修正SQL语句，然后再次调用 validate_sql 工具验证。"
@@ -316,10 +335,25 @@ class SqlAgentNode(BaseNode):
         self,
         llm: Any,
         messages: list,
-        writer: "StreamWriter | None",
+        writer: StreamWriter | None,
         iteration: int,
+        *,
+        base_llm: Any | None = None,
+        tools: list[Any] | None = None,
     ) -> AIMessage:
         """Stream LLM response and collect full message."""
+        if (
+            base_llm is not None
+            and tools is not None
+            and self._should_use_openai_reasoning_roundtrip(base_llm)
+        ):
+            return await self._stream_llm_response_openai(
+                base_llm=base_llm,
+                tools=tools,
+                messages=messages,
+                writer=writer,
+                iteration=iteration,
+            )
         content_parts: list[str] = []
         tool_calls: list[dict] = []
         tool_call_chunks: dict[int, dict[str, str]] = {}
@@ -383,6 +417,205 @@ class SqlAgentNode(BaseNode):
 
         return AIMessage(content=full_content, tool_calls=tool_calls)
 
+    async def _stream_llm_response_openai(
+        self,
+        *,
+        base_llm: Any,
+        tools: list[Any],
+        messages: list,
+        writer: StreamWriter | None,
+        iteration: int,
+    ) -> AIMessage:
+        """Use OpenAI-compatible streaming and preserve reasoning_content for replay."""
+        async_client = getattr(base_llm, "async_client", None)
+        if async_client is None:
+            raise ValueError("OpenAI async_client is required for reasoning roundtrip")
+
+        payload: dict[str, Any] = {
+            "model": base_llm.model_name,
+            "messages": self._serialize_messages_for_openai(messages),
+            "tools": [convert_to_openai_tool(tool) for tool in tools],
+            "tool_choice": "auto",
+            "stream": True,
+        }
+        temperature = getattr(base_llm, "temperature", None)
+        if temperature is not None:
+            payload["temperature"] = temperature
+        timeout = getattr(base_llm, "request_timeout", None)
+        if timeout is not None:
+            payload["timeout"] = timeout
+
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        tool_calls: list[dict[str, Any]] = []
+        openai_tool_calls: list[dict[str, Any]] = []
+        tool_call_chunks: dict[int, dict[str, str]] = {}
+
+        stream_result = async_client.create(**payload)
+        if hasattr(stream_result, "__aiter__"):
+            stream = stream_result
+        else:
+            stream = await stream_result
+
+        async for chunk in stream:
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+
+            choice = choices[0]
+            delta = getattr(choice, "delta", None)
+            if delta is None:
+                continue
+
+            chunk_content = self._get_field(delta, "content")
+            if chunk_content:
+                chunk_text = self._normalize_message_content(chunk_content)
+                if chunk_text:
+                    content_parts.append(chunk_text)
+                    if writer:
+                        writer(
+                            {
+                                "type": "token",
+                                "iteration": iteration,
+                                "content": chunk_text,
+                            }
+                        )
+
+            chunk_reasoning = self._get_field(delta, "reasoning_content")
+            if chunk_reasoning:
+                reasoning_parts.append(str(chunk_reasoning))
+
+            delta_tool_calls = self._get_field(delta, "tool_calls")
+            if not delta_tool_calls:
+                continue
+
+            for tc_chunk in delta_tool_calls:
+                idx_raw = self._get_field(tc_chunk, "index")
+                idx = idx_raw if isinstance(idx_raw, int) else 0
+
+                if idx not in tool_call_chunks:
+                    tool_call_chunks[idx] = {"name": "", "args": "", "id": ""}
+
+                tc_id = self._get_field(tc_chunk, "id")
+                if tc_id:
+                    tool_call_chunks[idx]["id"] = str(tc_id)
+
+                function_chunk = self._get_field(tc_chunk, "function")
+                if not function_chunk:
+                    continue
+
+                fn_name = self._get_field(function_chunk, "name")
+                if fn_name:
+                    tool_call_chunks[idx]["name"] = str(fn_name)
+
+                fn_args = self._get_field(function_chunk, "arguments")
+                if fn_args:
+                    tool_call_chunks[idx]["args"] += str(fn_args)
+
+        for idx in sorted(tool_call_chunks.keys()):
+            tc = tool_call_chunks[idx]
+            if not tc["name"]:
+                continue
+
+            call_id = tc["id"] or f"call_{idx}"
+            args_text = tc["args"] if tc["args"] else "{}"
+            try:
+                parsed_args = json.loads(args_text) if args_text else {}
+            except json.JSONDecodeError:
+                parsed_args = {"sql": args_text} if args_text else {}
+
+            tool_calls.append({"name": tc["name"], "args": parsed_args, "id": call_id})
+            openai_tool_calls.append(
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": args_text},
+                }
+            )
+
+        full_content = "".join(content_parts)
+        reasoning_content = "".join(reasoning_parts)
+
+        if content_parts and writer:
+            writer(
+                {
+                    "type": "agent_progress",
+                    "iteration": iteration,
+                    "action": "thought_complete",
+                    "content": full_content,
+                }
+            )
+
+        replay_message: dict[str, Any] = {
+            "role": "assistant",
+            "content": full_content or None,
+        }
+        if reasoning_content:
+            replay_message["reasoning_content"] = reasoning_content
+        if openai_tool_calls:
+            replay_message["tool_calls"] = openai_tool_calls
+
+        additional_kwargs: dict[str, Any] = {"_replay_message": replay_message}
+        if reasoning_content:
+            additional_kwargs["reasoning_content"] = reasoning_content
+
+        return AIMessage(
+            content=full_content,
+            tool_calls=tool_calls,
+            additional_kwargs=additional_kwargs,
+        )
+
+    @staticmethod
+    def _get_field(obj: Any, key: str) -> Any:
+        if isinstance(obj, dict):
+            return obj.get(key)
+        return getattr(obj, key, None)
+
+    @staticmethod
+    def _should_use_openai_reasoning_roundtrip(base_llm: Any) -> bool:
+        """Enable raw OpenAI replay path for Kimi/thinking models."""
+        async_client = getattr(base_llm, "async_client", None)
+        if async_client is None:
+            return False
+
+        model_name = str(getattr(base_llm, "model_name", "")).lower()
+        api_base = str(getattr(base_llm, "openai_api_base", "") or "").lower()
+
+        return "kimi" in model_name or "thinking" in model_name or "moonshot" in api_base
+
+    @staticmethod
+    def _serialize_messages_for_openai(
+        messages: list[BaseMessage | dict[str, Any] | Any],
+    ) -> list[dict[str, Any]]:
+        serialized: list[dict[str, Any]] = []
+        for message in messages:
+            if isinstance(message, dict):
+                serialized.append(dict(message))
+                continue
+            if isinstance(message, BaseMessage):
+                serialized.extend(convert_to_openai_messages([message]))
+                continue
+            raise TypeError(f"Unsupported message type: {type(message).__name__}")
+        return serialized
+
+    @staticmethod
+    def _get_replay_message(ai_message: AIMessage) -> BaseMessage | dict[str, Any]:
+        replay_message = ai_message.additional_kwargs.get("_replay_message")
+        if isinstance(replay_message, dict):
+            return replay_message
+        return ai_message
+
+    @staticmethod
+    def _build_tool_result_message(
+        *,
+        tool_result: Any,
+        tool_call_id: str,
+        replay_message: BaseMessage | dict[str, Any],
+    ) -> ToolMessage | dict[str, Any]:
+        if isinstance(replay_message, dict):
+            return {"role": "tool", "tool_call_id": tool_call_id, "content": str(tool_result)}
+        return ToolMessage(content=str(tool_result), tool_call_id=tool_call_id)
+
     def _normalize_message_content(self, content: Any) -> str:
         """Normalize provider-specific message content into plain text."""
         if content is None:
@@ -420,7 +653,7 @@ class SqlAgentNode(BaseNode):
         self,
         sql: str,
         validate_tool: Any,
-        writer: "StreamWriter | None",
+        writer: StreamWriter | None,
         iteration: int,
     ) -> dict[str, Any]:
         """Force validation when agent skipped it."""
@@ -510,9 +743,9 @@ class SqlAgentNode(BaseNode):
 
 async def sql_agent_node(
     state: EasySQLState,
-    config: "RunnableConfig | None" = None,
+    config: RunnableConfig | None = None,
     *,
-    writer: "StreamWriter | None" = None,
+    writer: StreamWriter | None = None,
 ) -> dict[str, Any]:
     node = SqlAgentNode()
     return await node(state, config, writer=writer)

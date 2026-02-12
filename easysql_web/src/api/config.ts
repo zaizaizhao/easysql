@@ -1,5 +1,14 @@
 import { apiClient } from './client';
-import type { DatabaseList, SystemConfig, PipelineStatusResponse } from '@/types';
+import type {
+  ConfigCategory,
+  ConfigDeleteResponse,
+  ConfigOverridesResponse,
+  ConfigUpdateResponse,
+  DatabaseList,
+  EditableConfigResponse,
+  PipelineStatusResponse,
+  SystemConfig,
+} from '@/types';
 
 export async function getDatabases(): Promise<DatabaseList> {
   const response = await apiClient.get<DatabaseList>('/pipeline/databases');
@@ -13,6 +22,31 @@ export async function getConfig(): Promise<SystemConfig> {
 
 export async function getPipelineStatus(): Promise<PipelineStatusResponse> {
   const response = await apiClient.get<PipelineStatusResponse>('/pipeline/status');
+  return response.data;
+}
+
+export async function getEditableConfig(): Promise<EditableConfigResponse> {
+  const response = await apiClient.get<EditableConfigResponse>('/config/editable');
+  return response.data;
+}
+
+export async function getConfigOverrides(): Promise<ConfigOverridesResponse> {
+  const response = await apiClient.get<ConfigOverridesResponse>('/config/overrides');
+  return response.data;
+}
+
+export async function updateConfigCategory(
+  category: ConfigCategory | string,
+  updates: Record<string, string | number | boolean | null>,
+): Promise<ConfigUpdateResponse> {
+  const response = await apiClient.patch<ConfigUpdateResponse>(`/config/${category}`, updates);
+  return response.data;
+}
+
+export async function resetConfigCategory(
+  category: ConfigCategory | string,
+): Promise<ConfigDeleteResponse> {
+  const response = await apiClient.delete<ConfigDeleteResponse>(`/config/${category}`);
   return response.data;
 }
 

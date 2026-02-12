@@ -17,6 +17,7 @@ export interface LLMConfig {
   provider: string;
   model: string;
   planning_model?: string;
+  temperature: number;
   max_sql_retries: number;
 }
 
@@ -63,6 +64,43 @@ export interface SystemConfig {
   code_context: CodeContextConfig;
   log_level: string;
 }
+
+export type ConfigCategory = 'llm' | 'retrieval' | 'few_shot' | 'code_context' | 'langfuse';
+
+export interface EditableConfigItem {
+  value: string | number | boolean | null;
+  is_secret: boolean;
+  is_overridden: boolean;
+  nullable: boolean;
+  value_type: 'str' | 'int' | 'float' | 'bool' | 'null';
+  settings_path: string;
+  env_var: string;
+  constraints: string[];
+  invalidate_tags: string[];
+}
+
+export type EditableConfigResponse = Record<string, Record<string, EditableConfigItem>>;
+
+export interface ConfigUpdateResponse {
+  category: string;
+  updated: string[];
+  invalidate_tags: string[];
+}
+
+export interface ConfigDeleteResponse {
+  category: string;
+  deleted: number;
+  message: string;
+  invalidate_tags: string[];
+}
+
+export interface ConfigOverrideItem {
+  value: string | number | boolean | null;
+  is_secret: boolean;
+  updated_at: string;
+}
+
+export type ConfigOverridesResponse = Record<string, Record<string, ConfigOverrideItem>>;
 
 export type PipelineStatus = 'idle' | 'running' | 'completed' | 'failed';
 

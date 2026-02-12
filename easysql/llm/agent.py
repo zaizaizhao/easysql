@@ -116,16 +116,19 @@ def _create_checkpointer() -> BaseCheckpointSaver | Any:
 
         global _checkpointer_pool
 
-        logger.info(
-            f"Connecting to PostgreSQL checkpointer at {settings.checkpointer.postgres_host}"
-        )
-        pool = AsyncConnectionPool(
-            settings.checkpointer.postgres_uri,
-            max_size=10,
-            check=AsyncConnectionPool.check_connection,
-            kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
-        )
-        _checkpointer_pool = pool
+        if _checkpointer_pool is None:
+            logger.info(
+                f"Connecting to PostgreSQL checkpointer at {settings.checkpointer.postgres_host}"
+            )
+            _checkpointer_pool = AsyncConnectionPool(
+                settings.checkpointer.postgres_uri,
+                max_size=10,
+                check=AsyncConnectionPool.check_connection,
+                kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+            )
+
+        pool = _checkpointer_pool
+        assert pool is not None
         checkpointer = AsyncPostgresSaver(pool)  # type: ignore[arg-type]
         return checkpointer
     except ImportError as e:

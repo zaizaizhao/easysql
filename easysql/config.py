@@ -7,8 +7,10 @@ Uses Pydantic Settings for validation and type coercion.
 
 import os
 import re
+from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from pydantic import AliasChoices, Field, field_validator, model_validator
@@ -17,6 +19,52 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from easysql.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_RUNTIME_OVERRIDES: dict[str, Any] = {}
+_RUNTIME_OVERRIDES_LOCK = RLock()
+
+
+def replace_runtime_overrides(overrides: dict[str, Any]) -> None:
+    """Replace all runtime overrides with the provided mapping."""
+    with _RUNTIME_OVERRIDES_LOCK:
+        _RUNTIME_OVERRIDES.clear()
+        _RUNTIME_OVERRIDES.update(deepcopy(overrides))
+
+
+def update_runtime_overrides(patch: dict[str, Any]) -> None:
+    """Merge runtime override patches by settings path."""
+    with _RUNTIME_OVERRIDES_LOCK:
+        _RUNTIME_OVERRIDES.update(deepcopy(patch))
+
+
+def remove_runtime_overrides(paths: list[str]) -> None:
+    """Remove runtime overrides by settings path."""
+    with _RUNTIME_OVERRIDES_LOCK:
+        for path in paths:
+            _RUNTIME_OVERRIDES.pop(path, None)
+
+
+def get_runtime_overrides() -> dict[str, Any]:
+    """Get a copy of current runtime overrides."""
+    with _RUNTIME_OVERRIDES_LOCK:
+        return deepcopy(_RUNTIME_OVERRIDES)
+
+
+def _apply_override_path(settings: "Settings", path: str, value: Any) -> None:
+    parts = path.split(".")
+    target: Any = settings
+    for part in parts[:-1]:
+        if not hasattr(target, part):
+            logger.warning(f"Skip unknown override path segment: {path}")
+            return
+        target = getattr(target, part)
+
+    leaf = parts[-1]
+    if not hasattr(target, leaf):
+        logger.warning(f"Skip unknown override path leaf: {path}")
+        return
+
+    setattr(target, leaf, value)
 
 
 class DatabaseConfig:
@@ -220,6 +268,13 @@ class LLMConfig(BaseSettings):
         default=None, description="Optional model for analyze/clarify phase"
     )
 
+    # Sampling Configuration
+    temperature: float = Field(
+        default=0.0,
+        validation_alias=AliasChoices("llm_temperature", "temperature"),
+        description="Sampling temperature for chat models (0.0 - 2.0)",
+    )
+
     # Retry Configuration
     max_sql_retries: int = Field(default=3, description="Max SQL generation retries")
 
@@ -248,6 +303,13 @@ class LLMConfig(BaseSettings):
         if v.lower() not in ["plan", "fast"]:
             raise ValueError("QUERY_MODE must be 'plan' or 'fast'")
         return v.lower()
+
+    @field_validator("temperature")
+    @classmethod
+    def validate_temperature(cls, v: float) -> float:
+        if v < 0 or v > 2:
+            raise ValueError("TEMPERATURE must be in [0, 2]")
+        return v
 
 
 class Settings(BaseSettings):
@@ -525,7 +587,11 @@ def get_settings() -> Settings:
     Returns:
         Settings: Application settings instance
     """
-    return Settings()
+    settings = Settings()
+    with _RUNTIME_OVERRIDES_LOCK:
+        for path, value in _RUNTIME_OVERRIDES.items():
+            _apply_override_path(settings, path, value)
+    return settings
 
 
 def load_settings(env_file: str | Path | None = None) -> Settings:

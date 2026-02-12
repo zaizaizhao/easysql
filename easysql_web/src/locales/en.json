@@ -148,6 +148,7 @@
   },
   "settings": {
     "title": "System Settings",
+    "pageSubtitle": "Manage runtime configs by category, with sync status and system overview.",
     "schemaSync": "Schema Sync",
     "pipelineStatus": "Pipeline Status:",
     "resync": "Resync",
@@ -163,6 +164,7 @@
     "queryModeFast": "Fast (Direct)",
     "provider": "Provider",
     "model": "Model",
+    "temperature": "Temperature",
     "maxRetries": "Max Retries",
     "retrievalConfig": "Retrieval Configuration",
     "topK": "Top-K",
@@ -177,7 +179,240 @@
     "statsColumns": "Columns",
     "statsForeignKeys": "Foreign Keys",
     "statsNeo4jTables": "Neo4j Tables",
-    "statsMilvusTables": "Milvus Tables"
+    "statsMilvusTables": "Milvus Tables",
+    "configEditorTitle": "Config Editor",
+    "configEditorTip": "Runtime config updates are persisted in DB and take effect immediately for new requests.",
+    "noEditableConfig": "No editable config found.",
+    "tagOverridden": "overridden",
+    "tagSecret": "secret",
+    "tagChanged": "changed",
+    "nullable": "nullable",
+    "searchPlaceholder": "Search by config key…",
+    "searchCategoryAriaLabel": "Search config items in {{category}}",
+    "changedCount": "{{count}} changed",
+    "noSearchResults": "No matching config items",
+    "unsavedChanges": "{{count}} unsaved changes",
+    "noChangesToSave": "No changes to save",
+    "noCategoryChanges": "No categories have unsaved changes",
+    "saveSuccess": "Saved {{count}} config item(s)",
+    "saveFailed": "Save failed",
+    "saveAll": "Save All Changes",
+    "saveAllSuccess": "All changes saved ({{count}} items)",
+    "saveAllFailed": "Bulk save failed",
+    "revertSuccess": "{{category}} reverted ({{count}} overrides removed)",
+    "revertFailed": "Reset failed",
+    "secretPlaceholder": "Enter full secret to replace…",
+    "saveCategory": "Save {{category}}",
+    "revertCategory": "Revert {{category}}",
+    "statsEditableCategories": "Editable Categories",
+    "statsEditableFields": "Editable Config Items",
+    "statsOverridden": "Overridden Items",
+    "tabs": {
+      "runtime": "Runtime Config",
+      "sync": "Sync Status",
+      "overview": "System Overview"
+    },
+    "categories": {
+      "llm": "LLM",
+      "retrieval": "Retrieval",
+      "few_shot": "Few-Shot",
+      "code_context": "Code Context",
+      "langfuse": "Langfuse"
+    },
+    "valueTypes": {
+      "str": "String",
+      "int": "Integer",
+      "float": "Float",
+      "bool": "Boolean",
+      "null": "Null"
+    },
+    "constraints": {
+      "enum_plan_fast": "Options: plan / fast",
+      "gt_0": "> 0",
+      "ge_0": ">= 0",
+      "ge_1": ">= 1",
+      "between_0_1": "Range: 0~1",
+      "between_0_2": "Range: 0~2",
+      "non_empty": "Non-empty",
+      "nullable": "Nullable"
+    },
+    "effects": {
+      "settings": "Refresh settings",
+      "graph": "Rebuild query graph",
+      "retrieval_cache": "Refresh retrieval cache",
+      "few_shot_cache": "Refresh few-shot cache",
+      "code_context_cache": "Refresh code-context cache",
+      "callbacks": "Rebuild callbacks",
+      "langfuse_env": "Refresh Langfuse env"
+    },
+    "fields": {
+      "llm": {
+        "query_mode": {
+          "label": "Query Mode",
+          "description": "plan uses multi-step reasoning; fast returns SQL directly."
+        },
+        "openai_llm_model": {
+          "label": "OpenAI Primary Model",
+          "description": "Used for SQL generation when OpenAI is selected."
+        },
+        "google_llm_model": {
+          "label": "Google Primary Model",
+          "description": "When configured, Gemini can be selected with higher priority."
+        },
+        "anthropic_llm_model": {
+          "label": "Anthropic Primary Model",
+          "description": "When configured, Claude can be selected with higher priority."
+        },
+        "model_planning": {
+          "label": "Planning Model",
+          "description": "Used for analyze/clarify stages; falls back to primary model."
+        },
+        "temperature": {
+          "label": "Model Temperature",
+          "description": "Controls sampling randomness; set to 1 for models that require fixed temperature (e.g., Kimi 2.5)."
+        },
+        "use_agent_mode": {
+          "label": "Enable Agent Mode",
+          "description": "Uses a ReAct loop to iteratively repair SQL."
+        },
+        "agent_max_iterations": {
+          "label": "Agent Max Iterations",
+          "description": "Upper bound of Agent loop iterations."
+        },
+        "max_sql_retries": {
+          "label": "Max SQL Retries",
+          "description": "How many times SQL generation can retry on failure."
+        },
+        "openai_api_key": {
+          "label": "OpenAI API Key",
+          "description": "Credential for OpenAI requests."
+        },
+        "openai_api_base": {
+          "label": "OpenAI API Base",
+          "description": "Custom API base URL for proxy or compatible gateway."
+        },
+        "google_api_key": {
+          "label": "Google API Key",
+          "description": "Credential for Gemini requests."
+        },
+        "anthropic_api_key": {
+          "label": "Anthropic API Key",
+          "description": "Credential for Claude requests."
+        }
+      },
+      "retrieval": {
+        "retrieval_search_top_k": {
+          "label": "Retrieval Top-K",
+          "description": "Maximum number of candidate tables retrieved each request."
+        },
+        "retrieval_expand_fk": {
+          "label": "Enable FK Expansion",
+          "description": "Expands related tables through foreign-key links."
+        },
+        "retrieval_expand_max_depth": {
+          "label": "FK Expansion Depth",
+          "description": "Maximum hop depth for FK graph expansion."
+        },
+        "semantic_filter_enabled": {
+          "label": "Enable Semantic Filter",
+          "description": "Filters low-relevance candidates by semantic similarity."
+        },
+        "semantic_filter_threshold": {
+          "label": "Semantic Filter Threshold",
+          "description": "Higher values make filtering stricter."
+        },
+        "semantic_filter_min_tables": {
+          "label": "Min Tables Kept",
+          "description": "Minimum number of tables kept after semantic filtering."
+        },
+        "bridge_protection_enabled": {
+          "label": "Enable Bridge Protection",
+          "description": "Protects bridge paths from being over-pruned."
+        },
+        "bridge_max_hops": {
+          "label": "Bridge Max Hops",
+          "description": "Maximum hop distance for bridge traversal."
+        },
+        "core_tables": {
+          "label": "Core Tables",
+          "description": "Comma-separated table names prioritized in context building."
+        },
+        "llm_filter_enabled": {
+          "label": "Enable LLM Re-Filter",
+          "description": "Uses an LLM to rerank/filter candidate tables."
+        },
+        "llm_filter_max_tables": {
+          "label": "LLM Filter Max Tables",
+          "description": "Maximum number of tables passed into LLM filtering."
+        },
+        "llm_filter_model": {
+          "label": "LLM Filter Model",
+          "description": "Model name used for retrieval-stage filtering."
+        },
+        "llm_api_key": {
+          "label": "Retrieval LLM API Key",
+          "description": "Credential used by retrieval LLM filtering."
+        },
+        "llm_api_base": {
+          "label": "Retrieval LLM API Base",
+          "description": "API base URL used by retrieval LLM filtering."
+        }
+      },
+      "few_shot": {
+        "few_shot_enabled": {
+          "label": "Enable Few-Shot",
+          "description": "Retrieves similar examples to improve SQL generation."
+        },
+        "few_shot_max_examples": {
+          "label": "Few-Shot Max Examples",
+          "description": "Maximum number of examples injected per request."
+        },
+        "few_shot_min_similarity": {
+          "label": "Few-Shot Min Similarity",
+          "description": "Examples below this score are filtered out."
+        },
+        "few_shot_collection_name": {
+          "label": "Few-Shot Collection Name",
+          "description": "Collection name used to store and retrieve examples."
+        }
+      },
+      "code_context": {
+        "code_context_enabled": {
+          "label": "Enable Code Context",
+          "description": "Retrieves business code snippets as extra context."
+        },
+        "code_context_search_top_k": {
+          "label": "Code Context Top-K",
+          "description": "Maximum snippets returned by code retrieval."
+        },
+        "code_context_score_threshold": {
+          "label": "Code Context Threshold",
+          "description": "Only snippets above this relevance score are kept."
+        },
+        "code_context_max_snippets": {
+          "label": "Max Code Snippets",
+          "description": "Maximum snippets injected into the final prompt."
+        }
+      },
+      "langfuse": {
+        "enabled": {
+          "label": "Enable Langfuse",
+          "description": "Uploads tracing/observability data when enabled."
+        },
+        "host": {
+          "label": "Langfuse Host",
+          "description": "Langfuse Cloud or self-hosted endpoint."
+        },
+        "public_key": {
+          "label": "Langfuse Public Key",
+          "description": "Public key used for Langfuse authentication."
+        },
+        "secret_key": {
+          "label": "Langfuse Secret Key",
+          "description": "Secret key used for Langfuse authentication."
+        }
+      }
+    }
   },
   "chart": {
     "noData": "No data to visualize",
