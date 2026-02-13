@@ -155,8 +155,14 @@ export interface ChartRecommendRequest {
   /** Selected intent (skip planning and aggregate directly) */
   selectedIntent?: ChartIntent;
 
+  /** User preference/instruction for chart recommendation */
+  chartInstruction?: string;
+
   /** Only return plan suggestions (no aggregation) */
   planOnly?: boolean;
+
+  /** Force regenerate plan instead of reusing persisted suggestion */
+  forceRefresh?: boolean;
 }
 
 /**

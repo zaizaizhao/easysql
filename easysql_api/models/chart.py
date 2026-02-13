@@ -54,7 +54,9 @@ class ChartRecommendRequest(BaseModel):
     row_count: int = Field(alias="rowCount")
     previous_plan: VizPlan | None = Field(default=None, alias="previousPlan")
     selected_intent: ChartIntent | None = Field(default=None, alias="selectedIntent")
+    chart_instruction: str | None = Field(default=None, alias="chartInstruction")
     plan_only: bool = Field(default=False, alias="planOnly")
+    force_refresh: bool = Field(default=False, alias="forceRefresh")
 
 
 class ChartRecommendResponse(BaseModel):

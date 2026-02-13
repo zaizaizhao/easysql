@@ -40,7 +40,13 @@ async def recommend_chart(
 ) -> ChartRecommendResponse:
     session = None
     turn = None
-    if request.plan_only and request.session_id:
+    use_cached_plan = (
+        request.plan_only
+        and request.session_id is not None
+        and not request.force_refresh
+        and not (request.chart_instruction and request.chart_instruction.strip())
+    )
+    if use_cached_plan and request.session_id:
         session = await repository.get(request.session_id)
         if session:
             turn = _resolve_turn(session, request)

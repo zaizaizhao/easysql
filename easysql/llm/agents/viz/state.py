@@ -30,6 +30,7 @@ class ColumnProfile(TypedDict):
 class VizState(TypedDict):
     question: str | None
     sql: str | None
+    chart_instruction: NotRequired[str | None]
     columns: list[str]
     column_types: list[ColumnDataType] | None
     sample_data: list[dict[str, Any]]

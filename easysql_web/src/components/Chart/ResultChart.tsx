@@ -28,6 +28,7 @@ import {
   Tag,
   message,
   Skeleton,
+  Input,
 } from 'antd';
 import {
   DownloadOutlined,
@@ -57,6 +58,7 @@ import { aggregateChartData } from '@/utils/chartAggregate';
 import { buildChartConfigFromIntent } from '@/utils/chartIntentConfig';
 
 const { Text } = Typography;
+const { TextArea } = Input;
 
 interface ResultChartProps {
   /** SQL execution result */
@@ -117,8 +119,11 @@ export function ResultChart({
   const [selectedResponse, setSelectedResponse] = useState<ChartRecommendResponse | null>(null);
   const [llmChartData, setLlmChartData] = useState<Record<string, unknown>[] | null>(null);
   const [planThinkingTick, setPlanThinkingTick] = useState(0);
+  const [chartInstructionDraft, setChartInstructionDraft] = useState('');
+  const [appliedChartInstruction, setAppliedChartInstruction] = useState<string | null>(null);
+  const [planRequestNonce, setPlanRequestNonce] = useState(0);
 
-  // Track if we've already made a recommend call for this turn to prevent duplicates
+  // Track request signature to prevent duplicate plan requests.
   const recommendCalledRef = useRef<string | null>(null);
 
   const chartThinkingPhases = useMemo(
@@ -158,10 +163,18 @@ export function ResultChart({
       setSelectedResponse(null);
       setPlanLoading(false);
       setSelectionLoading(false);
+      setChartInstructionDraft('');
+      setAppliedChartInstruction(null);
+      setPlanRequestNonce(0);
+      recommendCalledRef.current = null;
       return;
     }
 
-    if (storedPlan) {
+    const normalizedInstruction = appliedChartInstruction?.trim() || undefined;
+    const shouldUseStoredPlan =
+      !!storedPlan && !normalizedInstruction && planRequestNonce === 0;
+
+    if (shouldUseStoredPlan && storedPlan) {
       setLlmPlan(storedPlan);
       setLlmPlanReasoning(storedReasoning ?? null);
       setSelectedIntent(null);
@@ -169,10 +182,6 @@ export function ResultChart({
       setLlmChartData(null);
       setError(null);
       setPlanLoading(false);
-      // Mark that we have a plan for this turn (prevent future calls)
-      if (turnId) {
-        recommendCalledRef.current = turnId;
-      }
       return;
     }
 
@@ -191,16 +200,20 @@ export function ResultChart({
       return;
     }
 
-    // Prevent duplicate API calls for the same turn
-    // This handles race conditions when storedPlan hasn't loaded yet
-    if (turnId && recommendCalledRef.current === turnId) {
+    const recommendKey = [
+      turnId ?? 'no-turn',
+      sql ?? '',
+      String(result.row_count),
+      normalizedInstruction ?? '',
+      String(planRequestNonce),
+    ].join('::');
+
+    // Prevent duplicate API calls for the same request signature.
+    if (recommendCalledRef.current === recommendKey) {
       return;
     }
 
-    // Mark that we're making a recommend call for this turn
-    if (turnId) {
-      recommendCalledRef.current = turnId;
-    }
+    recommendCalledRef.current = recommendKey;
 
     let cancelled = false;
     setPlanLoading(true);
@@ -221,7 +234,9 @@ export function ResultChart({
         columnTypes,
         sampleData,
         rowCount: result.row_count,
+        chartInstruction: normalizedInstruction,
         planOnly: true,
+        forceRefresh: planRequestNonce > 0,
       })
       .then((response) => {
         if (cancelled) return;
@@ -250,6 +265,8 @@ export function ResultChart({
     result,
     question,
     sql,
+    appliedChartInstruction,
+    planRequestNonce,
     externalConfig,
     manualChartType,
     sessionId,
@@ -257,7 +274,17 @@ export function ResultChart({
   ]);
 
   useEffect(() => {
-    if (!useLlmRecommendation || storedPlan || !llmPlan || !sessionId || !turnId) {
+    const normalizedInstruction = appliedChartInstruction?.trim() || undefined;
+    const shouldSkipStoredPlanPersist =
+      !!storedPlan && !normalizedInstruction && planRequestNonce === 0;
+
+    if (
+      !useLlmRecommendation ||
+      shouldSkipStoredPlanPersist ||
+      !llmPlan ||
+      !sessionId ||
+      !turnId
+    ) {
       return;
     }
     const planKey = `${sessionId}:${turnId}:${JSON.stringify(llmPlan)}`;
@@ -275,6 +302,8 @@ export function ResultChart({
     llmPlanReasoning,
     sessionId,
     turnId,
+    appliedChartInstruction,
+    planRequestNonce,
   ]);
 
   useEffect(() => {
@@ -306,6 +335,79 @@ export function ResultChart({
       return `${chartTypeLabel} · ${aggLabel}`;
     },
     [t]
+  );
+
+  const handleApplyInstruction = useCallback(() => {
+    const normalized = chartInstructionDraft.trim();
+    setAppliedChartInstruction(normalized || null);
+    setPlanRequestNonce((value) => value + 1);
+  }, [chartInstructionDraft]);
+
+  const handleClearInstruction = useCallback(() => {
+    setChartInstructionDraft('');
+    setAppliedChartInstruction(null);
+    setPlanRequestNonce((value) => value + 1);
+  }, []);
+
+  const instructionActionsDisabled = planLoading || selectionLoading;
+  const hasInstruction = Boolean(appliedChartInstruction?.trim());
+
+  const instructionPanel = useMemo(
+    () => (
+      <Space
+        direction="vertical"
+        size={8}
+        style={{
+          width: '100%',
+          padding: 12,
+          border: `1px dashed ${token.colorBorder}`,
+          borderRadius: 8,
+          background: token.colorFillTertiary,
+        }}
+      >
+        <Text style={{ fontSize: 12 }}>{t('chart.instructionLabel')}</Text>
+        <TextArea
+          value={chartInstructionDraft}
+          onChange={(event) => setChartInstructionDraft(event.target.value)}
+          placeholder={t('chart.instructionPlaceholder')}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          disabled={instructionActionsDisabled}
+        />
+        <Space size={8} wrap>
+          <Button
+            size="small"
+            type="primary"
+            onClick={handleApplyInstruction}
+            loading={planLoading}
+            disabled={selectionLoading}
+          >
+            {t('chart.applyInstruction')}
+          </Button>
+          <Button
+            size="small"
+            onClick={handleClearInstruction}
+            disabled={
+              instructionActionsDisabled || (!chartInstructionDraft.trim() && !hasInstruction)
+            }
+          >
+            {t('chart.clearInstruction')}
+          </Button>
+          {hasInstruction && <Tag color="blue">{t('chart.instructionApplied')}</Tag>}
+        </Space>
+      </Space>
+    ),
+    [
+      token.colorBorder,
+      token.colorFillTertiary,
+      t,
+      chartInstructionDraft,
+      instructionActionsDisabled,
+      handleApplyInstruction,
+      planLoading,
+      selectionLoading,
+      hasInstruction,
+      handleClearInstruction,
+    ]
   );
 
   // Derive chart config from result or external config
@@ -562,6 +664,7 @@ export function ResultChart({
             <Text strong>{t('chart.suggestionsTitle')}</Text>
             <Spin size="small" />
           </Space>
+          {instructionPanel}
 
           <Text type="secondary" style={{ fontSize: 12 }}>
             {chartThinkingText}
@@ -605,12 +708,15 @@ export function ResultChart({
           background: token.colorBgContainer,
         }}
       >
-        <Alert
-          title={t('chart.noSuggestions')}
-          description={error || llmPlanReasoning || t('chart.inferFailed')}
-          type="warning"
-          showIcon
-        />
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          {instructionPanel}
+          <Alert
+            title={t('chart.noSuggestions')}
+            description={error || llmPlanReasoning || t('chart.inferFailed')}
+            type="warning"
+            showIcon
+          />
+        </Space>
       </div>
     );
   }
@@ -635,6 +741,7 @@ export function ResultChart({
               </Tooltip>
             )}
           </Space>
+          {instructionPanel}
           {planLoading ? (
             <div style={{ textAlign: 'center', padding: 16 }}>
               <Spin />
