@@ -28,10 +28,13 @@ import {
   Tag,
   message,
   Skeleton,
+  Input,
 } from 'antd';
 import {
+  CheckCircleOutlined,
   DownloadOutlined,
   InfoCircleOutlined,
+  SettingOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -57,6 +60,7 @@ import { aggregateChartData } from '@/utils/chartAggregate';
 import { buildChartConfigFromIntent } from '@/utils/chartIntentConfig';
 
 const { Text } = Typography;
+const { TextArea } = Input;
 
 interface ResultChartProps {
   /** SQL execution result */
@@ -117,8 +121,12 @@ export function ResultChart({
   const [selectedResponse, setSelectedResponse] = useState<ChartRecommendResponse | null>(null);
   const [llmChartData, setLlmChartData] = useState<Record<string, unknown>[] | null>(null);
   const [planThinkingTick, setPlanThinkingTick] = useState(0);
+  const [chartInstructionDraft, setChartInstructionDraft] = useState('');
+  const [appliedChartInstruction, setAppliedChartInstruction] = useState<string | null>(null);
+  const [instructionEditorVisible, setInstructionEditorVisible] = useState(false);
+  const [planRequestNonce, setPlanRequestNonce] = useState(0);
 
-  // Track if we've already made a recommend call for this turn to prevent duplicates
+  // Track request signature to prevent duplicate plan requests.
   const recommendCalledRef = useRef<string | null>(null);
 
   const chartThinkingPhases = useMemo(
@@ -158,10 +166,19 @@ export function ResultChart({
       setSelectedResponse(null);
       setPlanLoading(false);
       setSelectionLoading(false);
+      setChartInstructionDraft('');
+      setAppliedChartInstruction(null);
+      setInstructionEditorVisible(false);
+      setPlanRequestNonce(0);
+      recommendCalledRef.current = null;
       return;
     }
 
-    if (storedPlan) {
+    const normalizedInstruction = appliedChartInstruction?.trim() || undefined;
+    const shouldUseStoredPlan =
+      !!storedPlan && !normalizedInstruction && planRequestNonce === 0;
+
+    if (shouldUseStoredPlan && storedPlan) {
       setLlmPlan(storedPlan);
       setLlmPlanReasoning(storedReasoning ?? null);
       setSelectedIntent(null);
@@ -169,10 +186,6 @@ export function ResultChart({
       setLlmChartData(null);
       setError(null);
       setPlanLoading(false);
-      // Mark that we have a plan for this turn (prevent future calls)
-      if (turnId) {
-        recommendCalledRef.current = turnId;
-      }
       return;
     }
 
@@ -191,16 +204,20 @@ export function ResultChart({
       return;
     }
 
-    // Prevent duplicate API calls for the same turn
-    // This handles race conditions when storedPlan hasn't loaded yet
-    if (turnId && recommendCalledRef.current === turnId) {
+    const recommendKey = [
+      turnId ?? 'no-turn',
+      sql ?? '',
+      String(result.row_count),
+      normalizedInstruction ?? '',
+      String(planRequestNonce),
+    ].join('::');
+
+    // Prevent duplicate API calls for the same request signature.
+    if (recommendCalledRef.current === recommendKey) {
       return;
     }
 
-    // Mark that we're making a recommend call for this turn
-    if (turnId) {
-      recommendCalledRef.current = turnId;
-    }
+    recommendCalledRef.current = recommendKey;
 
     let cancelled = false;
     setPlanLoading(true);
@@ -221,7 +238,9 @@ export function ResultChart({
         columnTypes,
         sampleData,
         rowCount: result.row_count,
+        chartInstruction: normalizedInstruction,
         planOnly: true,
+        forceRefresh: planRequestNonce > 0,
       })
       .then((response) => {
         if (cancelled) return;
@@ -250,6 +269,8 @@ export function ResultChart({
     result,
     question,
     sql,
+    appliedChartInstruction,
+    planRequestNonce,
     externalConfig,
     manualChartType,
     sessionId,
@@ -257,7 +278,17 @@ export function ResultChart({
   ]);
 
   useEffect(() => {
-    if (!useLlmRecommendation || storedPlan || !llmPlan || !sessionId || !turnId) {
+    const normalizedInstruction = appliedChartInstruction?.trim() || undefined;
+    const shouldSkipStoredPlanPersist =
+      !!storedPlan && !normalizedInstruction && planRequestNonce === 0;
+
+    if (
+      !useLlmRecommendation ||
+      shouldSkipStoredPlanPersist ||
+      !llmPlan ||
+      !sessionId ||
+      !turnId
+    ) {
       return;
     }
     const planKey = `${sessionId}:${turnId}:${JSON.stringify(llmPlan)}`;
@@ -275,6 +306,8 @@ export function ResultChart({
     llmPlanReasoning,
     sessionId,
     turnId,
+    appliedChartInstruction,
+    planRequestNonce,
   ]);
 
   useEffect(() => {
@@ -306,6 +339,126 @@ export function ResultChart({
       return `${chartTypeLabel} · ${aggLabel}`;
     },
     [t]
+  );
+
+  const handleApplyInstruction = useCallback(() => {
+    const normalized = chartInstructionDraft.trim();
+    setAppliedChartInstruction(normalized || null);
+    setInstructionEditorVisible(false);
+    setPlanRequestNonce((value) => value + 1);
+  }, [chartInstructionDraft]);
+
+  const handleClearInstruction = useCallback(() => {
+    setChartInstructionDraft('');
+    setAppliedChartInstruction(null);
+    setPlanRequestNonce((value) => value + 1);
+  }, []);
+
+  const handleToggleInstructionEditor = useCallback(() => {
+    setInstructionEditorVisible((value) => !value);
+  }, []);
+
+  const instructionActionsDisabled = planLoading || selectionLoading;
+  const hasInstruction = Boolean(appliedChartInstruction?.trim());
+
+  const instructionPanel = useMemo(
+    () => (
+      <Space
+        direction="vertical"
+        size={8}
+        style={{
+          width: '100%',
+          padding: 12,
+          border: `1px dashed ${token.colorBorder}`,
+          borderRadius: 8,
+          background: token.colorFillTertiary,
+        }}
+      >
+        <Text style={{ fontSize: 12 }}>{t('chart.instructionLabel')}</Text>
+        <TextArea
+          value={chartInstructionDraft}
+          onChange={(event) => setChartInstructionDraft(event.target.value)}
+          placeholder={t('chart.instructionPlaceholder')}
+          autoSize={{ minRows: 2, maxRows: 4 }}
+          disabled={instructionActionsDisabled}
+        />
+        <Space size={8} wrap>
+          <Button
+            size="small"
+            type="primary"
+            onClick={handleApplyInstruction}
+            loading={planLoading}
+            disabled={selectionLoading}
+          >
+            {t('chart.applyInstruction')}
+          </Button>
+          <Button
+            size="small"
+            onClick={handleClearInstruction}
+            disabled={
+              instructionActionsDisabled || (!chartInstructionDraft.trim() && !hasInstruction)
+            }
+          >
+            {t('chart.clearInstruction')}
+          </Button>
+        </Space>
+      </Space>
+    ),
+    [
+      token.colorBorder,
+      token.colorFillTertiary,
+      t,
+      chartInstructionDraft,
+      instructionActionsDisabled,
+      handleApplyInstruction,
+      planLoading,
+      selectionLoading,
+      handleClearInstruction,
+    ]
+  );
+
+  const instructionControls = useMemo(
+    () => (
+      <Space size={8} wrap>
+        {hasInstruction && (
+          <Tag color="blue" icon={<CheckCircleOutlined />} style={{ marginInlineEnd: 0 }}>
+            {t('chart.instructionApplied')}
+          </Tag>
+        )}
+        <Button
+          size="small"
+          type={instructionEditorVisible ? 'primary' : 'default'}
+          icon={<SettingOutlined />}
+          onClick={handleToggleInstructionEditor}
+          disabled={instructionActionsDisabled}
+          aria-label={
+            instructionEditorVisible ? t('chart.hideCustomization') : t('chart.customizeChart')
+          }
+          style={{
+            borderRadius: 999,
+            fontWeight: 500,
+            borderColor: instructionEditorVisible ? token.colorPrimaryBorder : token.colorBorder,
+            background: instructionEditorVisible ? token.colorPrimaryBg : token.colorFillSecondary,
+            color: instructionEditorVisible ? token.colorPrimary : token.colorText,
+          }}
+        >
+          {instructionEditorVisible ? t('chart.hideCustomization') : t('chart.customizeChart')}
+        </Button>
+      </Space>
+    ),
+    [
+      hasInstruction,
+      t,
+      handleToggleInstructionEditor,
+      instructionActionsDisabled,
+      instructionEditorVisible,
+      token.colorPrimaryBorder,
+      token.colorBorder,
+      token.colorPrimaryBg,
+      token.colorFillSecondary,
+      token.colorPrimary,
+      token.colorText,
+    ]
   );
 
   // Derive chart config from result or external config
@@ -558,10 +711,20 @@ export function ResultChart({
         }}
       >
         <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-          <Space size={8}>
-            <Text strong>{t('chart.suggestionsTitle')}</Text>
-            <Spin size="small" />
-          </Space>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <Space size={8}>
+              <Text strong>{t('chart.suggestionsTitle')}</Text>
+              <Spin size="small" />
+            </Space>
+            {instructionControls}
+          </div>
 
           <Text type="secondary" style={{ fontSize: 12 }}>
             {chartThinkingText}
@@ -605,12 +768,26 @@ export function ResultChart({
           background: token.colorBgContainer,
         }}
       >
-        <Alert
-          title={t('chart.noSuggestions')}
-          description={error || llmPlanReasoning || t('chart.inferFailed')}
-          type="warning"
-          showIcon
-        />
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <Text strong>{t('chart.suggestionsTitle')}</Text>
+            {instructionControls}
+          </div>
+          <Alert
+            title={t('chart.noSuggestions')}
+            description={error || llmPlanReasoning || t('chart.inferFailed')}
+            type="warning"
+            showIcon
+          />
+          {instructionEditorVisible && instructionPanel}
+        </Space>
       </div>
     );
   }
@@ -627,14 +804,26 @@ export function ResultChart({
         }}
       >
         <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-          <Space size={8}>
-            <Text strong>{t('chart.suggestionsTitle')}</Text>
-            {llmPlanReasoning && (
-              <Tooltip title={llmPlanReasoning}>
-                <InfoCircleOutlined style={{ color: token.colorTextSecondary, cursor: 'pointer' }} />
-              </Tooltip>
-            )}
-          </Space>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <Space size={8}>
+              <Text strong>{t('chart.suggestionsTitle')}</Text>
+              {llmPlanReasoning && (
+                <Tooltip title={llmPlanReasoning}>
+                  <InfoCircleOutlined
+                    style={{ color: token.colorTextSecondary, cursor: 'pointer' }}
+                  />
+                </Tooltip>
+              )}
+            </Space>
+            {instructionControls}
+          </div>
           {planLoading ? (
             <div style={{ textAlign: 'center', padding: 16 }}>
               <Spin />
@@ -697,7 +886,10 @@ export function ResultChart({
             <Text type="secondary">{t('chart.noSuggestions')}</Text>
           )}
           {!planLoading && (
-            <Text type="secondary">{t('chart.selectSuggestion')}</Text>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text type="secondary">{t('chart.selectSuggestion')}</Text>
+              {instructionEditorVisible && instructionPanel}
+            </Space>
           )}
         </Space>
       </div>

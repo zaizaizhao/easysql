@@ -64,6 +64,10 @@ Your task is to generate chart configurations based on the data profile and user
 
 7. **Use timeGrain for date columns**: { "field": "date_col", "grain": "month" }
 
+8. **Honor user chart preference when feasible**:
+   - If user provides chart preference/instruction, prioritize it when data supports it.
+   - If not feasible, choose the closest valid alternative and explain why in reasoning.
+
 Output ONLY valid JSON matching the VizPlan schema. Do not explain.
 """
 
@@ -115,6 +119,7 @@ def build_viz_user_prompt(
     *,
     question: str | None,
     sql: str | None,
+    chart_instruction: str | None,
     profile_json: str,
     sample_json: str,
     row_count: int,
@@ -144,6 +149,15 @@ def build_viz_user_prompt(
         f"```json\n{sample_json}\n```",
     ]
 
+    if chart_instruction and chart_instruction.strip():
+        lines.extend(
+            [
+                "",
+                "## User Chart Preference",
+                chart_instruction.strip(),
+            ]
+        )
+
     if previous_plan_json:
         lines.extend(
             [
@@ -164,6 +178,7 @@ def build_viz_user_prompt(
             "4. **xAxisLabel/yAxisLabel** for axis-based charts (REQUIRED)",
             "5. Appropriate **aggregation** (count, sum, avg, min, max)",
             "6. **reasoning** explaining your chart type choice",
+            "7. Respect user chart preference when it is valid for the data",
         ]
     )
 

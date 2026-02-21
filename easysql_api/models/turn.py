@@ -27,12 +27,15 @@ class TurnInfo(BaseModel):
     final_sql: str | None = None
     validation_passed: bool | None = None
     error: str | None = None
+    tables_used: list[str] = Field(default_factory=list)
+    assistant_message_id: str | None = None
+    assistant_is_few_shot: bool = False
     chart_plan: dict[str, Any] | None = None
     chart_reasoning: str | None = None
     created_at: datetime
 
     @classmethod
-    def from_dataclass(cls, turn: Turn) -> "TurnInfo":
+    def from_dataclass(cls, turn: Turn) -> TurnInfo:
         """Convert a Turn dataclass to TurnInfo for API serialization."""
         return cls(
             turn_id=turn.turn_id,
@@ -45,6 +48,9 @@ class TurnInfo(BaseModel):
             final_sql=turn.final_sql,
             validation_passed=turn.validation_passed,
             error=turn.error,
+            tables_used=turn.tables_used,
+            assistant_message_id=turn.assistant_message_id,
+            assistant_is_few_shot=turn.assistant_is_few_shot,
             chart_plan=turn.chart_plan,
             chart_reasoning=turn.chart_reasoning,
             created_at=turn.created_at,

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -106,7 +106,7 @@ class VizPlanNode:
     async def _invoke_llm(
         self,
         messages: list[BaseMessage],
-        config: "RunnableConfig | None",
+        config: RunnableConfig | None,
     ) -> VizPlan | str:
         """Invoke LLM and return VizPlan or error string."""
         structured_llm = self._get_llm().with_structured_output(VizPlan)
@@ -131,9 +131,9 @@ class VizPlanNode:
     async def __call__(
         self,
         state: VizState,
-        config: "RunnableConfig | None" = None,
+        config: RunnableConfig | None = None,
         *,
-        writer: "StreamWriter | None" = None,
+        writer: StreamWriter | None = None,
     ) -> dict[str, Any]:
         profile = state.get("profile") or []
         sample_data = (state.get("sample_data") or [])[:10]
@@ -151,6 +151,7 @@ class VizPlanNode:
         user_prompt = build_viz_user_prompt(
             question=state.get("question"),
             sql=state.get("sql"),
+            chart_instruction=state.get("chart_instruction"),
             profile_json=profile_json,
             sample_json=sample_json,
             row_count=state.get("row_count", 0),
@@ -196,9 +197,9 @@ class VizPlanNode:
 
 async def plan_viz_node(
     state: VizState,
-    config: "RunnableConfig | None" = None,
+    config: RunnableConfig | None = None,
     *,
-    writer: "StreamWriter | None" = None,
+    writer: StreamWriter | None = None,
 ) -> dict[str, Any]:
     node = VizPlanNode()
     return await node(state, config, writer=writer)

@@ -44,7 +44,10 @@ class SqlAlchemySessionRepository(SessionRepository):
             result = await db.execute(
                 select(SessionModel)
                 .where(SessionModel.id == uuid.UUID(session_id))
-                .options(selectinload(SessionModel.turns).selectinload(TurnModel.clarifications))
+                .options(
+                    selectinload(SessionModel.turns).selectinload(TurnModel.clarifications),
+                    selectinload(SessionModel.messages),
+                )
             )
             model = result.scalar_one_or_none()
             if model is None:
@@ -55,7 +58,10 @@ class SqlAlchemySessionRepository(SessionRepository):
         async with self._sessionmaker() as db:
             result = await db.execute(
                 select(SessionModel)
-                .options(selectinload(SessionModel.turns).selectinload(TurnModel.clarifications))
+                .options(
+                    selectinload(SessionModel.turns).selectinload(TurnModel.clarifications),
+                    selectinload(SessionModel.messages),
+                )
                 .order_by(SessionModel.updated_at.desc())
                 .limit(limit)
                 .offset(offset)
@@ -310,6 +316,36 @@ def _map_session(model: SessionModel) -> Session:
     if "turns" not in inspect(model).unloaded:
         session.turns = [_map_turn(t) for t in model.turns]
         session._turn_counter = len(session.turns)
+
+    if (
+        session.turns
+        and "messages" not in inspect(model).unloaded
+        and isinstance(model.messages, list)
+    ):
+        assistant_messages = sorted(
+            [m for m in model.messages if m.role == "assistant" and m.generated_sql],
+            key=lambda item: item.created_at,
+        )
+        remaining = assistant_messages.copy()
+
+        for turn in session.turns:
+            if not turn.final_sql:
+                continue
+
+            matched: MessageModel | None = None
+            for idx, message in enumerate(remaining):
+                if message.generated_sql == turn.final_sql:
+                    matched = message
+                    del remaining[idx]
+                    break
+
+            if matched is None and remaining:
+                matched = remaining.pop(0)
+
+            if matched is not None:
+                turn.assistant_message_id = str(matched.id)
+                turn.assistant_is_few_shot = bool(matched.is_few_shot)
+                turn.tables_used = matched.tables_used or []
 
     return session
 

@@ -63,6 +63,7 @@ class ChartService:
         input_state: VizState = {
             "question": request.question,
             "sql": request.sql,
+            "chart_instruction": request.chart_instruction,
             "columns": request.columns,
             "column_types": request.column_types,
             "sample_data": request.sample_data,
@@ -73,6 +74,10 @@ class ChartService:
         config: RunnableConfig = {}
         if self.callbacks:
             config["callbacks"] = self.callbacks
+            metadata: dict[str, Any] = {"langfuse_tags": ["chart-recommend"]}
+            if request.session_id:
+                metadata["langfuse_session_id"] = request.session_id
+            config["metadata"] = metadata
 
         result = await self.graph.ainvoke(input_state, config or None)
         plan = self._coerce_plan(result.get("plan"))

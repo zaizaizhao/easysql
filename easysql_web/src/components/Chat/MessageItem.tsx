@@ -187,6 +187,7 @@ export function MessageItem({
                   question={userQuestion}
                   messageIds={fewShotMessageIds}
                   turnId={message.turnId}
+                  isFewShot={message.isFewShot}
                   tablesUsed={message.retrievalSummary?.tables}
                   enableLlmCharts={
                     !!message.chartPlan ||

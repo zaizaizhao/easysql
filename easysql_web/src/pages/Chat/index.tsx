@@ -61,6 +61,12 @@ export default function ChatPage() {
           sql: turn.final_sql,
           validationPassed: turn.validation_passed,
           turnId: turn.turn_id,
+          serverId: turn.assistant_message_id,
+          isFewShot: turn.assistant_is_few_shot,
+          retrievalSummary: {
+            tablesCount: turn.tables_used?.length || 0,
+            tables: turn.tables_used || [],
+          },
           chartPlan: turn.chart_plan,
           chartReasoning: turn.chart_reasoning,
           isHistorical: true,

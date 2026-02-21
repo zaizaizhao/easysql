@@ -63,40 +63,60 @@ export function SQLBlock({
   const [isEditing, setIsEditing] = useState(false);
   const [editedSql, setEditedSql] = useState(initialSql);
   const [isFewShot, setIsFewShot] = useState(initialIsFewShot);
+  const [fewShotExampleId, setFewShotExampleId] = useState<string | null>(null);
   const [savingFewShot, setSavingFewShot] = useState(false);
   const { token } = theme.useToken();
   const hasAutoExecutedRef = useRef(false);
   const hasCheckedFewShotRef = useRef(false);
   const effectiveMessageIds = Array.from(new Set((messageIds || []).filter(Boolean)));
-  const primaryMessageId = effectiveMessageIds[0];
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const primaryMessageId =
+    effectiveMessageIds.find((messageId) => uuidPattern.test(messageId)) ||
+    effectiveMessageIds.find((messageId) => messageId.startsWith('turn_')) ||
+    effectiveMessageIds[0];
 
   const currentSql = isEditing ? editedSql : initialSql;
 
   useEffect(() => {
-    if (effectiveMessageIds.length > 0 && !hasCheckedFewShotRef.current && !initialIsFewShot) {
-      hasCheckedFewShotRef.current = true;
-      let cancelled = false;
+    setIsFewShot(initialIsFewShot);
+    setFewShotExampleId(null);
+    hasCheckedFewShotRef.current = false;
+  }, [initialIsFewShot, turnId, primaryMessageId]);
 
-      const runCheck = async () => {
-        for (const messageId of effectiveMessageIds) {
-          try {
-            const response = await fewShotApi.checkByMessageId(messageId);
-            if (!cancelled && response.is_few_shot) {
-              setIsFewShot(true);
-              break;
-            }
-          } catch {
-            continue;
-          }
-        }
-      };
-
-      void runCheck();
-
-      return () => {
-        cancelled = true;
-      };
+  useEffect(() => {
+    if (effectiveMessageIds.length === 0 || hasCheckedFewShotRef.current) {
+      return;
     }
+
+    hasCheckedFewShotRef.current = true;
+    let cancelled = false;
+
+    const runCheck = async () => {
+      for (const messageId of effectiveMessageIds) {
+        try {
+          const response = await fewShotApi.checkByMessageId(messageId);
+          if (!cancelled && response.is_few_shot) {
+            setIsFewShot(true);
+            setFewShotExampleId(response.example_id || null);
+            return;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      if (!cancelled && !initialIsFewShot) {
+        setIsFewShot(false);
+        setFewShotExampleId(null);
+      }
+    };
+
+    void runCheck();
+
+    return () => {
+      cancelled = true;
+    };
   }, [effectiveMessageIds, initialIsFewShot]);
 
   const handleCopy = async () => {
@@ -150,6 +170,27 @@ export function SQLBlock({
     }
   };
 
+  const resolveFewShotExampleId = async (): Promise<string | null> => {
+    if (fewShotExampleId) {
+      return fewShotExampleId;
+    }
+
+    for (const messageId of effectiveMessageIds) {
+      try {
+        const response = await fewShotApi.checkByMessageId(messageId);
+        if (response.is_few_shot && response.example_id) {
+          setFewShotExampleId(response.example_id);
+          setIsFewShot(true);
+          return response.example_id;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  };
+
   const handleSaveFewShot = async () => {
     if (!currentDatabase || !question) {
       message.warning(t('fewShot.missingInfo', 'Missing question or database'));
@@ -158,14 +199,16 @@ export function SQLBlock({
 
     setSavingFewShot(true);
     try {
-      await fewShotApi.create({
+      const normalizedTables = tablesUsed || [];
+      const created = await fewShotApi.create({
         db_name: currentDatabase,
         question: question,
         sql: currentSql,
-        tables_used: tablesUsed,
+        tables_used: normalizedTables,
         ...(primaryMessageId ? { message_id: primaryMessageId } : {}),
       });
       setIsFewShot(true);
+      setFewShotExampleId(created.id);
       message.success(t('fewShot.saveSuccess', 'Saved as example'));
     } catch (error) {
       console.error('Failed to save few-shot:', error);
@@ -173,6 +216,40 @@ export function SQLBlock({
     } finally {
       setSavingFewShot(false);
     }
+  };
+
+  const handleRemoveFewShot = async () => {
+    setSavingFewShot(true);
+    try {
+      const targetExampleId = await resolveFewShotExampleId();
+      if (!targetExampleId) {
+        message.warning(t('fewShot.removeNotFound', 'Saved example was not found'));
+        return;
+      }
+
+      await fewShotApi.delete(targetExampleId);
+      setIsFewShot(false);
+      setFewShotExampleId(null);
+      message.success(t('fewShot.removeSuccess', 'Removed from examples'));
+    } catch (error) {
+      console.error('Failed to remove few-shot:', error);
+      message.error(t('fewShot.removeFailed', 'Failed to remove example'));
+    } finally {
+      setSavingFewShot(false);
+    }
+  };
+
+  const handleToggleFewShot = async () => {
+    if (savingFewShot) {
+      return;
+    }
+
+    if (isFewShot) {
+      await handleRemoveFewShot();
+      return;
+    }
+
+    await handleSaveFewShot();
   };
 
   useEffect(() => {
@@ -257,13 +334,27 @@ export function SQLBlock({
               {t('sql.copy')}
             </Button>
             {question && (
-              <Tooltip title={isFewShot ? t('fewShot.alreadySaved', 'Already saved') : t('fewShot.saveAsExample', 'Save as example')}>
+              <Tooltip
+                title={
+                  isFewShot
+                    ? t('fewShot.removeExample', 'Remove from examples')
+                    : t('fewShot.saveAsExample', 'Save as example')
+                }
+              >
                 <Button
                   type="text"
                   size="small"
-                  icon={isFewShot ? <StarFilled style={{ color: '#faad14' }} /> : savingFewShot ? <LoadingOutlined /> : <StarOutlined />}
-                  onClick={handleSaveFewShot}
-                  disabled={isFewShot || savingFewShot || !currentDatabase}
+                  icon={
+                    savingFewShot ? (
+                      <LoadingOutlined />
+                    ) : isFewShot ? (
+                      <StarFilled style={{ color: '#faad14' }} />
+                    ) : (
+                      <StarOutlined />
+                    )
+                  }
+                  onClick={handleToggleFewShot}
+                  disabled={savingFewShot || (!isFewShot && (!currentDatabase || !question))}
                 />
               </Tooltip>
             )}

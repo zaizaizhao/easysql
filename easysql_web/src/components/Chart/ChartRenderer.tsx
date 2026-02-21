@@ -14,6 +14,13 @@ import { MetricCard } from './MetricCard';
 import { formatChartValue, validateChartConfig } from '@/utils/chartInfer';
 
 const { Text } = Typography;
+const AGG_VALUE_ALIASES = new Set(['__value', '_value']);
+
+interface TooltipItemConfig {
+  field: string;
+  name: string;
+  valueFormatter?: (value: unknown) => string;
+}
 
 interface ChartRendererProps {
   data: ChartDataPoint[];
@@ -54,9 +61,45 @@ function buildAxisConfig(label?: string) {
   return { title: label };
 }
 
+function compactTooltipItems(
+  items: Array<TooltipItemConfig | null>
+): TooltipItemConfig[] {
+  return items.filter((item): item is TooltipItemConfig => item !== null);
+}
+
 export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
+
+  const resolveFieldLabel = (field?: string, preferredLabel?: string): string => {
+    if (preferredLabel?.trim()) {
+      return preferredLabel.trim();
+    }
+    if (!field) {
+      return t('chart.valueLabel', 'Value');
+    }
+    if (AGG_VALUE_ALIASES.has(field)) {
+      return t('chart.valueLabel', 'Value');
+    }
+    return field;
+  };
+
+  const createTooltipItem = (
+    field?: string,
+    preferredLabel?: string,
+    formatValue = false
+  ): TooltipItemConfig | null => {
+    if (!field) {
+      return null;
+    }
+    return {
+      field,
+      name: resolveFieldLabel(field, preferredLabel),
+      valueFormatter: formatValue
+        ? (value: unknown) => formatChartValue(value)
+        : undefined,
+    };
+  };
 
   // Prepare data with type coercion
   const chartData = useMemo(() => {
@@ -165,7 +208,13 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
             ? { text: (d: ChartDataPoint) => formatChartValue(d[config.yField!]) }
             : undefined
         }
-        tooltip={{ title: (d: ChartDataPoint) => String(d[config.xField!]) }}
+        tooltip={{
+          title: (d: ChartDataPoint) => String(d[config.xField!] ?? ''),
+          items: compactTooltipItems([
+            createTooltipItem(config.yField, config.yAxisLabel, true),
+            createTooltipItem(config.seriesField),
+          ]),
+        }}
       />
     );
   }
@@ -188,6 +237,13 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
             ? { text: (d: ChartDataPoint) => formatChartValue(d[config.xField!]) }
             : undefined
         }
+        tooltip={{
+          title: (d: ChartDataPoint) => String(d[config.yField!] ?? ''),
+          items: compactTooltipItems([
+            createTooltipItem(config.xField, config.xAxisLabel, true),
+            createTooltipItem(config.seriesField),
+          ]),
+        }}
       />
     );
   }
@@ -208,6 +264,13 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
         }}
         point={{ shapeField: 'point', sizeField: 3 }}
         legend={config.showLegend ? { position: config.legendPosition || 'top' } : false}
+        tooltip={{
+          title: (d: ChartDataPoint) => String(d[config.xField!] ?? ''),
+          items: compactTooltipItems([
+            createTooltipItem(config.yField, config.yAxisLabel, true),
+            createTooltipItem(config.seriesField),
+          ]),
+        }}
       />
     );
   }
@@ -228,6 +291,13 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
           y: buildAxisConfig(config.yAxisLabel),
         }}
         legend={config.showLegend ? { position: config.legendPosition || 'top' } : false}
+        tooltip={{
+          title: (d: ChartDataPoint) => String(d[config.xField!] ?? ''),
+          items: compactTooltipItems([
+            createTooltipItem(config.yField, config.yAxisLabel, true),
+            createTooltipItem(config.seriesField),
+          ]),
+        }}
       />
     );
   }
@@ -260,7 +330,8 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
             : false
         }
         tooltip={{
-          title: (d: ChartDataPoint) => String(d[config.colorField!]),
+          title: (d: ChartDataPoint) => String(d[config.colorField!] ?? ''),
+          items: compactTooltipItems([createTooltipItem(config.angleField, undefined, true)]),
         }}
       />
     );
@@ -280,6 +351,16 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
           y: buildAxisConfig(config.yAxisLabel),
         }}
         legend={config.showLegend ? { position: config.legendPosition || 'top' } : false}
+        tooltip={{
+          title: config.colorField
+            ? (d: ChartDataPoint) => String(d[config.colorField!] ?? '')
+            : t('chart.valueLabel', 'Value'),
+          items: compactTooltipItems([
+            createTooltipItem(config.xField, config.xAxisLabel, true),
+            createTooltipItem(config.yField, config.yAxisLabel, true),
+            createTooltipItem(config.colorField),
+          ]),
+        }}
       />
     );
   }
@@ -300,6 +381,13 @@ export function ChartRenderer({ data, config, height = 350 }: ChartRendererProps
           y: buildAxisConfig(config.yAxisLabel),
         }}
         legend={{ position: config.legendPosition || 'top' }}
+        tooltip={{
+          title: (d: ChartDataPoint) => String(d[config.xField!] ?? ''),
+          items: compactTooltipItems([
+            createTooltipItem(config.yField, config.yAxisLabel, true),
+            createTooltipItem(config.seriesField),
+          ]),
+        }}
       />
     );
   }

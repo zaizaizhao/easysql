@@ -30,6 +30,9 @@ export interface TurnInfo {
   final_sql?: string;
   validation_passed?: boolean;
   error?: string;
+  tables_used?: string[];
+  assistant_message_id?: string;
+  assistant_is_few_shot?: boolean;
   chart_plan?: VizPlan;
   chart_reasoning?: string;
   created_at: string;

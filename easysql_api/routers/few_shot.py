@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Annotated
 
@@ -11,7 +12,10 @@ from easysql.config import get_settings
 from easysql.embeddings.embedding_service import EmbeddingService
 from easysql.readers.few_shot_reader import FewShotReader, FewShotResult
 from easysql.repositories.milvus_repository import MilvusRepository
+from easysql.utils.logger import get_logger
 from easysql.writers.few_shot_writer import DuplicateExampleError, FewShotWriter
+from easysql_api.deps import get_session_repository_dep
+from easysql_api.domain.repositories.session_repository import SessionRepository
 from easysql_api.models.few_shot import (
     FewShotCheckResponse,
     FewShotCreate,
@@ -21,6 +25,10 @@ from easysql_api.models.few_shot import (
 )
 
 router = APIRouter()
+logger = get_logger(__name__)
+TURN_MESSAGE_ID_PATTERN = re.compile(
+    r"^turn_([0-9a-fA-F-]{36})_(.+)$"
+)
 
 
 def get_milvus_repository() -> MilvusRepository:
@@ -70,16 +78,86 @@ def _result_to_info(example: FewShotResult) -> FewShotInfo:
     )
 
 
+async def _resolve_persisted_message_id(
+    repository: SessionRepository,
+    message_id: str | None,
+) -> str | None:
+    """Resolve turn-scoped message id to persisted assistant message id when possible."""
+    if not message_id:
+        return None
+
+    if not message_id.startswith("turn_"):
+        return message_id
+
+    match = TURN_MESSAGE_ID_PATTERN.match(message_id)
+    if not match:
+        return message_id
+
+    session_id, turn_id = match.groups()
+    try:
+        session = await repository.get(session_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(
+            "Failed resolving turn-scoped message id=%s: %s",
+            message_id,
+            exc,
+        )
+        return message_id
+
+    if not session:
+        return message_id
+
+    turn = session.get_turn(turn_id)
+    if not turn or not turn.assistant_message_id:
+        return message_id
+
+    return turn.assistant_message_id
+
+
+async def _mark_related_message(
+    repository: SessionRepository,
+    message_id: str | None,
+    *,
+    is_few_shot: bool,
+) -> None:
+    if not message_id:
+        return
+
+    resolved_message_id = await _resolve_persisted_message_id(repository, message_id)
+    if not resolved_message_id:
+        return
+
+    try:
+        await repository.mark_as_few_shot(
+            resolved_message_id,
+            is_few_shot=is_few_shot,
+        )
+    except (ValueError, AttributeError) as exc:
+        logger.debug(
+            "Skip syncing message few-shot flag for message_id=%s: %s",
+            resolved_message_id,
+            exc,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Failed syncing message few-shot flag for message_id=%s: %s",
+            resolved_message_id,
+            exc,
+        )
+
+
 @router.post("/few-shot", response_model=FewShotInfo)
 async def create_few_shot(
     request: FewShotCreate,
     writer: Annotated[FewShotWriter, Depends(get_few_shot_writer)],
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
 ) -> FewShotInfo:
     """Create a new few-shot example.
 
     Returns 409 Conflict if a similar example already exists.
     """
     writer.create_collection(drop_existing=False)
+    resolved_message_id = await _resolve_persisted_message_id(repository, request.message_id)
 
     try:
         example_id = writer.insert(
@@ -88,7 +166,7 @@ async def create_few_shot(
             sql=request.sql,
             tables_used=request.tables_used,
             explanation=request.explanation,
-            message_id=request.message_id,
+            message_id=resolved_message_id,
             check_duplicate=True,
         )
     except DuplicateExampleError as e:
@@ -99,7 +177,9 @@ async def create_few_shot(
                 "existing_id": e.existing_id,
                 "similarity_score": e.similarity_score,
             },
-        )
+        ) from e
+
+    await _mark_related_message(repository, resolved_message_id, is_few_shot=True)
 
     return FewShotInfo(
         id=example_id,
@@ -108,7 +188,7 @@ async def create_few_shot(
         sql=request.sql,
         tables_used=request.tables_used,
         explanation=request.explanation,
-        message_id=request.message_id,
+        message_id=resolved_message_id,
         created_at=datetime.now(timezone.utc),
     )
 
@@ -200,10 +280,18 @@ async def update_few_shot(
 async def delete_few_shot(
     example_id: str,
     writer: Annotated[FewShotWriter, Depends(get_few_shot_writer)],
+    reader: Annotated[FewShotReader, Depends(get_few_shot_reader)],
+    repository: Annotated[SessionRepository, Depends(get_session_repository_dep)],
 ) -> dict:
     """Delete a few-shot example by ID."""
+    existing = reader.get_by_id(example_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Few-shot example not found")
+
     success = writer.delete(example_id)
     if not success:
         raise HTTPException(status_code=404, detail="Few-shot example not found or delete failed")
+
+    await _mark_related_message(repository, existing.message_id, is_few_shot=False)
 
     return {"message": "Few-shot example deleted", "id": example_id}
