@@ -46,6 +46,7 @@ export interface ChatMessage {
   };
   parentId?: string;
   childIds?: string[];
+  isFewShot?: boolean;
 }
 
 export interface SessionCache {

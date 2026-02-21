@@ -159,9 +159,10 @@ export default function FewShotPage() {
       title: t('fewShot.question', 'Question'),
       dataIndex: 'question',
       key: 'question',
+      width: 380,
       ellipsis: true,
       render: (text: string) => (
-        <Text style={{ maxWidth: 400 }} ellipsis={{ tooltip: text }}>
+        <Text style={{ display: 'inline-block', width: '100%' }} ellipsis={{ tooltip: text }}>
           {text}
         </Text>
       ),
@@ -170,8 +171,9 @@ export default function FewShotPage() {
       title: t('fewShot.tablesUsed', 'Tables'),
       dataIndex: 'tables_used',
       key: 'tables_used',
-      width: 200,
-      render: (tables: string[]) => (
+      width: 320,
+      render: (tables: string[]) =>
+        tables && tables.length > 0 ? (
         <Space wrap size={4}>
           {tables?.slice(0, 3).map((table) => (
             <Tag key={table} color="blue">
@@ -180,13 +182,15 @@ export default function FewShotPage() {
           ))}
           {tables?.length > 3 && <Tag>+{tables.length - 3}</Tag>}
         </Space>
-      ),
+        ) : (
+          <Text type="secondary">-</Text>
+        ),
     },
     {
       title: t('fewShot.createdAt', 'Created'),
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 160,
+      width: 180,
       render: (time: string) => (
         <Text type="secondary">
           {new Intl.DateTimeFormat(undefined, {
@@ -204,7 +208,7 @@ export default function FewShotPage() {
     {
       title: t('common.actions', 'Actions'),
       key: 'actions',
-      width: 120,
+      width: 110,
       render: (_, record) => (
         <Space>
           <Button
@@ -326,6 +330,7 @@ export default function FewShotPage() {
         columns={columns}
         dataSource={filteredExamples}
         rowKey="id"
+        tableLayout="fixed"
         loading={loading}
         expandable={{
           expandedRowRender,

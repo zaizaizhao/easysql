@@ -36,6 +36,9 @@ class Turn:
     final_sql: str | None = None
     validation_passed: bool | None = None
     error: str | None = None
+    tables_used: list[str] = field(default_factory=list)
+    assistant_message_id: str | None = None
+    assistant_is_few_shot: bool = False
     chart_plan: dict[str, Any] | None = None
     chart_reasoning: str | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -77,6 +80,9 @@ def turn_to_dict(turn: Turn) -> dict[str, Any]:
         "final_sql": turn.final_sql,
         "validation_passed": turn.validation_passed,
         "error": turn.error,
+        "tables_used": turn.tables_used,
+        "assistant_message_id": turn.assistant_message_id,
+        "assistant_is_few_shot": turn.assistant_is_few_shot,
         "chart_plan": turn.chart_plan,
         "chart_reasoning": turn.chart_reasoning,
         "created_at": turn.created_at.isoformat(),
@@ -103,6 +109,9 @@ def turn_from_dict(data: dict[str, Any]) -> Turn:
         final_sql=data.get("final_sql"),
         validation_passed=data.get("validation_passed"),
         error=data.get("error"),
+        tables_used=data.get("tables_used", []) or [],
+        assistant_message_id=data.get("assistant_message_id"),
+        assistant_is_few_shot=bool(data.get("assistant_is_few_shot", False)),
         chart_plan=data.get("chart_plan"),
         chart_reasoning=data.get("chart_reasoning"),
         created_at=created_at,

@@ -31,8 +31,10 @@ import {
   Input,
 } from 'antd';
 import {
+  CheckCircleOutlined,
   DownloadOutlined,
   InfoCircleOutlined,
+  SettingOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -121,6 +123,7 @@ export function ResultChart({
   const [planThinkingTick, setPlanThinkingTick] = useState(0);
   const [chartInstructionDraft, setChartInstructionDraft] = useState('');
   const [appliedChartInstruction, setAppliedChartInstruction] = useState<string | null>(null);
+  const [instructionEditorVisible, setInstructionEditorVisible] = useState(false);
   const [planRequestNonce, setPlanRequestNonce] = useState(0);
 
   // Track request signature to prevent duplicate plan requests.
@@ -165,6 +168,7 @@ export function ResultChart({
       setSelectionLoading(false);
       setChartInstructionDraft('');
       setAppliedChartInstruction(null);
+      setInstructionEditorVisible(false);
       setPlanRequestNonce(0);
       recommendCalledRef.current = null;
       return;
@@ -340,6 +344,7 @@ export function ResultChart({
   const handleApplyInstruction = useCallback(() => {
     const normalized = chartInstructionDraft.trim();
     setAppliedChartInstruction(normalized || null);
+    setInstructionEditorVisible(false);
     setPlanRequestNonce((value) => value + 1);
   }, [chartInstructionDraft]);
 
@@ -347,6 +352,10 @@ export function ResultChart({
     setChartInstructionDraft('');
     setAppliedChartInstruction(null);
     setPlanRequestNonce((value) => value + 1);
+  }, []);
+
+  const handleToggleInstructionEditor = useCallback(() => {
+    setInstructionEditorVisible((value) => !value);
   }, []);
 
   const instructionActionsDisabled = planLoading || selectionLoading;
@@ -392,7 +401,6 @@ export function ResultChart({
           >
             {t('chart.clearInstruction')}
           </Button>
-          {hasInstruction && <Tag color="blue">{t('chart.instructionApplied')}</Tag>}
         </Space>
       </Space>
     ),
@@ -405,8 +413,51 @@ export function ResultChart({
       handleApplyInstruction,
       planLoading,
       selectionLoading,
-      hasInstruction,
       handleClearInstruction,
+    ]
+  );
+
+  const instructionControls = useMemo(
+    () => (
+      <Space size={8} wrap>
+        {hasInstruction && (
+          <Tag color="blue" icon={<CheckCircleOutlined />} style={{ marginInlineEnd: 0 }}>
+            {t('chart.instructionApplied')}
+          </Tag>
+        )}
+        <Button
+          size="small"
+          type={instructionEditorVisible ? 'primary' : 'default'}
+          icon={<SettingOutlined />}
+          onClick={handleToggleInstructionEditor}
+          disabled={instructionActionsDisabled}
+          aria-label={
+            instructionEditorVisible ? t('chart.hideCustomization') : t('chart.customizeChart')
+          }
+          style={{
+            borderRadius: 999,
+            fontWeight: 500,
+            borderColor: instructionEditorVisible ? token.colorPrimaryBorder : token.colorBorder,
+            background: instructionEditorVisible ? token.colorPrimaryBg : token.colorFillSecondary,
+            color: instructionEditorVisible ? token.colorPrimary : token.colorText,
+          }}
+        >
+          {instructionEditorVisible ? t('chart.hideCustomization') : t('chart.customizeChart')}
+        </Button>
+      </Space>
+    ),
+    [
+      hasInstruction,
+      t,
+      handleToggleInstructionEditor,
+      instructionActionsDisabled,
+      instructionEditorVisible,
+      token.colorPrimaryBorder,
+      token.colorBorder,
+      token.colorPrimaryBg,
+      token.colorFillSecondary,
+      token.colorPrimary,
+      token.colorText,
     ]
   );
 
@@ -660,11 +711,20 @@ export function ResultChart({
         }}
       >
         <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-          <Space size={8}>
-            <Text strong>{t('chart.suggestionsTitle')}</Text>
-            <Spin size="small" />
-          </Space>
-          {instructionPanel}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <Space size={8}>
+              <Text strong>{t('chart.suggestionsTitle')}</Text>
+              <Spin size="small" />
+            </Space>
+            {instructionControls}
+          </div>
 
           <Text type="secondary" style={{ fontSize: 12 }}>
             {chartThinkingText}
@@ -709,13 +769,24 @@ export function ResultChart({
         }}
       >
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          {instructionPanel}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <Text strong>{t('chart.suggestionsTitle')}</Text>
+            {instructionControls}
+          </div>
           <Alert
             title={t('chart.noSuggestions')}
             description={error || llmPlanReasoning || t('chart.inferFailed')}
             type="warning"
             showIcon
           />
+          {instructionEditorVisible && instructionPanel}
         </Space>
       </div>
     );
@@ -733,15 +804,26 @@ export function ResultChart({
         }}
       >
         <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-          <Space size={8}>
-            <Text strong>{t('chart.suggestionsTitle')}</Text>
-            {llmPlanReasoning && (
-              <Tooltip title={llmPlanReasoning}>
-                <InfoCircleOutlined style={{ color: token.colorTextSecondary, cursor: 'pointer' }} />
-              </Tooltip>
-            )}
-          </Space>
-          {instructionPanel}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
+          >
+            <Space size={8}>
+              <Text strong>{t('chart.suggestionsTitle')}</Text>
+              {llmPlanReasoning && (
+                <Tooltip title={llmPlanReasoning}>
+                  <InfoCircleOutlined
+                    style={{ color: token.colorTextSecondary, cursor: 'pointer' }}
+                  />
+                </Tooltip>
+              )}
+            </Space>
+            {instructionControls}
+          </div>
           {planLoading ? (
             <div style={{ textAlign: 'center', padding: 16 }}>
               <Spin />
@@ -804,7 +886,10 @@ export function ResultChart({
             <Text type="secondary">{t('chart.noSuggestions')}</Text>
           )}
           {!planLoading && (
-            <Text type="secondary">{t('chart.selectSuggestion')}</Text>
+            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+              <Text type="secondary">{t('chart.selectSuggestion')}</Text>
+              {instructionEditorVisible && instructionPanel}
+            </Space>
           )}
         </Space>
       </div>
