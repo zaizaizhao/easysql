@@ -155,6 +155,7 @@ Bridge protection:
 | `GOOGLE_LLM_MODEL` | empty | Google model name |
 | `ANTHROPIC_LLM_MODEL` | empty | Anthropic model name |
 | `MODEL_PLANNING` | empty | Model for analyze/clarify phase |
+| `LLM_TEMPERATURE` | `0.0` | Sampling temperature (`0.0` ~ `2.0`), set `1.0` for Kimi 2.5 |
 | `USE_AGENT_MODE` | `false` | Enable SQL Agent mode |
 | `AGENT_MAX_ITERATIONS` | `15` | Max SQL Agent iterations |
 | `MAX_SQL_RETRIES` | `3` | SQL generation retries |

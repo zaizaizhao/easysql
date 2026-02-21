@@ -150,10 +150,11 @@
   },
   "settings": {
     "title": "系统设置",
-    "schemaSync": "Schema 同步",
-    "pipelineStatus": "Pipeline 状态：",
+    "pageSubtitle": "按类别管理运行时配置，并查看同步状态与系统概览",
+    "schemaSync": "结构同步",
+    "pipelineStatus": "同步任务状态：",
     "resync": "重新同步",
-    "pipelineStarted": "Pipeline 已启动",
+    "pipelineStarted": "同步任务已启动",
     "pipelineStartFailed": "启动失败",
     "statusIdle": "空闲",
     "statusRunning": "运行中",
@@ -163,8 +164,9 @@
     "queryMode": "查询模式",
     "queryModePlan": "Plan (交互式)",
     "queryModeFast": "Fast (直接)",
-    "provider": "Provider",
+    "provider": "提供方",
     "model": "模型",
+    "temperature": "采样温度",
     "maxRetries": "最大重试次数",
     "retrievalConfig": "检索配置",
     "topK": "Top-K",
@@ -172,14 +174,247 @@
     "semanticFilter": "语义过滤",
     "filterThreshold": "过滤阈值",
     "coreTables": "核心表",
-    "embeddingConfig": "Embedding 配置",
+    "embeddingConfig": "向量配置",
     "dimension": "维度",
     "statsDatabase": "数据库",
     "statsTables": "表",
     "statsColumns": "列",
     "statsForeignKeys": "外键",
     "statsNeo4jTables": "Neo4j 表",
-    "statsMilvusTables": "Milvus 表"
+    "statsMilvusTables": "Milvus 表",
+    "configEditorTitle": "配置编辑",
+    "configEditorTip": "运行时配置会持久化到数据库，并在后续新请求中立即生效。",
+    "noEditableConfig": "暂无可编辑配置",
+    "tagOverridden": "已覆盖",
+    "tagSecret": "密钥",
+    "tagChanged": "已修改",
+    "nullable": "可为空",
+    "searchPlaceholder": "按配置键搜索…",
+    "searchCategoryAriaLabel": "搜索 {{category}} 分类配置项",
+    "changedCount": "已修改 {{count}} 项",
+    "noSearchResults": "没有匹配的配置项",
+    "unsavedChanges": "有 {{count}} 项未保存",
+    "noChangesToSave": "没有需要保存的变更",
+    "noCategoryChanges": "没有分类存在未保存变更",
+    "saveSuccess": "已保存 {{count}} 个配置项",
+    "saveFailed": "保存失败",
+    "saveAll": "保存全部变更",
+    "saveAllSuccess": "已保存全部变更（{{count}} 项）",
+    "saveAllFailed": "批量保存失败",
+    "revertSuccess": "已回滚 {{category}}（移除 {{count}} 条覆盖）",
+    "revertFailed": "回滚失败",
+    "secretPlaceholder": "输入完整密钥以替换…",
+    "saveCategory": "保存 {{category}}",
+    "revertCategory": "回滚 {{category}}",
+    "statsEditableCategories": "可编辑分类",
+    "statsEditableFields": "可编辑配置项",
+    "statsOverridden": "已覆盖配置",
+    "tabs": {
+      "runtime": "运行时配置",
+      "sync": "同步状态",
+      "overview": "系统概览"
+    },
+    "categories": {
+      "llm": "LLM",
+      "retrieval": "检索",
+      "few_shot": "Few-Shot 示例",
+      "code_context": "代码上下文",
+      "langfuse": "Langfuse"
+    },
+    "valueTypes": {
+      "str": "文本",
+      "int": "整数",
+      "float": "浮点数",
+      "bool": "布尔值",
+      "null": "空值"
+    },
+    "constraints": {
+      "enum_plan_fast": "可选：plan / fast",
+      "gt_0": "> 0",
+      "ge_0": ">= 0",
+      "ge_1": ">= 1",
+      "between_0_1": "范围：0~1",
+      "between_0_2": "范围：0~2",
+      "non_empty": "不能为空",
+      "nullable": "可为空"
+    },
+    "effects": {
+      "settings": "刷新配置",
+      "graph": "重建查询图",
+      "retrieval_cache": "刷新检索缓存",
+      "few_shot_cache": "刷新 Few-Shot 缓存",
+      "code_context_cache": "刷新代码上下文缓存",
+      "callbacks": "重建回调",
+      "langfuse_env": "刷新 Langfuse 环境"
+    },
+    "fields": {
+      "llm": {
+        "query_mode": {
+          "label": "查询模式",
+          "description": "plan 为多阶段推理，fast 为快速直出 SQL。"
+        },
+        "openai_llm_model": {
+          "label": "OpenAI 主模型",
+          "description": "当提供方为 OpenAI 时用于生成 SQL。"
+        },
+        "google_llm_model": {
+          "label": "Google 主模型",
+          "description": "配置后可优先使用 Gemini 模型。"
+        },
+        "anthropic_llm_model": {
+          "label": "Anthropic 主模型",
+          "description": "配置后可优先使用 Claude 模型。"
+        },
+        "model_planning": {
+          "label": "规划阶段模型",
+          "description": "用于意图分析/澄清阶段；为空则复用主模型。"
+        },
+        "temperature": {
+          "label": "模型温度",
+          "description": "控制输出随机性；多数模型建议 0~1，Kimi 2.5 需要设为 1。"
+        },
+        "use_agent_mode": {
+          "label": "启用 Agent 模式",
+          "description": "开启后采用 ReAct 回路，能迭代修复 SQL。"
+        },
+        "agent_max_iterations": {
+          "label": "Agent 最大迭代次数",
+          "description": "限制 Agent 的最大循环次数，避免耗时过长。"
+        },
+        "max_sql_retries": {
+          "label": "SQL 最大重试次数",
+          "description": "SQL 生成失败时的自动重试上限。"
+        },
+        "openai_api_key": {
+          "label": "OpenAI API Key",
+          "description": "OpenAI 访问凭证，修改后新请求立即生效。"
+        },
+        "openai_api_base": {
+          "label": "OpenAI API Base",
+          "description": "OpenAI 接口地址，适用于代理或兼容网关。"
+        },
+        "google_api_key": {
+          "label": "Google API Key",
+          "description": "Google Gemini 访问凭证。"
+        },
+        "anthropic_api_key": {
+          "label": "Anthropic API Key",
+          "description": "Anthropic Claude 访问凭证。"
+        }
+      },
+      "retrieval": {
+        "retrieval_search_top_k": {
+          "label": "检索 Top-K",
+          "description": "每次召回的候选表数量上限。"
+        },
+        "retrieval_expand_fk": {
+          "label": "启用外键扩展",
+          "description": "根据外键关系扩展关联表，提高上下文完整性。"
+        },
+        "retrieval_expand_max_depth": {
+          "label": "外键扩展深度",
+          "description": "控制外键扩展的跳数深度。"
+        },
+        "semantic_filter_enabled": {
+          "label": "启用语义过滤",
+          "description": "根据语义相似度过滤低相关候选表。"
+        },
+        "semantic_filter_threshold": {
+          "label": "语义过滤阈值",
+          "description": "越高越严格，保留更高相关度的表。"
+        },
+        "semantic_filter_min_tables": {
+          "label": "最少保留表数",
+          "description": "语义过滤后至少保留的表数量。"
+        },
+        "bridge_protection_enabled": {
+          "label": "启用桥接保护",
+          "description": "保护关键路径，避免跨表路径被过度裁剪。"
+        },
+        "bridge_max_hops": {
+          "label": "桥接最大跳数",
+          "description": "桥接路径允许的最大跳数。"
+        },
+        "core_tables": {
+          "label": "核心表名单",
+          "description": "逗号分隔的核心表名，优先参与上下文构建。"
+        },
+        "llm_filter_enabled": {
+          "label": "启用 LLM 二次过滤",
+          "description": "使用 LLM 对候选表进行语义重排/筛选。"
+        },
+        "llm_filter_max_tables": {
+          "label": "LLM 过滤候选上限",
+          "description": "进入 LLM 过滤阶段的最大表数。"
+        },
+        "llm_filter_model": {
+          "label": "LLM 过滤模型",
+          "description": "用于检索二次过滤的模型名称。"
+        },
+        "llm_api_key": {
+          "label": "检索 LLM API Key",
+          "description": "检索过滤专用的 API 凭证。"
+        },
+        "llm_api_base": {
+          "label": "检索 LLM API Base",
+          "description": "检索过滤专用的接口地址。"
+        }
+      },
+      "few_shot": {
+        "few_shot_enabled": {
+          "label": "启用 Few-Shot",
+          "description": "开启后会召回相似示例辅助 SQL 生成。"
+        },
+        "few_shot_max_examples": {
+          "label": "Few-Shot 最大示例数",
+          "description": "单次请求注入的示例数量上限。"
+        },
+        "few_shot_min_similarity": {
+          "label": "Few-Shot 最低相似度",
+          "description": "低于该分数的示例将被过滤。"
+        },
+        "few_shot_collection_name": {
+          "label": "Few-Shot 集合名",
+          "description": "用于存储和检索示例的集合名称。"
+        }
+      },
+      "code_context": {
+        "code_context_enabled": {
+          "label": "启用代码上下文",
+          "description": "检索业务代码片段，增强 SQL 生成上下文。"
+        },
+        "code_context_search_top_k": {
+          "label": "代码检索 Top-K",
+          "description": "每次检索返回的代码片段数量上限。"
+        },
+        "code_context_score_threshold": {
+          "label": "代码检索阈值",
+          "description": "仅保留高于该阈值的代码片段。"
+        },
+        "code_context_max_snippets": {
+          "label": "最大代码片段数",
+          "description": "最终注入 Prompt 的代码片段上限。"
+        }
+      },
+      "langfuse": {
+        "enabled": {
+          "label": "启用 Langfuse",
+          "description": "开启后上报链路追踪与可观测数据。"
+        },
+        "host": {
+          "label": "Langfuse 服务地址",
+          "description": "Langfuse Cloud 或私有部署地址。"
+        },
+        "public_key": {
+          "label": "Langfuse Public Key",
+          "description": "Langfuse 公钥，用于鉴权。"
+        },
+        "secret_key": {
+          "label": "Langfuse Secret Key",
+          "description": "Langfuse 密钥，请妥善保管。"
+        }
+      }
+    }
   },
   "chart": {
     "noData": "无数据可供可视化",

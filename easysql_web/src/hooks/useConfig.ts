@@ -1,5 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getDatabases, getConfig, getPipelineStatus, runPipeline, type PipelineRunRequest } from '@/api';
+import {
+  getDatabases,
+  getConfig,
+  getConfigOverrides,
+  getEditableConfig,
+  getPipelineStatus,
+  resetConfigCategory,
+  runPipeline,
+  type PipelineRunRequest,
+  updateConfigCategory,
+} from '@/api';
+import type { ConfigCategory } from '@/types';
 
 export function useDatabases() {
   return useQuery({
@@ -14,6 +25,22 @@ export function useConfig() {
     queryKey: ['config'],
     queryFn: getConfig,
     staleTime: 60000,
+  });
+}
+
+export function useEditableConfig() {
+  return useQuery({
+    queryKey: ['config-editable'],
+    queryFn: getEditableConfig,
+    staleTime: 30000,
+  });
+}
+
+export function useConfigOverrides() {
+  return useQuery({
+    queryKey: ['config-overrides'],
+    queryFn: getConfigOverrides,
+    staleTime: 30000,
   });
 }
 
@@ -35,6 +62,38 @@ export function useRunPipeline() {
     mutationFn: (request: PipelineRunRequest) => runPipeline(request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pipeline-status'] });
+    },
+  });
+}
+
+export function useUpdateConfigCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      category,
+      updates,
+    }: {
+      category: ConfigCategory | string;
+      updates: Record<string, string | number | boolean | null>;
+    }) => updateConfigCategory(category, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+      queryClient.invalidateQueries({ queryKey: ['config-editable'] });
+      queryClient.invalidateQueries({ queryKey: ['config-overrides'] });
+    },
+  });
+}
+
+export function useResetConfigCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (category: ConfigCategory | string) => resetConfigCategory(category),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+      queryClient.invalidateQueries({ queryKey: ['config-editable'] });
+      queryClient.invalidateQueries({ queryKey: ['config-overrides'] });
     },
   });
 }

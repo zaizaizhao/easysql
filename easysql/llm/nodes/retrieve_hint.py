@@ -186,3 +186,27 @@ def retrieve_hint_node(
 ) -> dict[Any, Any]:
     node = RetrieveHintNode()
     return node(state, config, writer=writer)
+
+
+def _close_reader(reader: Any) -> None:
+    repository = getattr(reader, "_repo", None)
+    if repository is not None and hasattr(repository, "close"):
+        repository.close()
+
+
+def reset_retrieve_hint_readers_cache() -> None:
+    cache_info_fn = getattr(_get_readers, "cache_info", None)
+    should_close = False
+    if callable(cache_info_fn):
+        should_close = getattr(cache_info_fn(), "currsize", 0) > 0
+
+    if should_close:
+        milvus_reader, neo4j_reader = _get_readers()
+        _close_reader(milvus_reader)
+        _close_reader(neo4j_reader)
+
+    _get_readers.cache_clear()
+
+
+def warm_retrieve_hint_readers_cache() -> None:
+    _get_readers()

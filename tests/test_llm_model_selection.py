@@ -23,27 +23,37 @@ class TestLLMModelSelection(unittest.TestCase):
         config = LLMConfig(
             openai_llm_model="gpt-4",
             model_planning="gpt-3.5",
-            openai_api_key="fake-key"
+            openai_api_key="fake-key",
+            openai_api_base="https://api.openai.com/v1",
         )
 
-        # We need to mock _init_openai to avoid actual API warnings/imports if not installed
-        with patch("easysql.llm.models._init_openai") as mock_init:
+        with patch("easysql.llm.models._init_chat_model") as mock_init:
             # 1. Purpose = "generation" -> Should use config.get_model() (gpt-4)
             get_llm(config, "generation")
-            mock_init.assert_called_with(config, "gpt-4")
+            args = mock_init.call_args.args
+            self.assertEqual(args[0], "openai")
+            self.assertEqual(args[1], "gpt-4")
+            self.assertEqual(args[2]["temperature"], 0)
 
             # 2. Purpose = "planning" -> Should use config.model_planning (gpt-3.5)
             get_llm(config, "planning")
-            mock_init.assert_called_with(config, "gpt-3.5")
+            args = mock_init.call_args.args
+            self.assertEqual(args[0], "openai")
+            self.assertEqual(args[1], "gpt-3.5")
+            self.assertEqual(args[2]["temperature"], 0)
 
             # 3. Purpose = "planning" but model_planning is None -> Should fallback to get_model()
             config_no_plan = LLMConfig(
                 openai_llm_model="gpt-4",
                 model_planning=None,
-                openai_api_key="fake-key"
+                openai_api_key="fake-key",
+                openai_api_base="https://api.openai.com/v1",
             )
             get_llm(config_no_plan, "planning")
-            mock_init.assert_called_with(config_no_plan, "gpt-4")
+            args = mock_init.call_args.args
+            self.assertEqual(args[0], "openai")
+            self.assertEqual(args[1], "gpt-4")
+            self.assertEqual(args[2]["temperature"], 0)
 
     def test_provider_priority(self):
         """Test provider priority: Google > Anthropic > OpenAI."""
@@ -116,4 +126,3 @@ class TestLLMModelSelection(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

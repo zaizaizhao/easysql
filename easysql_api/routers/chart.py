@@ -7,7 +7,9 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from pydantic import ValidationError
 
+from easysql.llm.agents.viz.schemas import VizPlan
 from easysql.utils.logger import get_logger
 from easysql_api.deps import get_chart_service_dep, get_session_repository_dep
 from easysql_api.domain.repositories.session_repository import SessionRepository
@@ -45,17 +47,23 @@ async def recommend_chart(
             if turn and turn.chart_plan:
                 plan_data = turn.chart_plan
                 if isinstance(plan_data, dict):
-                    suitable = bool(plan_data.get("suitable", True) and plan_data.get("charts"))
-                    reasoning = turn.chart_reasoning or plan_data.get("reasoning")
-                    return ChartRecommendResponse(
-                        suitable=suitable,
-                        config=None,
-                        chartData=None,
-                        reasoning=reasoning,
-                        intent=None,
-                        plan=plan_data,
-                        error=None if suitable else "No suitable chart suggestions",
-                    )
+                    try:
+                        plan = VizPlan.model_validate(plan_data)
+                    except ValidationError:
+                        plan = None
+
+                    if plan is not None:
+                        suitable = bool(plan.suitable and plan.charts)
+                        reasoning = turn.chart_reasoning or plan.reasoning
+                        return ChartRecommendResponse(
+                            suitable=suitable,
+                            config=None,
+                            chartData=None,
+                            reasoning=reasoning,
+                            intent=None,
+                            plan=plan,
+                            error=None if suitable else "No suitable chart suggestions",
+                        )
 
     response = await service.recommend(request)
 

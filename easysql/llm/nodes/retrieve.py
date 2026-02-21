@@ -106,3 +106,33 @@ def retrieve_node(
 ) -> dict[Any, Any]:
     node = RetrieveNode()
     return node(state, config, writer=writer)
+
+
+def _close_reader_repositories(service: SchemaRetrievalService) -> None:
+    milvus_reader = getattr(service, "_milvus", None)
+    neo4j_reader = getattr(service, "_neo4j", None)
+
+    milvus_repo = getattr(milvus_reader, "_repo", None)
+    if milvus_repo is not None and hasattr(milvus_repo, "close"):
+        milvus_repo.close()
+
+    neo4j_repo = getattr(neo4j_reader, "_repo", None)
+    if neo4j_repo is not None and hasattr(neo4j_repo, "close"):
+        neo4j_repo.close()
+
+
+def reset_retrieval_service_cache() -> None:
+    cache_info_fn = getattr(get_retrieval_service, "cache_info", None)
+    should_close = False
+    if callable(cache_info_fn):
+        should_close = getattr(cache_info_fn(), "currsize", 0) > 0
+
+    if should_close:
+        service = get_retrieval_service()
+        _close_reader_repositories(service)
+
+    get_retrieval_service.cache_clear()
+
+
+def warm_retrieval_service_cache() -> None:
+    get_retrieval_service()

@@ -26,16 +26,6 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     logger.info("EasySQL API starting up...")
-    logger.info(f"  LLM Provider: {settings.llm.get_provider()}")
-    logger.info(f"  LLM Model: {settings.llm.get_model()}")
-    if settings.langfuse.is_configured():
-        logger.info("  LangFuse: Enabled")
-
-    if settings.checkpointer.is_postgres():
-        logger.info("  Checkpointer: PostgreSQL")
-        setup_checkpointer()
-    else:
-        logger.info("  Checkpointer: In-memory")
 
     if not settings.is_session_postgres():
         raise RuntimeError("SESSION_BACKEND must be set to postgres.")
@@ -46,7 +36,7 @@ async def lifespan(app: FastAPI):
             "SESSION_POSTGRES_URI is required for session persistence (PostgreSQL only)."
         )
 
-    from easysql_api.deps import set_session_repository
+    from easysql_api.deps import get_config_service_dep, set_session_repository
     from easysql_api.infrastructure.db import init_engine
     from easysql_api.infrastructure.persistence.session_repository import (
         SqlAlchemySessionRepository,
@@ -59,14 +49,30 @@ async def lifespan(app: FastAPI):
     set_session_repository(repository)
     logger.info("  Session Store: PostgreSQL (SQLAlchemy ORM)")
 
+    config_service = get_config_service_dep()
+    await config_service.bootstrap_from_db()
+    settings = get_settings()
+
+    logger.info(f"  LLM Provider: {settings.llm.get_provider()}")
+    logger.info(f"  LLM Model: {settings.llm.get_model()}")
+    if settings.langfuse.is_configured():
+        logger.info("  LangFuse: Enabled")
+
+    if settings.checkpointer.is_postgres():
+        logger.info("  Checkpointer: PostgreSQL")
+        setup_checkpointer()
+    else:
+        logger.info("  Checkpointer: In-memory")
+
     yield
 
     logger.info("EasySQL API shutting down...")
 
-    from easysql_api.deps import clear_session_repository
+    from easysql_api.deps import clear_config_service, clear_session_repository
     from easysql_api.infrastructure.db import dispose_engine
 
     clear_session_repository()
+    clear_config_service()
     await dispose_engine()
 
     await close_checkpointer_pool()

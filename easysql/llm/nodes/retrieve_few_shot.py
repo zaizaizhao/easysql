@@ -141,3 +141,22 @@ def retrieve_few_shot_node(
     """Legacy function wrapper for RetrieveFewShotNode."""
     node = RetrieveFewShotNode()
     return node(state, config, writer=writer)
+
+
+def reset_few_shot_reader_cache() -> None:
+    cache_info_fn = getattr(get_few_shot_reader, "cache_info", None)
+    should_close = False
+    if callable(cache_info_fn):
+        should_close = getattr(cache_info_fn(), "currsize", 0) > 0
+
+    if should_close:
+        reader = get_few_shot_reader()
+        repository = getattr(reader, "_repo", None)
+        if repository is not None and hasattr(repository, "close"):
+            repository.close()
+
+    get_few_shot_reader.cache_clear()
+
+
+def warm_few_shot_reader_cache() -> None:
+    get_few_shot_reader()

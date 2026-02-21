@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import Any, cast
 
 from easysql.llm.agents.viz.schemas import (
     AggType,
@@ -38,7 +38,7 @@ class _AggState:
 def _coerce_numeric(value: object) -> float | None:
     if value is None:
         return None
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return float(value)
     if isinstance(value, str):
         try:
@@ -62,6 +62,12 @@ def _compute_agg(state: _AggState, agg: AggType) -> float | int:
     return state.total
 
 
+def _normalize_agg(raw_agg: AggType | str | None, has_value_field: bool) -> AggType:
+    if raw_agg in {"count", "sum", "avg", "min", "max"}:
+        return cast(AggType, raw_agg)
+    return "count" if not has_value_field else "sum"
+
+
 def aggregate_chart_data(
     rows: list[dict[str, Any]],
     intent: ChartIntent | None,
@@ -76,7 +82,7 @@ def aggregate_chart_data(
     if not processed_rows:
         return []
 
-    agg: AggType = intent.agg or ("count" if not intent.value_field else "sum")
+    agg = _normalize_agg(intent.agg, has_value_field=bool(intent.value_field))
     series_field = intent.series_field
     value_field = intent.value_field
 
@@ -373,9 +379,7 @@ def _apply_binning(
 ) -> list[dict[str, Any]]:
     value_parser = _build_binning_value_parser(field)
     values = [
-        value_parser(row.get(field))
-        for row in rows
-        if value_parser(row.get(field)) is not None
+        value_parser(row.get(field)) for row in rows if value_parser(row.get(field)) is not None
     ]
     if not values:
         return []
@@ -436,9 +440,12 @@ def _parse_datetime(value: object) -> datetime | None:
             return datetime.fromisoformat(value)
         except ValueError:
             try:
-                from dateutil import parser  # type: ignore[import-not-found]
+                from dateutil import parser as dateutil_parser  # type: ignore[import-untyped]
 
-                return parser.parse(value)
+                parsed = dateutil_parser.parse(value)
+                if isinstance(parsed, datetime):
+                    return parsed
+                return None
             except Exception:
                 return None
     return None

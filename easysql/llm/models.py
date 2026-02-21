@@ -9,6 +9,7 @@ import os
 from typing import Any, Literal, cast
 
 from langchain_core.language_models import BaseChatModel
+
 from easysql.config import LLMConfig
 from easysql.utils.logger import get_logger
 
@@ -59,7 +60,7 @@ def get_llm(config: LLMConfig, purpose: ModelPurpose = "generation") -> BaseChat
 def _build_model_kwargs(config: LLMConfig, provider: str) -> dict[str, Any]:
     """Build model initialization kwargs based on provider."""
     kwargs: dict[str, Any] = {
-        "temperature": 0,  # Deterministic for SQL generation
+        "temperature": config.temperature,
         "timeout": 120,  # 120 seconds timeout for API calls
     }
 
@@ -110,29 +111,29 @@ def _init_chat_model_direct(
     if provider == "openai":
         try:
             from langchain_openai import ChatOpenAI
-        except ImportError:
-            raise ImportError("pip install langchain-openai")
+        except ImportError as err:
+            raise ImportError("pip install langchain-openai") from err
         return cast(BaseChatModel, ChatOpenAI(model=model_name, **model_kwargs))
 
     elif provider == "google_genai":
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
-        except ImportError:
-            raise ImportError("pip install langchain-google-genai")
+        except ImportError as err:
+            raise ImportError("pip install langchain-google-genai") from err
         return cast(BaseChatModel, ChatGoogleGenerativeAI(model=model_name, **model_kwargs))
 
     elif provider == "anthropic":
         try:
             from langchain_anthropic import ChatAnthropic
-        except ImportError:
-            raise ImportError("pip install langchain-anthropic")
+        except ImportError as err:
+            raise ImportError("pip install langchain-anthropic") from err
         return cast(BaseChatModel, ChatAnthropic(model_name=model_name, **model_kwargs))
 
     elif provider == "ollama":
         try:
             from langchain_ollama import ChatOllama
-        except ImportError:
-            raise ImportError("pip install langchain-ollama")
+        except ImportError as err:
+            raise ImportError("pip install langchain-ollama") from err
         return cast(BaseChatModel, ChatOllama(model=model_name, **model_kwargs))
 
     else:
