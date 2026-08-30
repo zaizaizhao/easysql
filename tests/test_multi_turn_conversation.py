@@ -251,8 +251,10 @@ class TestEdgeCases:
             for i in range(20)
         ]
 
-        summary, recent = manager.prepare_history(history, schema_context_tokens=1000)
+        with patch.object(manager, "_summarize_history", return_value="[摘要]"):
+            summary, recent = manager.prepare_history(history, schema_context_tokens=1000)
 
+        assert summary == "[摘要]"
         assert len(recent) <= TokenManager.MAX_HISTORY_TURNS
 
     def test_shift_detect_graceful_failure(self):
