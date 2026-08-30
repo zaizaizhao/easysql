@@ -18,6 +18,7 @@ from easysql_api.routers import (
     query_router,
     sessions_router,
 )
+from easysql_api.routers.agent_tools import router as agent_tools_router
 
 logger = get_logger(__name__)
 
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     app.include_router(pipeline_router, prefix="/api/v1", tags=["Pipeline"])
     app.include_router(config_router, prefix="/api/v1", tags=["Config"])
     app.include_router(few_shot_router, prefix="/api/v1", tags=["Few-Shot"])
+    app.include_router(agent_tools_router, prefix="/api/v1", tags=["Agent Tools"])
 
     return app
 

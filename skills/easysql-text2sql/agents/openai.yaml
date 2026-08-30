@@ -1,0 +1,4 @@
+interface:
+  display_name: "EasySQL Text2SQL"
+  short_description: "Agentic schema retrieval and read-only SQL drafting"
+  default_prompt: "Use $easysql-text2sql to discover schema evidence and draft a read-only SQL query."
