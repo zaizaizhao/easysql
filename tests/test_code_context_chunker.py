@@ -1,10 +1,9 @@
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from textwrap import dedent
 
 import pytest
 
-from easysql.code_context.chunker import CodeChunk, CodeChunker, ChunkResult
+from easysql.code_context.chunker import CodeChunk, CodeChunker
 from easysql.code_context.utils import FileTracker, LanguageDetector, FileChange
 
 

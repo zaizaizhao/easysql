@@ -53,7 +53,7 @@ class BaseSqlExecutor(ABC):
         """Get the appropriate EXPLAIN command prefix for each database dialect."""
         prefixes = {
             "mysql": "EXPLAIN",
-            "postgresql": "EXPLAIN ANALYZE",
+            "postgresql": "EXPLAIN",
             "oracle": "EXPLAIN PLAN FOR",
             "sqlserver": "SET SHOWPLAN_TEXT ON;",
         }

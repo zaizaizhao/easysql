@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -8,8 +9,13 @@ from typing import Any
 import pytest
 
 from easysql.config import get_runtime_overrides, get_settings, replace_runtime_overrides
+from easysql.federation import FederationStatus
 from easysql_api.infrastructure.persistence.config_repository import ConfigUpsertItem
-from easysql_api.services.config_service import ConfigService
+from easysql_api.services.config_service import (
+    DATABASES_CATEGORY,
+    DATABASES_KEY,
+    ConfigService,
+)
 
 
 @dataclass
@@ -225,8 +231,7 @@ def test_delete_category_removes_overrides() -> None:
             )
         ]
     )
-    invalidator = FakeInvalidator()
-    service = ConfigService(repository=repo, invalidator=invalidator)
+    service = ConfigService(repository=repo, invalidator=FakeInvalidator())
 
     _run(service.bootstrap_from_db())
     before = _run(service.get_editable_config())
@@ -237,5 +242,112 @@ def test_delete_category_removes_overrides() -> None:
     assert "few_shot_enabled" not in [row.key for row in repo.rows]
     after = _run(service.get_editable_config())
     assert after["few_shot"]["few_shot_enabled"]["is_overridden"] is False
+
+    _reset_runtime_overrides()
+
+
+def _database_payload(name: str, password: str | None = "secret") -> dict[str, Any]:
+    return {
+        "name": name,
+        "db_type": "postgresql",
+        "host": "localhost",
+        "port": 5432,
+        "user": "app",
+        "password": password,
+        "database": f"{name}_physical",
+        "schema": "public",
+        "system_type": name.upper(),
+        "description": f"{name} database",
+    }
+
+
+def test_replace_database_configs_preserves_password_and_invalidates_engines() -> None:
+    _reset_runtime_overrides()
+    replace_runtime_overrides(
+        {"databases": {"emr": _database_payload("emr", password="existing-secret")}}
+    )
+    get_settings.cache_clear()
+    repo = FakeConfigRepository()
+    invalidator = FakeInvalidator()
+    service = ConfigService(repository=repo, invalidator=invalidator)
+
+    result = _run(
+        service.replace_database_configs(
+            [
+                _database_payload("emr", password=None),
+                _database_payload("pms", password="pms-secret"),
+            ]
+        )
+    )
+
+    assert result["total"] == 2
+    assert all("password" not in item for item in result["databases"])
+    row = next(
+        item
+        for item in repo.rows
+        if item.category == DATABASES_CATEGORY and item.key == DATABASES_KEY
+    )
+    stored = json.loads(row.value)
+    assert stored["emr"]["password"] == "existing-secret"
+    assert stored["pms"]["password"] == "pms-secret"
+    assert "data_plane_engines" in invalidator.invalidated[-1]
+
+    _reset_runtime_overrides()
+
+
+def test_bootstrap_from_db_loads_persisted_database_catalog() -> None:
+    _reset_runtime_overrides()
+    repo = FakeConfigRepository(
+        [
+            FakeConfigRow(
+                category=DATABASES_CATEGORY,
+                key=DATABASES_KEY,
+                value=json.dumps({"rvs": _database_payload("rvs")}),
+                value_type="json",
+                is_secret=True,
+                updated_at=datetime.now(timezone.utc),
+            )
+        ]
+    )
+    service = ConfigService(repository=repo, invalidator=FakeInvalidator())
+
+    _run(service.bootstrap_from_db())
+
+    settings = get_settings()
+    assert list(settings.databases) == ["rvs"]
+    assert settings.databases["rvs"].system_type == "RVS"
+
+    _reset_runtime_overrides()
+
+
+def test_database_federation_status_delegates_to_probe() -> None:
+    _reset_runtime_overrides()
+
+    class FakeProbe:
+        def __init__(self) -> None:
+            self.seen: list[str] = []
+
+        def check(self, settings: Any, db_names: list[str]) -> Any:
+            self.seen = list(db_names)
+            return FederationStatus(
+                mode="single",
+                status="not_required",
+                reason="single_database",
+                db_names=list(db_names),
+                databases=[],
+            )
+
+    probe = FakeProbe()
+    service = ConfigService(
+        repository=FakeConfigRepository(),
+        invalidator=FakeInvalidator(),
+        federation_probe=probe,  # type: ignore[arg-type]
+    )
+
+    result = _run(service.get_database_federation_status(["emr"]))
+
+    assert probe.seen == ["emr"]
+    assert result["mode"] == "single"
+    assert result["status"] == "not_required"
 
     _reset_runtime_overrides()

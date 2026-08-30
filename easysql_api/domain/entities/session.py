@@ -15,6 +15,8 @@ from easysql_api.domain.value_objects.query_status import QueryStatus
 class Session:
     session_id: str
     db_name: str | None = None
+    db_names: list[str] = field(default_factory=list)
+    primary_db: str | None = None
     status: QueryStatus = QueryStatus.PENDING
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -56,6 +58,8 @@ class Session:
 class SessionSummary:
     session_id: str
     db_name: str | None = None
+    db_names: list[str] = field(default_factory=list)
+    primary_db: str | None = None
     status: QueryStatus = QueryStatus.PENDING
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

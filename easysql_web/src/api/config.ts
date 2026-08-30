@@ -4,6 +4,10 @@ import type {
   ConfigDeleteResponse,
   ConfigOverridesResponse,
   ConfigUpdateResponse,
+  DatabaseConfigInput,
+  DatabaseConfigUpdateResponse,
+  DatabaseConnectionTestResponse,
+  DatabaseFederationStatus,
   DatabaseList,
   EditableConfigResponse,
   PipelineStatusResponse,
@@ -12,6 +16,47 @@ import type {
 
 export async function getDatabases(): Promise<DatabaseList> {
   const response = await apiClient.get<DatabaseList>('/pipeline/databases');
+  return response.data;
+}
+
+export async function getManagedDatabases(): Promise<DatabaseList> {
+  const response = await apiClient.get<DatabaseList>('/config/databases');
+  return response.data;
+}
+
+export async function replaceManagedDatabases(
+  databases: DatabaseConfigInput[],
+): Promise<DatabaseConfigUpdateResponse> {
+  const response = await apiClient.put<DatabaseConfigUpdateResponse>('/config/databases', {
+    databases,
+  });
+  return response.data;
+}
+
+export async function deleteManagedDatabase(name: string): Promise<DatabaseConfigUpdateResponse> {
+  const response = await apiClient.delete<DatabaseConfigUpdateResponse>(
+    `/config/databases/${encodeURIComponent(name)}`,
+  );
+  return response.data;
+}
+
+export async function testManagedDatabase(
+  database: DatabaseConfigInput,
+): Promise<DatabaseConnectionTestResponse> {
+  const response = await apiClient.post<DatabaseConnectionTestResponse>(
+    '/config/databases/test',
+    database,
+  );
+  return response.data;
+}
+
+export async function getDatabaseFederationStatus(
+  dbNames: string[],
+): Promise<DatabaseFederationStatus> {
+  const response = await apiClient.post<DatabaseFederationStatus>(
+    '/config/databases/federation-status',
+    { db_names: dbNames },
+  );
   return response.data;
 }
 

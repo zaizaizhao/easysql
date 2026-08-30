@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable
 from copy import deepcopy
 from typing import Any
 
@@ -11,6 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command
 
 from easysql.config import get_settings
+from easysql.federation import DatabaseScope
 from easysql.llm import build_graph, get_langfuse_callbacks
 from easysql.utils.logger import get_logger
 from easysql_api.domain.entities.session import Session
@@ -19,6 +21,10 @@ from easysql_api.domain.repositories.session_repository import SessionRepository
 from easysql_api.domain.value_objects.query_status import QueryStatus
 
 logger = get_logger(__name__)
+
+
+class QueryTimeBudgetExceededError(TimeoutError):
+    """Raised when the end-to-end graph execution exceeds its wall-clock budget."""
 
 
 class QueryService:
@@ -39,6 +45,62 @@ class QueryService:
             self._callbacks = get_langfuse_callbacks()
         return self._callbacks
 
+    @property
+    def query_timeout_seconds(self) -> float:
+        return float(getattr(get_settings().llm, "query_timeout_seconds", 300))
+
+    async def _invoke_graph_with_timeout(self, awaitable: Awaitable[Any]) -> Any:
+        timeout_seconds = self.query_timeout_seconds
+        try:
+            return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
+        except asyncio.TimeoutError as exc:
+            raise QueryTimeBudgetExceededError(
+                f"Query time budget exceeded after {timeout_seconds:g} seconds"
+            ) from exc
+
+    async def _stream_graph_with_timeout(
+        self,
+        stream: AsyncIterator[Any],
+    ) -> AsyncGenerator[Any, None]:
+        timeout_seconds = self.query_timeout_seconds
+        deadline = asyncio.get_running_loop().time() + timeout_seconds
+        iterator = stream.__aiter__()
+
+        while True:
+            remaining_seconds = deadline - asyncio.get_running_loop().time()
+            if remaining_seconds <= 0:
+                raise QueryTimeBudgetExceededError(
+                    f"Query time budget exceeded after {timeout_seconds:g} seconds"
+                )
+            try:
+                yield await asyncio.wait_for(
+                    iterator.__anext__(),
+                    timeout=remaining_seconds,
+                )
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError as exc:
+                raise QueryTimeBudgetExceededError(
+                    f"Query time budget exceeded after {timeout_seconds:g} seconds"
+                ) from exc
+
+    async def _mark_query_failed(self, session: Session, turn: Turn, error: str) -> None:
+        turn.fail(error)
+        session.generated_sql = None
+        session.validation_passed = False
+        session.status = QueryStatus.FAILED
+        session.state = {"error": error, "validation_passed": False}
+        session.touch()
+        await self._update_status(session.session_id, session.status)
+        await self._update_session_fields(
+            session.session_id,
+            raw_query=session.raw_query,
+            generated_sql=None,
+            validation_passed=False,
+            state=session.state,
+        )
+        await self._save_turns(session.session_id, session.turns)
+
     def _make_config(self, session_id: str, thread_id: str | None = None) -> RunnableConfig:
         effective_thread_id = thread_id or session_id
         config: RunnableConfig = {"configurable": {"thread_id": effective_thread_id}}
@@ -51,18 +113,23 @@ class QueryService:
             logger.debug(f"LangFuse callbacks attached: {len(self.callbacks)} handler(s)")
         return config
 
-    async def create_session(self, db_name: str | None = None) -> Session:
-        if not db_name:
-            settings = get_settings()
-            databases = settings.databases
-            if databases:
-                db_name = next(iter(databases.keys()))
-                logger.info(f"No db_name provided, defaulting to: {db_name}")
-            else:
-                logger.warning("No databases configured in settings!")
-
+    async def create_session(
+        self,
+        db_name: str | None = None,
+        db_names: list[str] | None = None,
+    ) -> Session:
+        scope = DatabaseScope.resolve(
+            get_settings(),
+            db_names=db_names,
+            db_name=db_name,
+        )
         session_id = str(uuid.uuid4())
-        return await self._repo.create(session_id, db_name)
+        return await self._repo.create(
+            session_id,
+            db_name=scope.default_primary,
+            db_names=scope.names,
+            primary_db=scope.default_primary,
+        )
 
     async def get_session(self, session_id: str) -> Session | None:
         return await self._repo.get(session_id)
@@ -141,6 +208,7 @@ class QueryService:
                 for item in turn.clarifications
             ],
             final_sql=turn.final_sql,
+            primary_db=turn.primary_db,
             validation_passed=turn.validation_passed,
             error=turn.error,
             chart_plan=deepcopy(turn.chart_plan),
@@ -169,7 +237,10 @@ class QueryService:
         thread_id: str | None,
         turn_ids: list[str],
     ) -> dict[str, Any]:
-        target_session = await self.create_session(db_name=source_session.db_name)
+        target_session = await self.create_session(
+            db_name=source_session.db_name,
+            db_names=source_session.db_names,
+        )
         graph = self.graph
 
         cloned_turns = self._clone_turns_by_ids(source_session, turn_ids)
@@ -197,6 +268,7 @@ class QueryService:
             latest_turn = cloned_turns[-1]
             target_session.raw_query = latest_turn.question
             target_session.generated_sql = latest_turn.final_sql
+            target_session.primary_db = latest_turn.primary_db or target_session.primary_db
             target_session.validation_passed = latest_turn.validation_passed
         elif conversation_history:
             latest_history_turn = conversation_history[-1]
@@ -221,6 +293,7 @@ class QueryService:
             raw_query=target_session.raw_query,
             generated_sql=target_session.generated_sql,
             validation_passed=target_session.validation_passed,
+            primary_db=target_session.primary_db,
             state=target_session.state,
         )
 
@@ -330,6 +403,8 @@ class QueryService:
             "retry_count": 0,
             "error": None,
             "db_name": session.db_name,
+            "db_names": session.db_names,
+            "primary_db": None,
             "current_message_id": assistant_message_id,
             "parent_message_id": None,
         }
@@ -337,7 +412,7 @@ class QueryService:
         config = self._make_config(session.session_id, thread_id)
 
         try:
-            result = await graph.ainvoke(input_state, config)
+            result = await self._invoke_graph_with_timeout(graph.ainvoke(input_state, config))
             return await self._process_result(
                 graph,
                 session,
@@ -350,16 +425,17 @@ class QueryService:
                 thread_id=thread_id,
                 question=question,
             )
+        except asyncio.CancelledError:
+            error = "Query was cancelled before completion"
+            await asyncio.shield(self._mark_query_failed(session, turn, error))
+            raise
         except Exception as e:
             logger.error(f"Query execution failed: {e}")
-            turn.fail(str(e))
-            session.status = QueryStatus.FAILED
-            session.touch()
-            await self._update_status(session.session_id, session.status)
-            await self._save_turns(session.session_id, session.turns)
+            error = str(e) or type(e).__name__
+            await self._mark_query_failed(session, turn, error)
             return {
-                "status": QueryStatus.FAILED,
-                "error": str(e),
+                "status": QueryStatus.FAILED.value,
+                "error": error,
                 "message_id": assistant_message_id,
                 "parent_message_id": None,
                 "thread_id": thread_id,
@@ -392,7 +468,9 @@ class QueryService:
         config = self._make_config(session.session_id, thread_id)
 
         try:
-            result = await graph.ainvoke(Command(resume=answer), config)
+            result = await self._invoke_graph_with_timeout(
+                graph.ainvoke(Command(resume=answer), config)
+            )
             return await self._process_result(
                 graph,
                 session,
@@ -405,16 +483,17 @@ class QueryService:
                 thread_id=thread_id or session.session_id,
                 question=session.raw_query or "",
             )
+        except asyncio.CancelledError:
+            error = "Query was cancelled before completion"
+            await asyncio.shield(self._mark_query_failed(session, turn, error))
+            raise
         except Exception as e:
             logger.error(f"Continue conversation failed: {e}")
-            turn.fail(str(e))
-            session.status = QueryStatus.FAILED
-            session.touch()
-            await self._update_status(session.session_id, session.status)
-            await self._save_turns(session.session_id, session.turns)
+            error = str(e) or type(e).__name__
+            await self._mark_query_failed(session, turn, error)
             return {
-                "status": QueryStatus.FAILED,
-                "error": str(e),
+                "status": QueryStatus.FAILED.value,
+                "error": error,
                 "thread_id": thread_id or session.session_id,
             }
 
@@ -463,8 +542,8 @@ class QueryService:
             }
 
             last_state: dict[str, Any] = {}
-            async for chunk in graph.astream(
-                Command(resume=answer), config, stream_mode=["updates", "custom"]
+            async for chunk in self._stream_graph_with_timeout(
+                graph.astream(Command(resume=answer), config, stream_mode=["updates", "custom"])
             ):
                 if isinstance(chunk, tuple) and len(chunk) == 2:
                     mode, data = chunk
@@ -521,19 +600,20 @@ class QueryService:
 
             yield {"event": "complete", "data": final_result}
 
+        except asyncio.CancelledError:
+            error = "Query was cancelled before completion"
+            await asyncio.shield(self._mark_query_failed(session, turn, error))
+            raise
         except Exception as e:
             logger.error(f"Stream continue conversation failed: {e}")
-            turn.fail(str(e))
-            session.status = QueryStatus.FAILED
-            session.touch()
-            await self._update_status(session.session_id, session.status)
-            await self._save_turns(session.session_id, session.turns)
+            error = str(e) or type(e).__name__
+            await self._mark_query_failed(session, turn, error)
             yield {
                 "event": "error",
                 "data": {
                     "session_id": session.session_id,
                     "thread_id": thread_id or session.session_id,
-                    "error": str(e),
+                    "error": error,
                 },
             }
 
@@ -577,6 +657,8 @@ class QueryService:
                 "status": QueryStatus.AWAITING_CLARIFY.value,
                 "clarification": {"questions": questions},
                 "turn_id": turn.turn_id,
+                "db_names": session.db_names,
+                "primary_db": session.primary_db,
                 "message_id": assistant_message_id,
                 "parent_message_id": parent_message_id,
                 "thread_id": thread_id,
@@ -584,10 +666,75 @@ class QueryService:
             return clarify_response
 
         sql = result.get("generated_sql")
-        validation_passed = result.get("validation_passed", False)
-        turn.complete(sql, validation_passed)
+        validation_passed = bool(result.get("validation_passed", False))
+        has_final_sql = isinstance(sql, str) and bool(sql.strip())
+
+        if not validation_passed or not has_final_sql:
+            validation_result = result.get("validation_result") or {}
+            error = (
+                result.get("error")
+                or validation_result.get("error")
+                or "SQL Agent finished without a validated final SQL"
+            )
+            turn.fail(str(error))
+            session.generated_sql = None
+            session.validation_passed = False
+            session.status = QueryStatus.FAILED
+            session.state = self._sanitize_state(result)
+            session.touch()
+            await self._update_status(session.session_id, session.status)
+            await self._update_session_fields(
+                session.session_id,
+                raw_query=session.raw_query,
+                generated_sql=None,
+                validation_passed=False,
+                primary_db=session.primary_db,
+                state=session.state,
+            )
+            await self._save_turns(session.session_id, session.turns)
+
+            response: dict[str, Any] = {
+                "status": QueryStatus.FAILED.value,
+                "sql": None,
+                "db_names": session.db_names,
+                "primary_db": session.primary_db,
+                "validation_passed": False,
+                "validation_error": str(error),
+                "error": str(error),
+                "turn_id": turn.turn_id,
+                "message_id": assistant_message_id,
+                "parent_message_id": parent_message_id,
+                "thread_id": thread_id,
+            }
+
+            if user_message_id and assistant_message_id:
+                tables_used = result.get("retrieval_result", {}).get("tables", [])
+                await self._persist_messages(
+                    session_id=session.session_id,
+                    thread_id=thread_id,
+                    user_message_id=user_message_id,
+                    assistant_message_id=assistant_message_id,
+                    parent_message_id=parent_message_id,
+                    question=question,
+                    sql=None,
+                    tables_used=tables_used,
+                    validation_passed=False,
+                    error=str(error),
+                    clarification_questions=result.get("clarification_questions"),
+                )
+
+            return response
+
+        scope = DatabaseScope.resolve(
+            get_settings(),
+            db_names=session.db_names,
+            db_name=session.db_name,
+        )
+        primary_db = scope.require_primary(result.get("primary_db")).name
+        turn.complete(sql, validation_passed, primary_db=primary_db)
 
         session.generated_sql = sql
+        session.primary_db = primary_db
         session.validation_passed = validation_passed
         session.status = QueryStatus.COMPLETED
         session.state = self._sanitize_state(result)
@@ -598,6 +745,7 @@ class QueryService:
             raw_query=session.raw_query,
             generated_sql=session.generated_sql,
             validation_passed=session.validation_passed,
+            primary_db=session.primary_db,
             state=session.state,
         )
         await self._save_turns(session.session_id, session.turns)
@@ -605,6 +753,8 @@ class QueryService:
         response: dict[str, Any] = {
             "status": QueryStatus.COMPLETED.value,
             "sql": session.generated_sql,
+            "db_names": session.db_names,
+            "primary_db": session.primary_db,
             "validation_passed": session.validation_passed,
             "turn_id": turn.turn_id,
             "message_id": assistant_message_id,
@@ -699,6 +849,8 @@ class QueryService:
             "retry_count": 0,
             "error": None,
             "db_name": session.db_name,
+            "db_names": session.db_names,
+            "primary_db": None,
             "current_message_id": assistant_message_id,
             "parent_message_id": None,
         }
@@ -714,12 +866,14 @@ class QueryService:
                     "message_id": assistant_message_id,
                     "parent_message_id": None,
                     "turn_id": turn.turn_id,
+                    "db_names": session.db_names,
+                    "primary_db": session.primary_db,
                 },
             }
 
             last_state: dict[str, Any] = {}
-            async for chunk in graph.astream(
-                input_state, config, stream_mode=["updates", "custom"]
+            async for chunk in self._stream_graph_with_timeout(
+                graph.astream(input_state, config, stream_mode=["updates", "custom"])
             ):
                 if isinstance(chunk, tuple) and len(chunk) == 2:
                     mode, data = chunk
@@ -776,13 +930,14 @@ class QueryService:
 
             yield {"event": "complete", "data": final_result}
 
+        except asyncio.CancelledError:
+            error = "Query was cancelled before completion"
+            await asyncio.shield(self._mark_query_failed(session, turn, error))
+            raise
         except Exception as e:
             logger.exception(f"Stream query failed: {type(e).__name__}: {e!r}")
-            turn.fail(str(e))
-            session.status = QueryStatus.FAILED
-            session.touch()
-            await self._update_status(session.session_id, session.status)
-            await self._save_turns(session.session_id, session.turns)
+            error = str(e) or type(e).__name__
+            await self._mark_query_failed(session, turn, error)
             yield {
                 "event": "error",
                 "data": {
@@ -790,7 +945,7 @@ class QueryService:
                     "thread_id": thread_id,
                     "message_id": assistant_message_id,
                     "parent_message_id": None,
-                    "error": f"{type(e).__name__}: {e!r}",
+                    "error": error,
                 },
             }
 
@@ -801,6 +956,8 @@ class QueryService:
             return {}
         safe_keys = {
             "generated_sql",
+            "primary_db",
+            "db_names",
             "validation_passed",
             "validation_result",
             "clarification_questions",
@@ -852,6 +1009,8 @@ class QueryService:
         sanitized: dict[str, Any] = {}
         safe_keys = {
             "generated_sql",
+            "primary_db",
+            "db_names",
             "validation_passed",
             "validation_result",
             "clarification_questions",
@@ -987,6 +1146,8 @@ class QueryService:
             "error": None,
             "needs_new_retrieval": False,
             "db_name": session.db_name,
+            "db_names": session.db_names,
+            "primary_db": None,
             "cached_context": cached_context,
             "retrieval_result": retrieval_result,
             "current_message_id": assistant_message_id,
@@ -994,7 +1155,7 @@ class QueryService:
 
         try:
             config = self._make_config(session.session_id, effective_thread_id)
-            result = await graph.ainvoke(input_state, config)
+            result = await self._invoke_graph_with_timeout(graph.ainvoke(input_state, config))
             return await self._process_result(
                 graph,
                 session,
@@ -1007,16 +1168,17 @@ class QueryService:
                 thread_id=effective_thread_id,
                 question=question,
             )
+        except asyncio.CancelledError:
+            error = "Query was cancelled before completion"
+            await asyncio.shield(self._mark_query_failed(session, turn, error))
+            raise
         except Exception as e:
             logger.error(f"Follow-up query failed: {e}")
-            turn.fail(str(e))
-            session.status = QueryStatus.FAILED
-            session.touch()
-            await self._update_status(session.session_id, session.status)
-            await self._save_turns(session.session_id, session.turns)
+            error = str(e) or type(e).__name__
+            await self._mark_query_failed(session, turn, error)
             return {
-                "status": QueryStatus.FAILED,
-                "error": str(e),
+                "status": QueryStatus.FAILED.value,
+                "error": error,
                 "message_id": assistant_message_id,
                 "parent_message_id": parent_message_id,
                 "thread_id": effective_thread_id,
@@ -1114,6 +1276,8 @@ class QueryService:
             "error": None,
             "needs_new_retrieval": False,
             "db_name": session.db_name,
+            "db_names": session.db_names,
+            "primary_db": None,
             "cached_context": cached_context,
             "retrieval_result": retrieval_result,
             "current_message_id": assistant_message_id,
@@ -1128,14 +1292,18 @@ class QueryService:
                     "message_id": assistant_message_id,
                     "parent_message_id": parent_message_id,
                     "turn_id": turn.turn_id,
+                    "db_names": session.db_names,
+                    "primary_db": session.primary_db,
                 },
             }
 
             last_state: dict[str, Any] = {}
-            async for chunk in graph.astream(
-                input_state,
-                self._make_config(session.session_id, effective_thread_id),
-                stream_mode=["updates", "custom"],
+            async for chunk in self._stream_graph_with_timeout(
+                graph.astream(
+                    input_state,
+                    self._make_config(session.session_id, effective_thread_id),
+                    stream_mode=["updates", "custom"],
+                )
             ):
                 if isinstance(chunk, tuple) and len(chunk) == 2:
                     mode, data = chunk
@@ -1193,13 +1361,14 @@ class QueryService:
 
             yield {"event": "complete", "data": final_result}
 
+        except asyncio.CancelledError:
+            error = "Query was cancelled before completion"
+            await asyncio.shield(self._mark_query_failed(session, turn, error))
+            raise
         except Exception as e:
             logger.error(f"Stream follow-up query failed: {e}")
-            turn.fail(str(e))
-            session.status = QueryStatus.FAILED
-            session.touch()
-            await self._update_status(session.session_id, session.status)
-            await self._save_turns(session.session_id, session.turns)
+            error = str(e) or type(e).__name__
+            await self._mark_query_failed(session, turn, error)
             yield {
                 "event": "error",
                 "data": {
@@ -1207,7 +1376,7 @@ class QueryService:
                     "thread_id": effective_thread_id,
                     "message_id": assistant_message_id,
                     "parent_message_id": parent_message_id,
-                    "error": str(e),
+                    "error": error,
                 },
             }
 

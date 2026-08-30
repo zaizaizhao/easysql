@@ -22,6 +22,10 @@ class Neo4jSchemaReader:
     def database(self) -> str:
         return self._repo.database
 
+    @property
+    def project_namespace(self) -> str:
+        return self._repo.project_namespace
+
     def get_table_columns(
         self,
         table_names: list[str],
@@ -35,7 +39,11 @@ class Neo4jSchemaReader:
             if db_name:
                 query = """
                 UNWIND $tables AS table_name
-                MATCH (t:Table {name: table_name, database: $db_name})-[r:HAS_COLUMN]->(c:Column)
+                MATCH (t:Table {
+                    name: table_name,
+                    database: $db_name,
+                    project_namespace: $project_namespace
+                })-[r:HAS_COLUMN]->(c:Column)
                 RETURN t.name AS table_name,
                        t.chinese_name AS table_chinese_name,
                        c.name AS name,
@@ -51,11 +59,19 @@ class Neo4jSchemaReader:
                        c.ordinal_position AS ordinal_position
                 ORDER BY table_name, c.ordinal_position
                 """
-                result = session.run(query, tables=table_names, db_name=db_name)
+                result = session.run(
+                    query,
+                    tables=table_names,
+                    db_name=db_name,
+                    project_namespace=self.project_namespace,
+                )
             else:
                 query = """
                 UNWIND $tables AS table_name
-                MATCH (t:Table {name: table_name})-[r:HAS_COLUMN]->(c:Column)
+                MATCH (t:Table {
+                    name: table_name,
+                    project_namespace: $project_namespace
+                })-[r:HAS_COLUMN]->(c:Column)
                 RETURN t.name AS table_name,
                        t.chinese_name AS table_chinese_name,
                        c.name AS name,
@@ -71,7 +87,11 @@ class Neo4jSchemaReader:
                        c.ordinal_position AS ordinal_position
                 ORDER BY table_name, c.ordinal_position
                 """
-                result = session.run(query, tables=table_names)
+                result = session.run(
+                    query,
+                    tables=table_names,
+                    project_namespace=self.project_namespace,
+                )
 
             table_columns: dict[str, list[dict]] = {}
 
@@ -105,7 +125,13 @@ class Neo4jSchemaReader:
     def get_table_count(self) -> int:
         """Get total number of tables in Neo4j."""
         with self.driver.session(database=self.database) as session:
-            result = session.run("MATCH (t:Table) RETURN count(t) as count")
+            result = session.run(
+                """
+                MATCH (t:Table {project_namespace: $project_namespace})
+                RETURN count(t) as count
+                """,
+                project_namespace=self.project_namespace,
+            )
             record = result.single()
             return record["count"] if record else 0
 
@@ -123,19 +149,37 @@ class Neo4jSchemaReader:
             if db_name:
                 query = f"""
                 UNWIND $tables AS t
-                MATCH (table:Table {{name: t, database: $db_name}})
-                MATCH (table)-[:FOREIGN_KEY*1..{max_depth}]-(related:Table {{database: $db_name}})
+                MATCH (table:Table {{
+                    name: t,
+                    database: $db_name,
+                    project_namespace: $project_namespace
+                }})
+                MATCH (table)-[:FOREIGN_KEY*1..{max_depth}]-(related:Table {{
+                    database: $db_name,
+                    project_namespace: $project_namespace
+                }})
                 RETURN DISTINCT related.name as related_table
                 """
-                result = session.run(query, tables=table_names, db_name=db_name)
+                result = session.run(
+                    query,
+                    tables=table_names,
+                    db_name=db_name,
+                    project_namespace=self.project_namespace,
+                )
             else:
                 query = f"""
                 UNWIND $tables AS t
-                MATCH (table:Table {{name: t}})
-                MATCH (table)-[:FOREIGN_KEY*1..{max_depth}]-(related:Table)
+                MATCH (table:Table {{name: t, project_namespace: $project_namespace}})
+                MATCH (table)-[:FOREIGN_KEY*1..{max_depth}]-(related:Table {{
+                    project_namespace: $project_namespace
+                }})
                 RETURN DISTINCT related.name as related_table
                 """
-                result = session.run(query, tables=table_names)
+                result = session.run(
+                    query,
+                    tables=table_names,
+                    project_namespace=self.project_namespace,
+                )
 
             related = [r["related_table"] for r in result]
 
@@ -167,8 +211,16 @@ class Neo4jSchemaReader:
                 UNWIND $tables AS t2
                 WITH t1, t2 WHERE t1 < t2
 
-                MATCH (table1:Table {{name: t1, database: $db_name}}),
-                      (table2:Table {{name: t2, database: $db_name}})
+                MATCH (table1:Table {{
+                        name: t1,
+                        database: $db_name,
+                        project_namespace: $project_namespace
+                      }}),
+                      (table2:Table {{
+                        name: t2,
+                        database: $db_name,
+                        project_namespace: $project_namespace
+                      }})
                 MATCH path = shortestPath(
                     (table1)-[:FOREIGN_KEY*1..{max_hops}]-(table2)
                 )
@@ -179,14 +231,20 @@ class Neo4jSchemaReader:
 
                 RETURN DISTINCT bridge_table
                 """
-                result = session.run(query, tables=high_score_tables, db_name=db_name)
+                result = session.run(
+                    query,
+                    tables=high_score_tables,
+                    db_name=db_name,
+                    project_namespace=self.project_namespace,
+                )
             else:
                 query = f"""
                 UNWIND $tables AS t1
                 UNWIND $tables AS t2
                 WITH t1, t2 WHERE t1 < t2
 
-                MATCH (table1:Table {{name: t1}}), (table2:Table {{name: t2}})
+                MATCH (table1:Table {{name: t1, project_namespace: $project_namespace}}),
+                      (table2:Table {{name: t2, project_namespace: $project_namespace}})
                 MATCH path = shortestPath(
                     (table1)-[:FOREIGN_KEY*1..{max_hops}]-(table2)
                 )
@@ -197,7 +255,11 @@ class Neo4jSchemaReader:
 
                 RETURN DISTINCT bridge_table
                 """
-                result = session.run(query, tables=high_score_tables)
+                result = session.run(
+                    query,
+                    tables=high_score_tables,
+                    project_namespace=self.project_namespace,
+                )
 
             bridges = [r["bridge_table"] for r in result]
 
@@ -216,7 +278,15 @@ class Neo4jSchemaReader:
             if db_name:
                 query = f"""
                 MATCH path = shortestPath(
-                    (t1:Table {{name: $table1, database: $db_name}})-[:FOREIGN_KEY*1..{max_hops}]-(t2:Table {{name: $table2, database: $db_name}})
+                    (t1:Table {{
+                        name: $table1,
+                        database: $db_name,
+                        project_namespace: $project_namespace
+                    }})-[:FOREIGN_KEY*1..{max_hops}]-(t2:Table {{
+                        name: $table2,
+                        database: $db_name,
+                        project_namespace: $project_namespace
+                    }})
                 )
                 RETURN [node IN nodes(path) | node.name] as tables,
                        [rel IN relationships(path) | {{
@@ -224,11 +294,23 @@ class Neo4jSchemaReader:
                            pk_column: rel.pk_column
                        }}] as relationships
                 """
-                result = session.run(query, table1=table1, table2=table2, db_name=db_name)
+                result = session.run(
+                    query,
+                    table1=table1,
+                    table2=table2,
+                    db_name=db_name,
+                    project_namespace=self.project_namespace,
+                )
             else:
                 query = f"""
                 MATCH path = shortestPath(
-                    (t1:Table {{name: $table1}})-[:FOREIGN_KEY*1..{max_hops}]-(t2:Table {{name: $table2}})
+                    (t1:Table {{
+                        name: $table1,
+                        project_namespace: $project_namespace
+                    }})-[:FOREIGN_KEY*1..{max_hops}]-(t2:Table {{
+                        name: $table2,
+                        project_namespace: $project_namespace
+                    }})
                 )
                 RETURN [node IN nodes(path) | node.name] as tables,
                        [rel IN relationships(path) | {{
@@ -236,7 +318,12 @@ class Neo4jSchemaReader:
                            pk_column: rel.pk_column
                        }}] as relationships
                 """
-                result = session.run(query, table1=table1, table2=table2)
+                result = session.run(
+                    query,
+                    table1=table1,
+                    table2=table2,
+                    project_namespace=self.project_namespace,
+                )
 
             record = result.single()
             if record:
@@ -256,7 +343,15 @@ class Neo4jSchemaReader:
                 UNWIND $tables AS t1
                 UNWIND $tables AS t2
                 WITH t1, t2 WHERE t1 < t2
-                MATCH (table1:Table {{name: t1, database: $db_name}}), (table2:Table {{name: t2, database: $db_name}})
+                MATCH (table1:Table {{
+                    name: t1,
+                    database: $db_name,
+                    project_namespace: $project_namespace
+                }}), (table2:Table {{
+                    name: t2,
+                    database: $db_name,
+                    project_namespace: $project_namespace
+                }})
                 MATCH path = shortestPath((table1)-[:FOREIGN_KEY*..{max_hops}]-(table2))
                 UNWIND relationships(path) AS rel
                 WITH DISTINCT
@@ -266,13 +361,19 @@ class Neo4jSchemaReader:
                     rel.pk_column AS pk_column
                 RETURN fk_table, pk_table, fk_column, pk_column
                 """
-                result = session.run(query, tables=tables, db_name=db_name)
+                result = session.run(
+                    query,
+                    tables=tables,
+                    db_name=db_name,
+                    project_namespace=self.project_namespace,
+                )
             else:
                 query = f"""
                 UNWIND $tables AS t1
                 UNWIND $tables AS t2
                 WITH t1, t2 WHERE t1 < t2
-                MATCH (table1:Table {{name: t1}}), (table2:Table {{name: t2}})
+                MATCH (table1:Table {{name: t1, project_namespace: $project_namespace}}),
+                      (table2:Table {{name: t2, project_namespace: $project_namespace}})
                 MATCH path = shortestPath((table1)-[:FOREIGN_KEY*..{max_hops}]-(table2))
                 UNWIND relationships(path) AS rel
                 WITH DISTINCT
@@ -282,7 +383,11 @@ class Neo4jSchemaReader:
                     rel.pk_column AS pk_column
                 RETURN fk_table, pk_table, fk_column, pk_column
                 """
-                result = session.run(query, tables=tables)
+                result = session.run(
+                    query,
+                    tables=tables,
+                    project_namespace=self.project_namespace,
+                )
 
             seen = set()
             edges = []
@@ -310,17 +415,38 @@ class Neo4jSchemaReader:
             if db_name:
                 query = """
                 UNWIND $tables AS t
-                MATCH (fk_table:Table {name: t, database: $db_name})-[r:FOREIGN_KEY]->(pk_table:Table {database: $db_name})
+                MATCH (fk_table:Table {
+                    name: t,
+                    database: $db_name,
+                    project_namespace: $project_namespace
+                })-[r:FOREIGN_KEY]->(pk_table:Table {
+                    database: $db_name,
+                    project_namespace: $project_namespace
+                })
                 RETURN DISTINCT pk_table.name AS target_table
                 """
-                result = session.run(query, tables=table_names, db_name=db_name)
+                result = session.run(
+                    query,
+                    tables=table_names,
+                    db_name=db_name,
+                    project_namespace=self.project_namespace,
+                )
             else:
                 query = """
                 UNWIND $tables AS t
-                MATCH (fk_table:Table {name: t})-[r:FOREIGN_KEY]->(pk_table:Table)
+                MATCH (fk_table:Table {
+                    name: t,
+                    project_namespace: $project_namespace
+                })-[r:FOREIGN_KEY]->(pk_table:Table {
+                    project_namespace: $project_namespace
+                })
                 RETURN DISTINCT pk_table.name AS target_table
                 """
-                result = session.run(query, tables=table_names)
+                result = session.run(
+                    query,
+                    tables=table_names,
+                    project_namespace=self.project_namespace,
+                )
 
             targets = [r["target_table"] for r in result]
 

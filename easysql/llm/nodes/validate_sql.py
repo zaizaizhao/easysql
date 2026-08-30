@@ -10,10 +10,12 @@ Validates the generated SQL using the configured Executor (SQLAlchemy).
 """
 
 import warnings
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
-from easysql.llm.state import EasySQLState
+from easysql.config import get_settings
+from easysql.federation import DatabaseScope, FederatedSqlExecutor, FederatedSqlRequest
 from easysql.llm.nodes.base import BaseNode
+from easysql.llm.state import EasySQLState
 from easysql.llm.tools.base import BaseSqlExecutor
 from easysql.llm.tools.factory import create_sql_executor
 
@@ -28,7 +30,7 @@ class ValidateSQLNode(BaseNode):
     Uses SQL executor to check syntax via EXPLAIN.
     """
 
-    def __init__(self, executor: Optional[BaseSqlExecutor] = None):
+    def __init__(self, executor: BaseSqlExecutor | None = None):
         """Initialize the validate SQL node.
 
         Args:
@@ -36,6 +38,7 @@ class ValidateSQLNode(BaseNode):
                      If None, will be created via factory.
         """
         self._executor = executor
+        self._federated_executor: FederatedSqlExecutor | None = None
 
     @property
     def executor(self) -> BaseSqlExecutor:
@@ -60,13 +63,31 @@ class ValidateSQLNode(BaseNode):
             State updates with validation_passed and validation_result.
         """
         sql = state.get("generated_sql")
-        db_name = state.get("db_name") or "default"
+        scope = DatabaseScope.resolve(
+            get_settings(),
+            db_names=state.get("db_names"),
+            db_name=state.get("db_name"),
+        )
+        primary_db = scope.require_primary(state.get("primary_db")).name
 
         if not sql:
             return {"validation_passed": False, "error": "No SQL generated"}
 
-        # We use check_syntax (EXPLAIN) instead of execute for safety
-        result = self.executor.check_syntax(sql, db_name)
+        # We use check_syntax (EXPLAIN) instead of execute for safety. Federated
+        # validation must also establish named dblink connections on that same
+        # SQLAlchemy connection before issuing EXPLAIN.
+        if scope.is_federated:
+            if self._federated_executor is None:
+                self._federated_executor = FederatedSqlExecutor()
+            result = self._federated_executor.validate(
+                FederatedSqlRequest(
+                    sql=sql,
+                    primary_db=primary_db,
+                    db_names=tuple(scope.names),
+                )
+            )
+        else:
+            result = self.executor.check_syntax(sql, primary_db)
 
         if result.success:
             return {

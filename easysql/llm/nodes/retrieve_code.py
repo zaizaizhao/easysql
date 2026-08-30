@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
-from easysql.config import get_settings
-from easysql.embeddings.embedding_service import EmbeddingService
 from easysql.llm.nodes.base import BaseNode
 from easysql.llm.state import EasySQLState
-from easysql.repositories.milvus_repository import MilvusRepository
+from easysql.retrieval.runtime import get_retrieval_runtime
 from easysql.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -20,48 +17,22 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_code_retrieval_repo: MilvusRepository | None = None
 
-
-@lru_cache(maxsize=1)
-def get_code_retrieval_service() -> "CodeRetrievalService | None":
-    global _code_retrieval_repo
-    settings = get_settings()
-
-    if not settings.code_context_enabled:
-        return None
-
+def get_code_retrieval_service() -> CodeRetrievalService | None:
     try:
-        from easysql.code_context.factory import CodeContextFactory
-
-        embedding_service = EmbeddingService.from_settings(settings)
-
-        milvus_repo = MilvusRepository(
-            uri=settings.milvus_uri,
-            token=settings.milvus_token,
-            collection_prefix=settings.milvus_collection_prefix,
-        )
-        milvus_repo.connect()
-        _code_retrieval_repo = milvus_repo
-
-        return CodeContextFactory.create_retrieval_service(
-            client=milvus_repo.client,
-            embedding_service=embedding_service,
-            settings=settings,
-        )
+        return get_retrieval_runtime().code_retrieval
     except Exception as e:
-        _code_retrieval_repo = None
         logger.warning(f"Failed to initialize code retrieval service: {e}")
         return None
 
 
 class RetrieveCodeNode(BaseNode):
-    def __init__(self, service: "CodeRetrievalService | None" = None):
+    def __init__(self, service: CodeRetrievalService | None = None):
         self._service = service
         self._service_checked = False
 
     @property
-    def service(self) -> "CodeRetrievalService | None":
+    def service(self) -> CodeRetrievalService | None:
         if not self._service_checked:
             if self._service is None:
                 self._service = get_code_retrieval_service()
@@ -71,9 +42,9 @@ class RetrieveCodeNode(BaseNode):
     def __call__(
         self,
         state: EasySQLState,
-        config: "RunnableConfig | None" = None,
+        config: RunnableConfig | None = None,
         *,
-        writer: "StreamWriter | None" = None,
+        writer: StreamWriter | None = None,
     ) -> dict[Any, Any]:
         if self.service is None:
             return {}
@@ -92,17 +63,8 @@ class RetrieveCodeNode(BaseNode):
             )
 
             if code_context:
-                context_output = state.get("context_output")
-                if context_output:
-                    updated_user_prompt = context_output["user_prompt"] + "\n\n" + code_context
-                    return {
-                        "context_output": {
-                            **context_output,
-                            "user_prompt": updated_user_prompt,
-                        },
-                        "code_context": code_context,
-                    }
-
+                # build_context runs after this node and renders the snippet
+                # through CodeContextSection — no prompt patching here.
                 return {"code_context": code_context}
 
         except Exception as e:
@@ -113,22 +75,9 @@ class RetrieveCodeNode(BaseNode):
 
 def retrieve_code_node(
     state: EasySQLState,
-    config: "RunnableConfig | None" = None,
+    config: RunnableConfig | None = None,
     *,
-    writer: "StreamWriter | None" = None,
+    writer: StreamWriter | None = None,
 ) -> dict[Any, Any]:
     node = RetrieveCodeNode()
     return node(state, config, writer=writer)
-
-
-def reset_code_retrieval_service_cache() -> None:
-    global _code_retrieval_repo
-    if _code_retrieval_repo is not None:
-        _code_retrieval_repo.close()
-        _code_retrieval_repo = None
-
-    get_code_retrieval_service.cache_clear()
-
-
-def warm_code_retrieval_service_cache() -> None:
-    get_code_retrieval_service()

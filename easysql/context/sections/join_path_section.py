@@ -4,8 +4,6 @@ Join Path Section.
 Renders FK join path information for SQL generation guidance.
 """
 
-from typing import List, Dict
-
 from ..base import ContextSection
 from ..models import ContextInput, SectionContent
 

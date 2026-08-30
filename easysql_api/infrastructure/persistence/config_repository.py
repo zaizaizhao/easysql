@@ -7,8 +7,8 @@ from dataclasses import dataclass
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from easysql_api.infrastructure.db_manager import ControlPlaneSessionProvider
 from easysql_api.infrastructure.persistence.models import ConfigModel
 
 
@@ -24,11 +24,11 @@ class ConfigUpsertItem:
 class ConfigRepository:
     """Persistence operations for runtime configuration overrides."""
 
-    def __init__(self, sessionmaker: async_sessionmaker[AsyncSession]):
-        self._sessionmaker = sessionmaker
+    def __init__(self, session_provider: ControlPlaneSessionProvider):
+        self._session_provider = session_provider
 
     async def load_all(self) -> list[ConfigModel]:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             result = await db.execute(
                 select(ConfigModel).order_by(ConfigModel.category.asc(), ConfigModel.key.asc())
             )
@@ -50,7 +50,7 @@ class ConfigRepository:
             for item in items
         ]
 
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             stmt = insert(ConfigModel).values(payload)
             stmt = stmt.on_conflict_do_update(
                 index_elements=[ConfigModel.category, ConfigModel.key],
@@ -62,10 +62,9 @@ class ConfigRepository:
                 },
             )
             await db.execute(stmt)
-            await db.commit()
 
     async def delete_category(self, category: str) -> int:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             count_result = await db.execute(
                 select(func.count())
                 .select_from(ConfigModel)
@@ -76,5 +75,4 @@ class ConfigRepository:
                 return 0
 
             await db.execute(delete(ConfigModel).where(ConfigModel.category == category))
-            await db.commit()
             return deleted

@@ -110,5 +110,4 @@ class EmbeddingProviderFactory:
             api_key=settings.embedding_api_key,
             device=settings.embedding_device,
             cache_dir=settings.embedding_cache_dir,
-            timeout=settings.embedding_timeout,
         )

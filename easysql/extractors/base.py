@@ -109,12 +109,16 @@ class BaseSchemaExtractor(ABC):
 
             # Build the complete database metadata
             db_meta = DatabaseMeta(
-                name=self.config.database,
+                # Use the logical configuration name as the identity shared by
+                # sessions, Milvus filters and Neo4j node IDs. The physical
+                # database name remains an implementation detail of the DSN.
+                name=self.config.name.lower(),
                 db_type=self.db_type,
                 host=self.config.host,
                 port=self.config.port,
                 system_type=self.config.system_type,
                 description=self.config.description,
+                default_schema=self.config.get_default_schema(),
                 tables=tables,
                 foreign_keys=foreign_keys,
             )
@@ -211,7 +215,7 @@ class ExtractorFactory:
 
 # Register extractors
 # Legacy implementations
-# ExtractorFactory.register("mysql-legacy", MySQLSchemaExtractor) 
+# ExtractorFactory.register("mysql-legacy", MySQLSchemaExtractor)
 # ExtractorFactory.register("postgresql-legacy", PostgreSQLSchemaExtractor)
 
 # New unified implementation triggers can be explicit or we can register for basic types

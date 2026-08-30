@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Button, Tooltip, message, Space, theme } from 'antd';
+import { Button, Tooltip, message, Space, Tag, theme } from 'antd';
 import {
   CopyOutlined,
   CheckCircleOutlined,
@@ -13,6 +13,8 @@ import {
   BarChartOutlined,
   StarOutlined,
   StarFilled,
+  ClusterOutlined,
+  DatabaseOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import Editor from '@monaco-editor/react';
@@ -36,6 +38,8 @@ interface SQLBlockProps {
   enableLlmCharts?: boolean;
   chartPlan?: VizPlan;
   chartReasoning?: string;
+  dbNames?: string[];
+  primaryDb?: string;
 }
 
 export function SQLBlock({ 
@@ -51,9 +55,11 @@ export function SQLBlock({
   enableLlmCharts = false,
   chartPlan,
   chartReasoning,
+  dbNames,
+  primaryDb,
 }: SQLBlockProps) {
   const { t } = useTranslation();
-  const { theme: appTheme, currentDatabase } = useAppStore();
+  const { theme: appTheme, currentDatabase, selectedDatabases } = useAppStore();
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<ExecuteResponse | null>(null);
   
@@ -77,6 +83,14 @@ export function SQLBlock({
     effectiveMessageIds[0];
 
   const currentSql = isEditing ? editedSql : initialSql;
+  const effectiveDbNames = dbNames?.length
+    ? dbNames
+    : selectedDatabases.length
+      ? selectedDatabases
+      : currentDatabase
+        ? [currentDatabase]
+        : [];
+  const effectivePrimaryDb = primaryDb || effectiveDbNames[0] || currentDatabase;
 
   useEffect(() => {
     setIsFewShot(initialIsFewShot);
@@ -129,7 +143,7 @@ export function SQLBlock({
   };
 
   const handleExecute = async () => {
-    if (!currentDatabase) {
+    if (!effectivePrimaryDb) {
       message.error(t('chat.placeholderNoDb'));
       return;
     }
@@ -141,7 +155,9 @@ export function SQLBlock({
     try {
       const response = await executeApi.executeSql({
         sql: currentSql,
-        db_name: currentDatabase,
+        db_name: effectivePrimaryDb,
+        primary_db: effectivePrimaryDb,
+        db_names: effectiveDbNames,
       });
       setResult(response);
     } catch (error) {
@@ -192,7 +208,7 @@ export function SQLBlock({
   };
 
   const handleSaveFewShot = async () => {
-    if (!currentDatabase || !question) {
+    if (!effectivePrimaryDb || !question) {
       message.warning(t('fewShot.missingInfo', 'Missing question or database'));
       return;
     }
@@ -201,7 +217,7 @@ export function SQLBlock({
     try {
       const normalizedTables = tablesUsed || [];
       const created = await fewShotApi.create({
-        db_name: currentDatabase,
+        db_name: effectivePrimaryDb,
         question: question,
         sql: currentSql,
         tables_used: normalizedTables,
@@ -253,11 +269,14 @@ export function SQLBlock({
   };
 
   useEffect(() => {
-    if (autoExecute && initialSql && currentDatabase && !hasAutoExecutedRef.current && !result) {
+    if (autoExecute && initialSql && effectivePrimaryDb && !hasAutoExecutedRef.current && !result) {
       hasAutoExecutedRef.current = true;
       handleExecute();
     }
-  }, [autoExecute, initialSql, currentDatabase]);
+    // One-shot execution is guarded by hasAutoExecutedRef; handleExecute is
+    // intentionally not a dependency because editor/result state must not rerun it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoExecute, initialSql, effectivePrimaryDb]);
 
   const lineCount = currentSql.split('\n').length;
   const editorHeight = Math.min(Math.max(lineCount * 19 + 24, 150), 600) + 'px';
@@ -289,6 +308,17 @@ export function SQLBlock({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {sqlCollapsed ? <RightOutlined style={{ fontSize: 12 }} /> : <DownOutlined style={{ fontSize: 12 }} />}
             <span style={{ fontWeight: 500, fontSize: 13 }}>{t('sql.title')}</span>
+            {effectivePrimaryDb && (
+              <Tag
+                icon={effectiveDbNames.length > 1 ? <ClusterOutlined /> : <DatabaseOutlined />}
+                color={effectiveDbNames.length > 1 ? 'purple' : 'blue'}
+                style={{ marginInlineEnd: 0 }}
+              >
+                {effectiveDbNames.length > 1
+                  ? `${effectivePrimaryDb.toUpperCase()} · ${effectiveDbNames.length} DB`
+                  : effectivePrimaryDb.toUpperCase()}
+              </Tag>
+            )}
             {validationPassed !== undefined && (
               validationPassed ? (
                 <Tooltip title={t('sql.validationPassed')}>
@@ -320,7 +350,7 @@ export function SQLBlock({
               size="small"
               icon={executing ? <LoadingOutlined /> : <PlayCircleOutlined />}
               onClick={handleExecute}
-              disabled={executing || !currentDatabase}
+              disabled={executing || !effectivePrimaryDb}
             >
               {executing ? t('execute.running') : t('execute.run')}
             </Button>
@@ -354,7 +384,7 @@ export function SQLBlock({
                     )
                   }
                   onClick={handleToggleFewShot}
-                  disabled={savingFewShot || (!isFewShot && (!currentDatabase || !question))}
+                  disabled={savingFewShot || (!isFewShot && (!effectivePrimaryDb || !question))}
                 />
               </Tooltip>
             )}

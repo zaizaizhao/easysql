@@ -28,6 +28,10 @@ class SQLResponse(BaseModel):
     """
 
     sql: str = Field(description="生成的 SQL 语句，不包含 markdown 代码块标记")
+    primary_db: str | None = Field(
+        default=None,
+        description="执行 SQL 的逻辑数据库名；多库查询时必须从允许的数据库中选择",
+    )
     explanation: str | None = Field(default=None, description="SQL 逻辑的简要说明（可选）")
 
 

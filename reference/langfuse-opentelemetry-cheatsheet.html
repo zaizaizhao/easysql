@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Langfuse × OpenTelemetry 速查表</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="eyebrow">Reference · 2026-07-25</div>
+        <h1>Langfuse × OpenTelemetry 速查表</h1>
+        <p class="lead">判断“谁产生 Span、谁传播上下文、谁分发、谁存储、谁提供 LLM 评测能力”。</p>
+      </header>
+
+      <section>
+        <h2>一句话分工</h2>
+        <table>
+          <thead><tr><th>层</th><th>一句话</th><th>代表对象</th></tr></thead>
+          <tbody>
+            <tr><td>Instrumentation</td><td>把运行事件变成遥测信号</td><td>CallbackHandler、FastAPI instrumentation</td></tr>
+            <tr><td>Context</td><td>保持 Trace 父子关系</td><td>Trace ID、Span ID、W3C traceparent</td></tr>
+            <tr><td>SDK</td><td>采样、处理、排队和导出</td><td>TracerProvider、SpanProcessor、Exporter</td></tr>
+            <tr><td>Protocol</td><td>标准化传输遥测数据</td><td>OTLP/HTTP、OTLP/gRPC</td></tr>
+            <tr><td>Collector</td><td>集中接收、处理和多目标分发</td><td>Receiver、Processor、Exporter</td></tr>
+            <tr><td>Backend</td><td>存储、查询、展示和分析</td><td>Langfuse、Tempo、Jaeger、Datadog</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>三种共存模式</h2>
+        <table>
+          <thead><tr><th>选择</th><th>使用条件</th><th>注意</th></tr></thead>
+          <tbody>
+            <tr><td>共享 TracerProvider</td><td>同一进程、需要一致父子树</td><td>集中控制初始化、过滤和脱敏</td></tr>
+            <tr><td>Collector 扇出</td><td>多服务、需要统一重试和路由</td><td>Langfuse exporter 必须用 OTLP/HTTP</td></tr>
+            <tr><td>隔离 Provider</td><td>LLM Trace 与 APM 数据强隔离</td><td>跨 Provider 可能出现 orphan span</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Langfuse OTLP 当前边界</h2>
+        <ul class="checklist">
+          <li>接收 Trace：<code>/api/public/otel</code> 或 <code>/api/public/otel/v1/traces</code></li>
+          <li>支持：OTLP/HTTP JSON、OTLP/HTTP protobuf</li>
+          <li>暂不支持：直接向 Langfuse endpoint 使用 OTLP/gRPC</li>
+          <li>认证：<code>Authorization: Basic ${AUTH_STRING}</code></li>
+          <li>v4 实时处理：<code>x-langfuse-ingestion-version: 4</code></li>
+          <li>Project 由 Public/Secret Key 对决定</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>可移植性边界</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>OTel 可移植</h3>
+            <p>Trace/Span ID、父子关系、时间、错误、attributes、resource、instrumentation scope。</p>
+          </div>
+          <div class="card">
+            <h3>有条件可移植</h3>
+            <p>模型、Token、Prompt/Completion 内容；依赖 GenAI semantic conventions 和平台映射。</p>
+          </div>
+          <div class="card">
+            <h3>Langfuse 专属</h3>
+            <p>Prompt 管理、Score、Dataset、Experiment、Annotation Queue、原生成本和评测工作流。</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>生产检查清单</h2>
+        <ul class="checklist">
+          <li>由谁唯一初始化全局 TracerProvider？</li>
+          <li>哪些 instrumentation scopes 允许进入 Langfuse？</li>
+          <li>过滤后 root 与必要父 Span 是否仍保留？</li>
+          <li>Langfuse 与另一个 exporter 是否分别完成脱敏？</li>
+          <li>是否误把文档原文、Secret Key 放进 attributes 或 baggage？</li>
+          <li>多部门 Project 是否由认证后的部门上下文路由？</li>
+          <li>Collector exporter 是否为每个 Langfuse Project 使用正确认证？</li>
+          <li>短生命周期任务是否 flush/shutdown？</li>
+          <li>采样是否让 Langfuse 与 APM 得到不一致的 Trace？</li>
+          <li>是否监控 Collector 的拒绝、队列和发送失败指标？</li>
+        </ul>
+      </section>
+
+      <footer>
+        课程：<a href="../lessons/0002-langfuse-opentelemetry-interoperability.html">Langfuse 中的 OpenTelemetry</a> ·
+        官方资料：<a href="https://opentelemetry.io/docs/">OpenTelemetry</a> ·
+        <a href="https://langfuse.com/integrations/native/opentelemetry">Langfuse OTel</a>
+      </footer>
+    </main>
+  </body>
+</html>

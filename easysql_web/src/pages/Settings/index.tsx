@@ -22,6 +22,7 @@ import {
 } from 'antd';
 import {
   CheckCircleOutlined,
+  ClusterOutlined,
   ClockCircleOutlined,
   CloseCircleOutlined,
   RollbackOutlined,
@@ -41,6 +42,7 @@ import {
   useUpdateConfigCategory,
 } from '@/hooks';
 import type { EditableConfigItem } from '@/types';
+import { DatabaseSettings } from './DatabaseSettings';
 
 import './index.css';
 
@@ -79,6 +81,8 @@ const LLM_FIELD_DISPLAY_ORDER = [
   'model_planning',
   'use_agent_mode',
   'agent_max_iterations',
+  'agent_timeout_seconds',
+  'query_timeout_seconds',
   'max_sql_retries',
 ];
 
@@ -844,6 +848,16 @@ export default function SettingsPage() {
       <Tabs
         className="settings-main-tabs"
         items={[
+          {
+            key: 'databases',
+            label: (
+              <Space size={8}>
+                <ClusterOutlined />
+                <span>{t('settings.tabs.databases')}</span>
+              </Space>
+            ),
+            children: <DatabaseSettings />,
+          },
           {
             key: 'runtime',
             label: (

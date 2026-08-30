@@ -9,7 +9,7 @@ from .models import ContextInput, ContextOutput, FewShotExample
 from .base import ContextSection, SectionConfig, SectionContent
 from .builder import ContextBuilder
 from .templates import PromptTemplate
-from .sections import SchemaSection, JoinPathSection, FewShotSection
+from .sections import SchemaSection, JoinPathSection, FewShotSection, CodeContextSection
 
 __all__ = [
     # Core classes
@@ -26,4 +26,5 @@ __all__ = [
     "SchemaSection",
     "JoinPathSection",
     "FewShotSection",
+    "CodeContextSection",
 ]

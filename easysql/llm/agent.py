@@ -4,8 +4,12 @@ EasySQL Agent Graph Assembly.
 Constructs the LangGraph state machine connecting all nodes.
 
 Graph Flow:
-- Fast mode: START -> retrieve -> build_context -> retrieve_code -> generate_sql -> validate_sql -> [END | repair_sql]
-- Plan mode: START -> retrieve_hint -> analyze -> [clarify] -> retrieve -> build_context -> retrieve_code -> generate_sql -> validate_sql -> [END | repair_sql]
+- Fast mode: START -> retrieve -> retrieve_few_shot -> retrieve_code -> build_context -> generate_sql -> validate_sql -> [END | repair_sql]
+- Plan mode: START -> retrieve_hint -> analyze -> [clarify] -> retrieve -> retrieve_few_shot -> retrieve_code -> build_context -> generate_sql -> validate_sql -> [END | repair_sql]
+
+retrieve_code runs BEFORE build_context so code snippets enter the prompt as a
+ContextBuilder section (unified priority / token budget / truncation) instead of
+being appended to the finished user_prompt.
 """
 
 from typing import TYPE_CHECKING, Any
@@ -34,8 +38,6 @@ from easysql.utils.logger import get_logger
 if TYPE_CHECKING:
     from langgraph.graph.state import CompiledStateGraph
     from psycopg_pool import AsyncConnectionPool as AsyncConnectionPoolType
-
-    from easysql.config import Settings
 
 logger = get_logger(__name__)
 
@@ -88,6 +90,11 @@ def route_validate(state: EasySQLState) -> str:
     if state.get("validation_passed"):
         return "update_history"
 
+    if not state.get("generated_sql"):
+        # Nothing to repair (e.g. generation raised): end the turn instead of
+        # looping validate -> repair with no progress until the recursion limit.
+        return "update_history"
+
     settings = get_settings()
     max_retries = settings.llm.max_sql_retries
     retry_count = state.get("retry_count", 0)
@@ -117,12 +124,11 @@ def _create_checkpointer() -> BaseCheckpointSaver | Any:
         global _checkpointer_pool
 
         if _checkpointer_pool is None:
-            logger.info(
-                f"Connecting to PostgreSQL checkpointer at {settings.checkpointer.postgres_host}"
-            )
+            logger.info("Connecting to PostgreSQL checkpointer")
             _checkpointer_pool = AsyncConnectionPool(
-                settings.checkpointer.postgres_uri,
-                max_size=10,
+                settings.postgres_psycopg_uri,
+                min_size=settings.checkpointer.pool_min_size,
+                max_size=settings.checkpointer.pool_max_size,
                 check=AsyncConnectionPool.check_connection,
                 kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
             )
@@ -141,27 +147,10 @@ def _create_checkpointer() -> BaseCheckpointSaver | Any:
         return MemorySaver()
 
 
-def _ensure_database_exists(settings: "Settings") -> None:
-    """Create the checkpointer database if it doesn't exist."""
-    import psycopg
-
-    admin_uri = (
-        f"postgresql://{settings.checkpointer.postgres_user}:{settings.checkpointer.postgres_password}"
-        f"@{settings.checkpointer.postgres_host}:{settings.checkpointer.postgres_port}/postgres"
-    )
-    db_name = settings.checkpointer.postgres_database
-
-    with psycopg.connect(admin_uri, autocommit=True) as conn:
-        result = conn.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,)).fetchone()
-        if not result:
-            conn.execute(f'CREATE DATABASE "{db_name}"')
-            logger.info(f"Created database '{db_name}'")
-
-
 def setup_checkpointer() -> None:
-    """Initialize PostgreSQL checkpointer database and tables if configured.
+    """Initialize PostgreSQL checkpointer tables if configured.
 
-    Call this during application startup to ensure database/tables exist before handling requests.
+    Call this during application startup to ensure tables exist before handling requests.
     Safe to call multiple times (idempotent).
     """
     settings = get_settings()
@@ -173,11 +162,9 @@ def setup_checkpointer() -> None:
     try:
         from langgraph.checkpoint.postgres import PostgresSaver
 
-        logger.info(f"Setting up PostgreSQL checkpointer at {settings.checkpointer.postgres_host}")
+        logger.info("Setting up PostgreSQL checkpointer")
 
-        _ensure_database_exists(settings)
-
-        with PostgresSaver.from_conn_string(settings.checkpointer.postgres_uri) as saver:
+        with PostgresSaver.from_conn_string(settings.postgres_psycopg_uri) as saver:
             saver.setup()
         logger.info("PostgreSQL checkpointer tables ready")
     except ImportError:
@@ -221,14 +208,6 @@ def get_langfuse_callbacks() -> list[Any]:
     except ImportError:
         logger.warning("langfuse package not installed, tracing disabled")
         return []
-
-
-def route_after_retrieve_code(state: EasySQLState) -> str:
-    """Route after retrieve_code based on agent mode setting."""
-    settings = get_settings()
-    if settings.llm.use_agent_mode:
-        return "sql_agent"
-    return "generate_sql"
 
 
 def build_graph() -> "CompiledStateGraph":
@@ -290,15 +269,15 @@ def build_graph() -> "CompiledStateGraph":
 
     builder.add_edge("clarify", "retrieve")
     builder.add_edge("retrieve", "retrieve_few_shot")
-    builder.add_edge("retrieve_few_shot", "build_context")
-    builder.add_edge("build_context", "retrieve_code")
+    builder.add_edge("retrieve_few_shot", "retrieve_code")
+    builder.add_edge("retrieve_code", "build_context")
 
     if use_agent_mode:
-        builder.add_edge("retrieve_code", "sql_agent")
+        builder.add_edge("build_context", "sql_agent")
         builder.add_edge("sql_agent", "update_history")
         builder.add_edge("update_history", END)
     else:
-        builder.add_edge("retrieve_code", "generate_sql")
+        builder.add_edge("build_context", "generate_sql")
         builder.add_edge("generate_sql", "validate_sql")
         builder.add_conditional_edges(
             "validate_sql",

@@ -54,3 +54,9 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local docs and agent runtime state
+docs/research/
+docs/review/
+.omc/
+.omx/

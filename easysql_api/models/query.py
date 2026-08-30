@@ -10,6 +10,7 @@ from easysql_api.domain.value_objects.query_status import QueryStatus
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
     db_name: str | None = Field(default=None)
+    db_names: list[str] | None = Field(default=None, min_length=1, max_length=20)
     session_id: str | None = Field(default=None)
     stream: bool = Field(default=False)
 
@@ -48,6 +49,8 @@ class QueryResponse(BaseModel):
     session_id: str
     status: QueryStatus
     sql: str | None = None
+    db_names: list[str] = Field(default_factory=list)
+    primary_db: str | None = None
     validation_passed: bool | None = None
     validation_error: str | None = None
     clarification: ClarificationInfo | None = None
@@ -56,8 +59,3 @@ class QueryResponse(BaseModel):
     message_id: str | None = None
     parent_message_id: str | None = None
     thread_id: str | None = None
-
-
-class StreamEvent(BaseModel):
-    event: str
-    data: dict[str, Any]

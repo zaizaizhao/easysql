@@ -16,6 +16,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from easysql.config import LLMConfig, get_settings
+from easysql.federation import DatabaseScope
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode, SQLResponse
 from easysql.llm.state import EasySQLState
@@ -87,7 +88,6 @@ class GenerateSQLNode(BaseNode):
         current_query = state["raw_query"]
         user_prompt = context["user_prompt"]
 
-        history = state.get("conversation_history") or []
         is_follow_up = len(history) > 0
         if is_follow_up and "**用户问题**:" in user_prompt:
             parts = user_prompt.split("**用户问题**:")
@@ -105,9 +105,21 @@ class GenerateSQLNode(BaseNode):
             if not isinstance(response, SQLResponse):
                 return {"error": "Invalid response type", "generated_sql": None}
             sql = response.sql
+            scope = DatabaseScope.resolve(
+                get_settings(),
+                db_names=state.get("db_names"),
+                db_name=state.get("db_name"),
+            )
+            if scope.is_federated and not response.primary_db:
+                return {
+                    "error": "LLM response did not select primary_db for a multi-database query",
+                    "generated_sql": None,
+                }
+            primary_db = scope.require_primary(response.primary_db).name
 
             return {
                 "generated_sql": sql,
+                "primary_db": primary_db,
                 "validation_passed": False,
                 "validation_result": None,
                 "retry_count": state.get("retry_count", 0) + 1,

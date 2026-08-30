@@ -1,7 +1,7 @@
 # EasySQL Environment Variables
 
 This project loads configuration from a `.env` file and process environment variables. The
-settings schema is defined in `easysql/config.py`.
+settings schema is defined in `easysql/configuration/` and re-exported from `easysql/config.py`.
 
 By default, EasySQL reads `.env` from the project root (template: `.env.example`). You can
 override the env file path via CLI:
@@ -17,7 +17,24 @@ Notes:
 
 ---
 
-## 1) Neo4j
+## 1) Project / Control Plane
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PROJECT_NAMESPACE` | `default` | Application namespace for Milvus collection prefixes and Neo4j logical scope. Does not replace `NEO4J_DATABASE`. Env-only (not editable via the config API): changing it requires a restart plus reindexing, otherwise retrieval points at empty collections. |
+| `POSTGRES_URI` | `postgresql://postgres:postgres@localhost:5432/easysql` | PostgreSQL control-plane URI. Code derives async SQLAlchemy and psycopg DSNs from this value. |
+| `POSTGRES_POOL_SIZE` | `10` | Startup-only control-plane SQLAlchemy pool size |
+| `POSTGRES_MAX_OVERFLOW` | `20` | Startup-only overflow connections for the control-plane pool |
+| `POSTGRES_POOL_TIMEOUT` | `30` | Seconds to wait when checking out a control-plane connection |
+| `POSTGRES_POOL_RECYCLE` | `3600` | Seconds before recycling a pooled control-plane connection |
+| `POSTGRES_POOL_PRE_PING` | `true` | Validate pooled control-plane connections before use |
+
+`POSTGRES_POOL_*` values are read at API startup. They are intentionally not frontend runtime
+configuration because changing them requires recreating the SQLAlchemy engine.
+
+---
+
+## 2) Neo4j
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -32,13 +49,14 @@ Docker Compose (container env only):
 
 ---
 
-## 2) Milvus
+## 3) Milvus
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `MILVUS_URI` | `http://localhost:19530` | Milvus endpoint |
 | `MILVUS_TOKEN` | empty | Milvus auth token (optional) |
-| `MILVUS_COLLECTION_PREFIX` | empty | Table embedding collection prefix |
+
+Collection prefixes are derived from `PROJECT_NAMESPACE`.
 
 Docker Compose (container env only):
 - `ETCD_USE_EMBED=true`, `ETCD_DATA_DIR=/var/lib/milvus/etcd`
@@ -46,7 +64,7 @@ Docker Compose (container env only):
 
 ---
 
-## 3) Embedding Model
+## 4) Embedding Model
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -57,11 +75,12 @@ Docker Compose (container env only):
 | `EMBEDDING_API_KEY` | empty | API key (optional) |
 | `EMBEDDING_DEVICE` | empty | `cpu` / `cuda` / empty for auto |
 | `EMBEDDING_CACHE_DIR` | empty | Local model cache dir |
-| `EMBEDDING_TIMEOUT` | `60.0` | Request timeout (seconds) |
+
+API request timeout is fixed at 60 seconds in code.
 
 ---
 
-## 4) Source Databases (dynamic DB_<NAME>_*)
+## 5) Source Databases (dynamic DB_<NAME>_*)
 
 Any database is activated by setting `DB_<NAME>_TYPE`. Multiple databases are supported
 (e.g., `DB_HIS_*`, `DB_LIS_*`).
@@ -82,18 +101,14 @@ Extractor registrations include `mysql`, `postgresql`, `oracle`, `sqlserver`.
 
 ---
 
-## 5) Pipeline Flags
+## 6) Pipeline Flags
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `BATCH_SIZE` | `1000` | Batch size for DB ops |
-| `ENABLE_SCHEMA_EXTRACTION` | `true` | Enable schema extraction |
-| `ENABLE_NEO4J_WRITE` | `true` | Enable Neo4j writes |
-| `ENABLE_MILVUS_WRITE` | `true` | Enable Milvus writes |
+Pipeline steps are controlled via CLI flags (`--no-extract`, `--no-neo4j`, `--no-milvus`),
+not environment variables. Batch size is fixed at 1000 in code.
 
 ---
 
-## 6) Logging
+## 7) Logging
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -102,7 +117,7 @@ Extractor registrations include `mysql`, `postgresql`, `oracle`, `sqlserver`.
 
 ---
 
-## 7) Schema Retrieval (Text2SQL)
+## 8) Schema Retrieval (Text2SQL)
 
 Search:
 
@@ -119,30 +134,32 @@ Semantic filter:
 | `SEMANTIC_FILTER_ENABLED` | `true` | Enable semantic filtering |
 | `SEMANTIC_FILTER_THRESHOLD` | `0.4` | Minimum relevance threshold |
 | `SEMANTIC_FILTER_MIN_TABLES` | `3` | Minimum tables to keep |
-| `CORE_TABLES` | `patient,employee,department,drug_dictionary,diagnosis_dictionary` | Core tables (comma-separated) |
+| `CORE_TABLES` | *(empty)* | Core tables kept through filtering (comma-separated). Empty disables the whitelist. |
 
 Bridge protection:
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `BRIDGE_PROTECTION_ENABLED` | `true` | Protect bridge tables |
-| `BRIDGE_MAX_HOPS` | `3` | Max hops |
+
+Bridge max hops is an internal retrieval constant (`3`), not an editable environment variable.
 
 ---
 
-## 8) LLM Filter (Retrieval Layer)
+## 9) LLM Filter (Retrieval Layer)
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `LLM_FILTER_ENABLED` | `false` | Enable LLM-based filtering |
 | `LLM_FILTER_MAX_TABLES` | `8` | Max tables after filtering |
 | `LLM_FILTER_MODEL` | `deepseek-chat` | Filter model |
-| `LLM_API_BASE` | empty | LLM API base (retrieval layer) |
-| `LLM_API_KEY` | empty | LLM API key (retrieval layer) |
+
+The LLM filter reuses the OpenAI-compatible generation settings (`OPENAI_API_KEY` and
+`OPENAI_API_BASE`) instead of separate retrieval-layer credentials.
 
 ---
 
-## 9) LLM Layer (LangGraph Agent)
+## 10) LLM Layer (LangGraph Agent)
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -158,6 +175,8 @@ Bridge protection:
 | `LLM_TEMPERATURE` | `0.0` | Sampling temperature (`0.0` ~ `2.0`), set `1.0` for Kimi 2.5 |
 | `USE_AGENT_MODE` | `false` | Enable SQL Agent mode |
 | `AGENT_MAX_ITERATIONS` | `15` | Max SQL Agent iterations |
+| `AGENT_TIMEOUT_SECONDS` | `240` | Total wall-clock timeout for one SQL Agent execution |
+| `QUERY_TIMEOUT_SECONDS` | `300` | End-to-end query timeout including planning, retrieval, and SQL Agent |
 | `MAX_SQL_RETRIES` | `3` | SQL generation retries |
 | `LLM_PROVIDER` | `openai` | Display only; provider is auto-inferred by model+key |
 | `MCP_DBHUB_CONFIG` | empty | DBHub MCP config path (not referenced in code yet) |
@@ -166,7 +185,7 @@ Provider priority: Google > Anthropic > OpenAI (requires both model and API key)
 
 ---
 
-## 10) Code Context (DDD Retrieval)
+## 11) Code Context (DDD Retrieval)
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -174,15 +193,13 @@ Provider priority: Google > Anthropic > OpenAI (requires both model and API key)
 | `CODE_CONTEXT_SEARCH_TOP_K` | `5` | Code chunks to retrieve |
 | `CODE_CONTEXT_SCORE_THRESHOLD` | `0.3` | Minimum relevance threshold |
 | `CODE_CONTEXT_MAX_SNIPPETS` | `3` | Max code snippets in prompt |
-| `CODE_CONTEXT_CACHE_DIR` | `.code_context_cache` | Cache directory |
-| `CODE_CONTEXT_SUPPORTED_LANGUAGES` | `csharp,python,java,javascript,typescript` | Comma-separated languages |
-| `CODE_CONTEXT_COLLECTION_PREFIX` | empty | Milvus collection prefix for code |
 
-Note: `.env.example` lists `CODE_CONTEXT_ENUM_TOP_K`, but it is not used in code.
+Code-context collection prefixes are derived from `PROJECT_NAMESPACE`. Cache directory
+(`.code_context_cache`) and supported languages are fixed in code.
 
 ---
 
-## 11) Langfuse Observability
+## 12) Langfuse Observability
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -194,42 +211,40 @@ Note: `.env.example` lists `CODE_CONTEXT_ENUM_TOP_K`, but it is not used in code
 
 ---
 
-## 12) Checkpointer (LangGraph State)
+## 13) Checkpointer (LangGraph State)
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `CHECKPOINTER_BACKEND` | `memory` | `memory` / `postgres` |
-| `CHECKPOINTER_POSTGRES_HOST` | `localhost` | PostgreSQL host |
-| `CHECKPOINTER_POSTGRES_PORT` | `5432` | PostgreSQL port |
-| `CHECKPOINTER_POSTGRES_USER` | `postgres` | PostgreSQL user |
-| `CHECKPOINTER_POSTGRES_PASSWORD` | empty | PostgreSQL password |
-| `CHECKPOINTER_POSTGRES_DATABASE` | `easysql` | PostgreSQL database |
-| `CHECKPOINTER_POOL_MIN_SIZE` | `1` | Min pool size |
-| `CHECKPOINTER_POOL_MAX_SIZE` | `10` | Max pool size |
+
+PostgreSQL checkpointer mode uses `POSTGRES_URI`. Pool sizes are fixed in code (min 2, max 20).
 
 ---
 
-## 13) Session Persistence (PostgreSQL Only)
+## 14) Session Persistence (PostgreSQL Only)
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SESSION_BACKEND` | `postgres` | Fixed to `postgres` |
-| `SESSION_POSTGRES_URI` | empty | **Required.** PostgreSQL URI for session storage |
+
+Session persistence uses `POSTGRES_URI`.
 
 ---
 
-## 14) Few-shot Retrieval
+## 15) Few-shot Retrieval
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `FEW_SHOT_ENABLED` | `false` | Enable few-shot examples |
 | `FEW_SHOT_MAX_EXAMPLES` | `3` | Max examples |
 | `FEW_SHOT_MIN_SIMILARITY` | `0.6` | Minimum similarity |
-| `FEW_SHOT_COLLECTION_NAME` | `few_shot_examples` | Milvus collection name |
+
+Few-shot collection name is fixed as `few_shot_examples` and prefixed by
+`PROJECT_NAMESPACE`.
 
 ---
 
-## 15) Web Frontend (Vite)
+## 16) Web Frontend (Vite)
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -237,24 +252,25 @@ Note: `.env.example` lists `CODE_CONTEXT_ENUM_TOP_K`, but it is not used in code
 
 ---
 
-## 16) Test-only Variables
+## 17) Test-only Variables
 
 These are read via `dotenv` in tests and are not part of the main settings model:
 
 - `LLM_SQL_MODEL` (tests only)
-- `LLM_API_BASE` / `LLM_API_KEY` (tests only)
 - `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD`
-- `MILVUS_URI` / `MILVUS_COLLECTION_PREFIX`
+- `MILVUS_URI` / `PROJECT_NAMESPACE`
 
 ---
 
-## 17) Minimal Example
+## 18) Minimal Example
 
 ```ini
 # .env
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_neo4j_password
+PROJECT_NAMESPACE=default
+POSTGRES_URI=postgresql://postgres:password@localhost:5432/easysql
 MILVUS_URI=http://localhost:19530
 EMBEDDING_PROVIDER=local
 DB_HIS_TYPE=mysql

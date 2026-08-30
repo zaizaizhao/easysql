@@ -7,8 +7,10 @@ SQL is validated inside the agent loop before returning to frontend.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import contextmanager
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import (
@@ -23,6 +25,7 @@ from langgraph.types import StreamWriter
 
 from easysql.config import get_settings
 from easysql.context.db_specific_rules import get_db_specific_rules, get_db_type_from_config
+from easysql.federation import DatabaseScope
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode
 from easysql.llm.state import ContextOutputDict, EasySQLState
@@ -75,24 +78,26 @@ def _langfuse_span(name: str, **kwargs):
 AGENT_SYSTEM_PROMPT_BASE = """你是一个SQL专家。根据用户问题和提供的数据库Schema，生成正确的SQL查询。
 
 ## 可用工具
-1. validate_sql - 验证SQL语句是否正确（执行 LIMIT 1 检查语法和可执行性）
-2. search_objects - 搜索数据库对象（表、列、索引），用于发现缺失的schema信息
+1. submit_final_sql - 提交并验证回答用户完整需求的最终SQL；SUCCESS 后任务立即结束
+2. search_objects - 搜索数据库对象（表、列、索引），仅用于发现缺失的schema信息
 
 ## 工作流程（必须严格遵循）
 1. 分析用户问题和已提供的Schema上下文
-2. 生成SQL语句
-3. **【强制】调用 validate_sql 工具验证SQL** - 禁止跳过此步骤！
-4. 如果验证返回 ERROR：
+2. 生成一条回答用户完整需求的SQL语句
+3. **【强制】调用 submit_final_sql 提交最终SQL** - 禁止跳过此步骤或只输出文本！
+4. 如果 submit_final_sql 返回 ERROR：
    - 仔细分析错误信息（如列不存在、表名错误等）
    - 如果是列/表名错误，使用 search_objects 查找正确的名称
-   - 修正SQL后，**必须再次调用 validate_sql 验证**
+   - 修正完整SQL后，再次调用 submit_final_sql
 5. 重复步骤4直到验证返回 SUCCESS
-6. 只有在 validate_sql 返回 SUCCESS 后，才能输出最终SQL
+6. submit_final_sql 返回 SUCCESS 后立即结束，不要再次调用任何工具
 
 ## 重要规则
-- **禁止跳过验证**：必须至少调用一次 validate_sql 且返回 SUCCESS 才能输出最终SQL
+- **最终提交是唯一成功条件**：只有 submit_final_sql 返回 SUCCESS，任务才算完成
+- 一次 submit_final_sql 只能提交一条完整SQL，禁止把多个数据库的局部探测SQL当作最终答案
+- 多库问题必须提交一条完整的跨库SQL，不能分别提交多条单库SQL
 - 禁止使用参数占位符如 %(name)s、%s、:name、? 等
-- 如果多次尝试失败（超过3次），说明遇到的问题并返回最后尝试的SQL
+- 如果多次尝试仍失败，保留错误信息并停止；禁止把未验证SQL当作最终答案
 - **WHERE条件处理**:
   - 包含具体值（如"患者123"、"2024年1月"）→ 直接写入WHERE
   - 包含"全部"、"所有"、"不限制"、"历史"→ 不添加WHERE
@@ -131,7 +136,11 @@ class SqlAgentNode(BaseNode):
     ) -> dict[str, Any]:
         logger.info("[SqlAgent] START - Initializing SQL Agent node")
 
-        db_name = state.get("db_name") or "default"
+        scope = DatabaseScope.resolve(
+            self.settings,
+            db_names=state.get("db_names"),
+            db_name=state.get("db_name"),
+        )
         raw_query = state.get("raw_query", "")
         context = state.get("cached_context") or state.get("context_output")
 
@@ -139,13 +148,13 @@ class SqlAgentNode(BaseNode):
             logger.error("[SqlAgent] No context available")
             return self._error_result("No context available for SQL generation")
 
-        logger.debug(f"[SqlAgent] db_name={db_name}, context_keys={list(context.keys())}")
+        logger.debug(f"[SqlAgent] db_names={scope.names}, context_keys={list(context.keys())}")
 
         with _langfuse_span(
             "sql-agent-execution",
-            input={"query": raw_query, "db_name": db_name},
+            input={"query": raw_query, "db_names": scope.names},
         ) as span:
-            tools = get_agent_tools(db_name=db_name)
+            tools = get_agent_tools(db_names=scope.names)
             tools_dict = {t.name: t for t in tools}
 
             logger.info(f"[SqlAgent] Tools loaded: {list(tools_dict.keys())}")
@@ -153,17 +162,33 @@ class SqlAgentNode(BaseNode):
             llm = get_llm(self.settings.llm, "generation")
             llm_with_tools = llm.bind_tools(tools)
 
-            messages: list[BaseMessage | dict[str, Any]] = list(self._build_messages(state, context))
-            system_prompt = self._build_system_prompt(context, db_name)
+            messages: list[BaseMessage | dict[str, Any]] = list(
+                self._build_messages(state, context)
+            )
+            system_prompt = self._build_system_prompt(context, scope)
 
             max_iterations = self.settings.llm.agent_max_iterations
+            timeout_seconds = float(getattr(self.settings.llm, "agent_timeout_seconds", 240))
             iteration = 0
             validation_passed = False
-            last_sql: str | None = None
+            final_sql: str | None = None
+            last_candidate_sql: str | None = None
             last_error: str | None = None
+            last_primary_db: str | None = state.get("primary_db")
+            seen_tool_calls: set[str] = set()
+            agent_started = perf_counter()
+            deadline = agent_started + timeout_seconds
 
             try:
                 while iteration < max_iterations:
+                    remaining_seconds = deadline - perf_counter()
+                    if remaining_seconds <= 0:
+                        last_error = (
+                            f"SQL Agent time budget exceeded after {timeout_seconds:g} seconds"
+                        )
+                        logger.warning(f"[SqlAgent] TIMEOUT - {last_error}")
+                        break
+
                     iteration += 1
                     logger.info(f"[SqlAgent] Iteration {iteration}/{max_iterations}")
 
@@ -178,14 +203,38 @@ class SqlAgentNode(BaseNode):
                         )
 
                     full_messages = [{"role": "system", "content": system_prompt}] + messages
+                    prompt_chars = sum(len(str(message)) for message in full_messages)
+                    llm_started = perf_counter()
+                    logger.info(
+                        f"[SqlAgent] LLM START - iteration={iteration}, "
+                        f"messages={len(full_messages)}, prompt_chars={prompt_chars}, "
+                        f"remaining_seconds={remaining_seconds:.2f}"
+                    )
 
-                    ai_response = await self._stream_llm_response(
-                        llm_with_tools,
-                        full_messages,
-                        writer,
-                        iteration,
-                        base_llm=llm,
-                        tools=tools,
+                    try:
+                        ai_response = await asyncio.wait_for(
+                            self._stream_llm_response(
+                                llm_with_tools,
+                                full_messages,
+                                writer,
+                                iteration,
+                                base_llm=llm,
+                                tools=tools,
+                            ),
+                            timeout=remaining_seconds,
+                        )
+                    except asyncio.TimeoutError:
+                        last_error = (
+                            f"SQL Agent time budget exceeded after {timeout_seconds:g} seconds"
+                        )
+                        logger.warning(f"[SqlAgent] TIMEOUT - {last_error}")
+                        break
+
+                    logger.info(
+                        f"[SqlAgent] LLM END - iteration={iteration}, "
+                        f"elapsed_seconds={perf_counter() - llm_started:.3f}, "
+                        f"tool_calls={len(ai_response.tool_calls)}, "
+                        f"content_chars={len(self._normalize_message_content(ai_response.content))}"
                     )
                     replay_message = self._get_replay_message(ai_response)
 
@@ -198,32 +247,48 @@ class SqlAgentNode(BaseNode):
                             )
                         sql = self.extract_sql(content or "")
                         if sql:
-                            last_sql = sql
-                            if validation_passed:
-                                logger.info("[SqlAgent] SUCCESS - Validated SQL returned")
+                            last_candidate_sql = sql
+                            logger.warning(
+                                "[SqlAgent] SQL returned without submit_final_sql; "
+                                "forcing final validation"
+                            )
+                            validation_result = await self._force_validate(
+                                sql,
+                                tools_dict.get("submit_final_sql"),
+                                writer,
+                                iteration,
+                                primary_db=last_primary_db or scope.default_primary,
+                                timeout_seconds=max(0.001, deadline - perf_counter()),
+                            )
+                            if validation_result["success"]:
+                                final_sql = sql
+                                validation_passed = True
+                                last_primary_db = validation_result.get("primary_db")
+                                last_error = None
+                                logger.info("[SqlAgent] SUCCESS - Final SQL validated")
                                 break
-                            else:
-                                logger.warning("[SqlAgent] SQL returned without validation")
-                                validation_result = await self._force_validate(
-                                    sql, tools_dict.get("validate_sql"), writer, iteration
-                                )
-                                if validation_result["success"]:
-                                    validation_passed = True
-                                    break
-                                else:
-                                    last_error = validation_result["error"]
-                                    messages.append(replay_message)
-                                    messages.append(
-                                        HumanMessage(
-                                            content=f"验证失败: {last_error}\n请修复SQL并再次验证。"
-                                        )
+                            last_error = validation_result["error"]
+                            messages.append(replay_message)
+                            messages.append(
+                                HumanMessage(
+                                    content=(
+                                        f"最终SQL提交失败: {last_error}\n"
+                                        "请修复完整SQL，并调用 submit_final_sql 再次提交。"
                                     )
-                                    continue
+                                )
+                            )
+                            continue
                         else:
-                            logger.warning("[SqlAgent] No SQL or tool calls in response")
+                            last_error = (
+                                "Model returned neither a tool call nor a SQL statement; "
+                                "a validated final SQL was not submitted"
+                            )
+                            logger.warning(f"[SqlAgent] {last_error}")
                             break
 
                     messages.append(replay_message)
+                    final_submission_succeeded = False
+                    candidate_checked = False
 
                     for tool_call in ai_response.tool_calls:
                         tool_name = tool_call["name"]
@@ -242,27 +307,95 @@ class SqlAgentNode(BaseNode):
                                 }
                             )
 
+                        tool_signature = json.dumps(
+                            {"name": tool_name, "args": tool_args},
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            default=str,
+                        )
+                        is_duplicate = tool_signature in seen_tool_calls
+                        seen_tool_calls.add(tool_signature)
+
                         tool = tools_dict.get(tool_name)
-                        if not tool:
+                        resolved_primary: str | None = None
+                        sql_to_validate: Any = None
+                        if is_duplicate:
+                            tool_result = (
+                                "ERROR: Identical tool call already executed; revise the SQL "
+                                "instead of repeating the same call"
+                            )
+                        elif not tool:
                             tool_result = f"ERROR: Unknown tool {tool_name}"
                         else:
                             try:
-                                if tool_name == "validate_sql":
-                                    sql_to_validate = tool_args.get("sql", tool_args)
+                                tool_remaining = deadline - perf_counter()
+                                if tool_remaining <= 0:
+                                    raise asyncio.TimeoutError
+
+                                if tool_name in {"validate_sql", "submit_final_sql"}:
+                                    primary_to_validate = (
+                                        tool_args.get("primary_db")
+                                        if isinstance(tool_args, dict)
+                                        else None
+                                    )
+                                    sql_to_validate = (
+                                        tool_args.get("sql", tool_args)
+                                        if isinstance(tool_args, dict)
+                                        else tool_args
+                                    )
                                     if isinstance(sql_to_validate, dict):
                                         sql_to_validate = sql_to_validate.get("sql", "")
-                                    tool_result = await tool.ainvoke(sql_to_validate)
-                                    last_sql = sql_to_validate
+                                    tool_result = await asyncio.wait_for(
+                                        tool.ainvoke(
+                                            {
+                                                "sql": sql_to_validate,
+                                                "primary_db": primary_to_validate,
+                                            }
+                                        ),
+                                        timeout=tool_remaining,
+                                    )
+                                    last_candidate_sql = str(sql_to_validate or "")
+                                    try:
+                                        if scope.is_federated and not primary_to_validate:
+                                            raise ValueError("primary_db is required")
+                                        resolved_primary = scope.require_primary(
+                                            primary_to_validate
+                                        ).name
+                                    except ValueError:
+                                        resolved_primary = None
                                 else:
-                                    tool_result = await tool.ainvoke(tool_args)
+                                    tool_result = await asyncio.wait_for(
+                                        tool.ainvoke(tool_args),
+                                        timeout=tool_remaining,
+                                    )
+                            except asyncio.TimeoutError:
+                                tool_result = (
+                                    f"ERROR: SQL Agent time budget exceeded after "
+                                    f"{timeout_seconds:g} seconds"
+                                )
                             except Exception as e:
                                 tool_result = f"ERROR: {e}"
 
-                        is_success = self._is_tool_success(str(tool_result))
-                        if tool_name == "validate_sql":
-                            validation_passed = is_success
-                            if not is_success:
+                        if tool_name in {"validate_sql", "submit_final_sql"}:
+                            is_success = self._is_tool_success(str(tool_result))
+                        else:
+                            is_success = not str(tool_result).lower().startswith("error")
+
+                        if tool_name == "submit_final_sql":
+                            if is_success and last_candidate_sql:
+                                final_sql = last_candidate_sql
+                                last_primary_db = resolved_primary
+                                validation_passed = True
+                                last_error = None
+                                final_submission_succeeded = True
+                            else:
+                                validation_passed = False
                                 last_error = str(tool_result)
+                        elif tool_name == "validate_sql":
+                            candidate_checked = True
+                            last_error = None if is_success else str(tool_result)
+                        elif not is_success:
+                            last_error = str(tool_result)
 
                         logger.info(f"[SqlAgent] Tool result: success={is_success}")
                         if writer:
@@ -285,42 +418,93 @@ class SqlAgentNode(BaseNode):
                             )
                         )
 
-                    # If validation failed during tool calls, add explicit retry instruction
-                    if not validation_passed and last_error:
-                        logger.info("[SqlAgent] Validation failed, adding retry instruction")
+                        if final_submission_succeeded:
+                            logger.info(
+                                "[SqlAgent] SUCCESS - submit_final_sql validated; "
+                                "stopping without another LLM round"
+                            )
+                            break
+
+                    if final_submission_succeeded:
+                        break
+
+                    if last_error:
+                        logger.info("[SqlAgent] Final submission failed, adding repair instruction")
                         messages.append(
                             HumanMessage(
-                                content=f"SQL验证失败，错误信息: {last_error}\n\n请根据错误信息修正SQL语句，然后再次调用 validate_sql 工具验证。"
+                                content=(
+                                    f"SQL处理失败，错误信息: {last_error}\n\n"
+                                    "请根据错误修正一条完整SQL，然后调用 submit_final_sql 提交。"
+                                )
+                            )
+                        )
+                    elif candidate_checked:
+                        messages.append(
+                            HumanMessage(
+                                content=(
+                                    "候选SQL检查已完成，但尚未提交最终答案。"
+                                    "请生成回答完整用户需求的一条SQL，并调用 submit_final_sql。"
+                                )
                             )
                         )
 
+                elapsed_seconds = perf_counter() - agent_started
                 logger.info(
-                    f"[SqlAgent] Completed - iterations={iteration}, validated={validation_passed}"
+                    f"[SqlAgent] Completed - iterations={iteration}, "
+                    f"validated={validation_passed}, elapsed_seconds={elapsed_seconds:.3f}"
                 )
 
                 if span:
                     span.update(
                         output={
-                            "sql": last_sql,
+                            "sql": final_sql,
+                            "last_candidate_sql": last_candidate_sql,
+                            "primary_db": last_primary_db,
                             "success": validation_passed,
                             "iterations": iteration,
+                            "elapsed_seconds": elapsed_seconds,
+                            "error": last_error,
                         }
                     )
 
-                if last_sql:
+                if final_sql and validation_passed:
+                    last_primary_db = scope.require_primary(last_primary_db).name
                     return {
-                        "generated_sql": last_sql,
-                        "validation_passed": validation_passed,
+                        "generated_sql": final_sql,
+                        "primary_db": last_primary_db,
+                        "validation_passed": True,
                         "validation_result": {
-                            "valid": validation_passed,
-                            "details": f"Completed in {iteration} iterations",
-                            "error": None if validation_passed else last_error,
+                            "valid": True,
+                            "details": (
+                                f"Completed in {iteration} iterations "
+                                f"({elapsed_seconds:.3f} seconds)"
+                            ),
+                            "error": None,
                         },
-                        "error": None if validation_passed else last_error,
+                        "error": None,
                         "retry_count": iteration - 1,
                     }
-                else:
-                    return self._error_result("Failed to generate SQL")
+
+                failure_error = last_error or (
+                    f"SQL Agent exhausted {iteration} iteration(s) without a validated "
+                    "final SQL submission"
+                )
+                return {
+                    "generated_sql": None,
+                    "primary_db": None,
+                    "validation_passed": False,
+                    "validation_result": {
+                        "valid": False,
+                        "details": (
+                            f"Stopped after {iteration} iterations "
+                            f"({elapsed_seconds:.3f} seconds)"
+                        ),
+                        "error": failure_error,
+                        "last_candidate_sql": last_candidate_sql,
+                    },
+                    "error": failure_error,
+                    "retry_count": max(0, iteration - 1),
+                }
 
             except Exception as e:
                 import traceback
@@ -655,12 +839,14 @@ class SqlAgentNode(BaseNode):
         validate_tool: Any,
         writer: StreamWriter | None,
         iteration: int,
+        primary_db: str | None = None,
+        timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
-        """Force validation when agent skipped it."""
+        """Force final validation when the model returned bare SQL."""
         if not validate_tool:
-            return {"success": False, "error": "No validation tool available"}
+            return {"success": False, "error": "No final submission tool available"}
 
-        logger.info("[SqlAgent] Force validation - agent skipped validate_sql")
+        logger.info("[SqlAgent] Force validation - agent skipped submit_final_sql")
         if writer:
             writer(
                 {
@@ -672,18 +858,33 @@ class SqlAgentNode(BaseNode):
             )
 
         try:
-            result = await validate_tool.ainvoke(sql)
+            invocation = validate_tool.ainvoke({"sql": sql, "primary_db": primary_db})
+            result = (
+                await asyncio.wait_for(invocation, timeout=timeout_seconds)
+                if timeout_seconds is not None
+                else await invocation
+            )
             is_success = self._is_tool_success(str(result))
-            return {"success": is_success, "error": None if is_success else str(result)}
+            return {
+                "success": is_success,
+                "error": None if is_success else str(result),
+                "primary_db": primary_db,
+            }
+        except asyncio.TimeoutError:
+            return {"success": False, "error": "SQL Agent time budget exceeded"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def _build_system_prompt(self, context: ContextOutputDict, db_name: str | None = None) -> str:
+    def _build_system_prompt(
+        self,
+        context: ContextOutputDict,
+        scope: DatabaseScope,
+    ) -> str:
         """Build system prompt with database-specific rules."""
         base_prompt = context.get("system_prompt", "")
 
         # Get database type and inject specific rules
-        db_type = get_db_type_from_config(db_name)
+        db_type = get_db_type_from_config(scope.default_primary)
         db_rules = get_db_specific_rules(db_type)
 
         if db_rules:
@@ -692,7 +893,17 @@ class SqlAgentNode(BaseNode):
         else:
             agent_prompt = AGENT_SYSTEM_PROMPT
 
-        return f"{base_prompt}\n\n{agent_prompt}"
+        routing_rule = (
+            "多库模式：调用 submit_final_sql 时必须同时传 sql 和 primary_db；primary_db 必须由你根据用户问题从 "
+            + ", ".join(scope.names)
+            + " 中选择。最终 SQL 必须是一条完整跨库查询，执行主库就是提交时的 primary_db。"
+            if scope.is_federated
+            else (
+                f"单库模式：调用 submit_final_sql 时 primary_db 固定为 "
+                f"{scope.default_primary}。"
+            )
+        )
+        return f"{base_prompt}\n\n{agent_prompt}\n\n## 主库选择\n{routing_rule}"
 
     def _build_messages(self, state: EasySQLState, context: ContextOutputDict) -> list[BaseMessage]:
         messages: list[BaseMessage] = []

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Langfuse × EasySQL 评测闭环速查表</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="eyebrow">Reference</div>
+        <h1>Langfuse × EasySQL 评测闭环速查表</h1>
+        <p class="lead">把 Trace、Dataset、Experiment、Score 和 Prompt Version 映射到 Text2SQL 的最小可运行模型。</p>
+      </header>
+
+      <section>
+        <h2>对象映射</h2>
+        <table>
+          <thead>
+            <tr><th>Langfuse 对象</th><th>EasySQL 含义</th><th>必须保存</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Trace</td><td>一轮 Text2SQL 执行</td><td>session/message、db、mode、模型、git SHA</td></tr>
+            <tr><td>Observation</td><td>retrieve、prompt_build、generation、validate、execute</td><td>输入、输出、耗时、错误、token</td></tr>
+            <tr><td>Dataset Item</td><td>一个可重复评测问题</td><td>question、db、reference SQL/result、expected tables、tags</td></tr>
+            <tr><td>Experiment Run</td><td>固定配置的一轮批量回归</td><td>dataset version、prompt version、model、retrieval hash、git SHA</td></tr>
+            <tr><td>Score</td><td>质量证据</td><td>result equivalence、schema linking、failure category、人工纠正</td></tr>
+            <tr><td>Prompt Version</td><td>不可变候选提示词</td><td>name、version、labels、commit message、config</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>推荐数据集</h2>
+        <div class="grid">
+          <div class="card"><h3>easysql-golden-core</h3><p>30～100 条长期稳定的核心能力样本。</p></div>
+          <div class="card"><h3>easysql-badcase-regression</h3><p>经人工审核、已有正确答案的历史失败样本。</p></div>
+          <div class="card"><h3>easysql-holdout</h3><p>优化时不查看，发布前才运行，防止对 bad case 过拟合。</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Dataset Item 结构</h2>
+        <pre><code>{
+  "input": {
+    "case_id": "sales-042",
+    "question": "最近一个月支付成功的订单金额是多少？",
+    "db_name": "product",
+    "dialect": "postgresql",
+    "conversation_history": []
+  },
+  "expected_output": {
+    "reference_sql": "SELECT ...",
+    "expected_tables": ["orders", "payments"],
+    "required_filters": ["payments.status = 'SUCCESS'"],
+    "expected_result_digest": "sha256:..."
+  },
+  "metadata": {
+    "tags": ["join", "time_range", "business_status"],
+    "difficulty": "medium",
+    "source": "production_feedback"
+  }
+}</code></pre>
+      </section>
+
+      <section>
+        <h2>Score 配置</h2>
+        <table>
+          <thead><tr><th>名称</th><th>类型</th><th>解释</th></tr></thead>
+          <tbody>
+            <tr><td>syntax_valid</td><td>BOOLEAN</td><td>数据库是否接受 SQL 语法</td></tr>
+            <tr><td>execution_valid</td><td>BOOLEAN</td><td>只读沙箱中是否可执行</td></tr>
+            <tr><td>result_equivalent</td><td>BOOLEAN</td><td>生成结果是否与参考结果等价</td></tr>
+            <tr><td>table_recall</td><td>NUMERIC</td><td>必要表是否被检索并提供给模型</td></tr>
+            <tr><td>join_path_coverage</td><td>NUMERIC</td><td>必要 JOIN 边覆盖率</td></tr>
+            <tr><td>failure_category</td><td>CATEGORICAL</td><td>WRONG_JOIN、MISSING_FILTER 等</td></tr>
+            <tr><td>sql_correction</td><td>CORRECTION</td><td>人工修正后的 SQL</td></tr>
+            <tr><td>review_note</td><td>TEXT</td><td>业务口径、误判原因和审核说明</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>发布门禁</h2>
+        <ul class="checklist">
+          <li>候选 Prompt 用明确 version 运行，不用 latest label。</li>
+          <li>核心集 execution accuracy 不下降。</li>
+          <li>bad-case regression 通过率达到目标。</li>
+          <li>关键标签如 tenant_filter、payment_status 不允许新增失败。</li>
+          <li>延迟、token 和 tool call 增长在预算内。</li>
+          <li>holdout 通过后才把 production label 移到候选版本。</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>三个不要混淆</h2>
+        <div class="callout warn"><strong>Dataset 不等于 Few-shot。</strong> Dataset 用于判分；只有经确认的正确案例才可能进一步进入 EasySQL 的 Milvus Few-shot 库。</div>
+        <div class="callout warn"><strong>validation_passed 不等于答案正确。</strong> 当前值主要表示 SQL 可解析或可执行计划通过。</div>
+        <div class="callout warn"><strong>Langfuse 不会自动把 bad case 变成更好的 Prompt。</strong> 它负责版本、数据、实验、评分和发布证据；优化策略仍由人或自定义优化器决定。</div>
+      </section>
+
+      <footer>配套课程：<a href="../lessons/0001-langfuse-bad-case-prompt-loop.html">Langfuse bad case → Prompt 迭代闭环</a></footer>
+    </main>
+  </body>
+</html>

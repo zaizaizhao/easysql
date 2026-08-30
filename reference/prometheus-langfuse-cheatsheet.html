@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prometheus × Langfuse 速查表</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="eyebrow">Reference · EasySQL / 文档审核</div>
+        <h1>Prometheus × Langfuse 速查表</h1>
+        <p class="lead">一个看全局趋势和告警，一个看单次 LLM 调用与质量原因。用 exemplar / trace ID 将二者连接。</p>
+      </header>
+
+      <section>
+        <h2>选择工具</h2>
+        <table>
+          <thead><tr><th>问题</th><th>工具</th></tr></thead>
+          <tbody>
+            <tr><td>吞吐、错误率、P95、CPU、连接池、队列</td><td>Prometheus</td></tr>
+            <tr><td>具体请求、Prompt、输入输出、Token、成本</td><td>Langfuse</td></tr>
+            <tr><td>Prompt 版本比较、Score、Dataset、Experiment</td><td>Langfuse</td></tr>
+            <tr><td>告警与 SLO</td><td>Prometheus + Alertmanager</td></tr>
+            <tr><td>从延迟尖峰跳到具体请求</td><td>Prometheus exemplar → Langfuse Trace</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>文档审核最小指标集</h2>
+        <pre><code># Counter
+document_review_requests_total{department,result}
+llm_requests_total{provider,model,result}
+llm_tokens_total{provider,model,direction}
+
+# Gauge
+document_review_queue_depth{department}
+document_review_active_jobs{department}
+database_pool_connections{state}
+
+# Histogram
+document_review_duration_seconds{department}
+llm_request_duration_seconds{provider,model}</code></pre>
+      </section>
+
+      <section>
+        <h2>Label 边界</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>通常可以</h3>
+            <p><code>department</code>、<code>environment</code>、<code>route</code>、<code>result</code>、<code>provider</code>、受控 <code>model</code>。</p>
+          </div>
+          <div class="card">
+            <h3>禁止或谨慎</h3>
+            <p><code>trace_id</code>、<code>request_id</code>、<code>document_id</code>、<code>session_id</code>、用户身份、错误全文、Prompt、文档正文和输出。</p>
+          </div>
+        </div>
+        <div class="callout warn">
+          每个 label 值组合都是新时间序列。精确 ID 放 Langfuse metadata；关联时用 exemplar，不要用普通 label。
+        </div>
+      </section>
+
+      <section>
+        <h2>常用 PromQL</h2>
+        <pre><code># 各部门 QPS
+sum by (department) (
+  rate(document_review_requests_total[5m])
+)
+
+# 各部门错误率
+sum by (department) (
+  rate(document_review_requests_total{result="error"}[5m])
+)
+/
+sum by (department) (
+  rate(document_review_requests_total[5m])
+)
+
+# 各部门 P95
+histogram_quantile(
+  0.95,
+  sum by (department, le) (
+    rate(document_review_duration_seconds_bucket[5m])
+  )
+)</code></pre>
+      </section>
+
+      <section>
+        <h2>联合架构</h2>
+        <pre><code>文档审核服务
+├── /metrics 或 OTel Metrics ──→ Prometheus ──→ Grafana / Alertmanager
+├── Langfuse SDK / OTel Trace ─→ 部门对应 Langfuse Project
+└── structured logs ───────────→ Loki / ELK
+
+Prometheus exemplar.trace_id ──→ Langfuse Trace</code></pre>
+        <p>
+          详细解释：
+          <a href="../lessons/0003-prometheus-vs-langfuse.html">Prometheus 是做什么的？它和 Langfuse 有什么区别？</a>
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

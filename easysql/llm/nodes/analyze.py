@@ -11,7 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.language_models import BaseChatModel
 
 from easysql.config import get_settings, LLMConfig
-from easysql.llm.state import EasySQLState, SchemaHintDict, SchemaHintColumn
+from easysql.llm.state import EasySQLState, SchemaHintDict
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode
 

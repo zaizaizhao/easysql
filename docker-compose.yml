@@ -1,6 +1,22 @@
-version: "3.8"
-
 services:
+  # PostgreSQL 同时承载 EasySQL 控制面和本地 product 示例数据源
+  postgres:
+    image: postgres:16-alpine
+    container_name: easysql-postgres
+    ports:
+      - "${DB_PRODUCT_PORT:-55432}:5432"
+    environment:
+      POSTGRES_USER: ${DB_PRODUCT_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PRODUCT_PASSWORD:-postgres}
+      POSTGRES_DB: easysql
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_PRODUCT_USER:-postgres} -d easysql"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   # Neo4j 图数据库
   neo4j:
     image: neo4j:5.15-community
@@ -32,7 +48,6 @@ services:
       COMMON_STORAGETYPE: local
     ports:
       - "19530:19530" # gRPC 端口
-      - "9091:9091" # 健康检查
     volumes:
       - milvus_data:/var/lib/milvus
     healthcheck:
@@ -42,5 +57,6 @@ services:
       retries: 3
 
 volumes:
+  postgres_data:
   neo4j_data:
   milvus_data:

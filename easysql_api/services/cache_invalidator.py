@@ -6,21 +6,11 @@ import os
 from collections.abc import Callable, Iterable
 
 from easysql.config import get_settings
-from easysql.llm.nodes.retrieve import (
-    reset_retrieval_service_cache,
-    warm_retrieval_service_cache,
-)
-from easysql.llm.nodes.retrieve_code import (
-    reset_code_retrieval_service_cache,
-    warm_code_retrieval_service_cache,
-)
-from easysql.llm.nodes.retrieve_few_shot import (
-    reset_few_shot_reader_cache,
-    warm_few_shot_reader_cache,
-)
-from easysql.llm.nodes.retrieve_hint import (
-    reset_retrieve_hint_readers_cache,
-    warm_retrieve_hint_readers_cache,
+from easysql.infrastructure import get_data_plane_engine_registry
+from easysql.retrieval.runtime import (
+    get_retrieval_runtime,
+    reset_retrieval_runtime,
+    warm_retrieval_runtime,
 )
 from easysql.utils.logger import get_logger
 from easysql_api.services.chart_service import (
@@ -43,6 +33,20 @@ LANGFUSE_ENV_KEYS = (
     "LANGFUSE_HOST",
 )
 
+RETRIEVAL_CACHE_TAGS = {
+    "retrieval_cache",
+    "few_shot_cache",
+    "code_context_cache",
+}
+
+
+def _warm_few_shot_reader() -> None:
+    _ = get_retrieval_runtime().few_shot_reader
+
+
+def _warm_code_retrieval() -> None:
+    _ = get_retrieval_runtime().code_retrieval
+
 
 class CacheInvalidator:
     """Invalidate caches touched by runtime config changes."""
@@ -62,15 +66,11 @@ class CacheInvalidator:
             for key in LANGFUSE_ENV_KEYS:
                 os.environ.pop(key, None)
 
-        if "retrieval_cache" in tag_set:
-            reset_retrieval_service_cache()
-            reset_retrieve_hint_readers_cache()
+        if tag_set & RETRIEVAL_CACHE_TAGS:
+            reset_retrieval_runtime()
 
-        if "few_shot_cache" in tag_set:
-            reset_few_shot_reader_cache()
-
-        if "code_context_cache" in tag_set:
-            reset_code_retrieval_service_cache()
+        if "data_plane_engines" in tag_set:
+            get_data_plane_engine_registry().dispose_all()
 
     def warmup(self, tags: Iterable[str]) -> None:
         tag_set = set(tags)
@@ -82,15 +82,14 @@ class CacheInvalidator:
             self._safe_warm(warm_query_service_callbacks, "query callbacks")
             self._safe_warm(warm_chart_service_callbacks, "chart callbacks")
 
-        if "retrieval_cache" in tag_set:
-            self._safe_warm(warm_retrieval_service_cache, "retrieval service")
-            self._safe_warm(warm_retrieve_hint_readers_cache, "retrieve_hint readers")
+        if tag_set & RETRIEVAL_CACHE_TAGS:
+            self._safe_warm(warm_retrieval_runtime, "retrieval runtime")
 
         if "few_shot_cache" in tag_set:
-            self._safe_warm(warm_few_shot_reader_cache, "few-shot reader")
+            self._safe_warm(_warm_few_shot_reader, "few-shot reader")
 
         if "code_context_cache" in tag_set:
-            self._safe_warm(warm_code_retrieval_service_cache, "code retrieval service")
+            self._safe_warm(_warm_code_retrieval, "code retrieval service")
 
     @staticmethod
     def _safe_warm(func: Callable[[], None], name: str) -> None:

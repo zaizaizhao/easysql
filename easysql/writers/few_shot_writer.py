@@ -187,8 +187,10 @@ class FewShotWriter:
                 raise DuplicateExampleError(existing_id, score)
 
         example_id = str(uuid.uuid4())
-        embed_text = f"{question}\n{sql}"
-        embedding = self._embedding_service.encode(embed_text)
+        # Embed the question ONLY: retrieval (FewShotReader.search_similar) and
+        # dedup both query with question embeddings, so storing question+sql
+        # vectors would put lookup and storage in different semantic spaces.
+        embedding = self._embedding_service.encode(question)
 
         data = {
             "id": example_id,
@@ -265,15 +267,10 @@ class FewShotWriter:
             explanation[:2048] if explanation is not None else existing["explanation"]
         )
 
-        # Generate new embedding if question or sql changed
-        if question is not None or sql is not None:
-            embed_text = f"{new_question}\n{new_sql}"
-            new_embedding = self._embedding_service.encode(embed_text)
-        else:
-            # Need to fetch old embedding - but Milvus query doesn't return vectors
-            # So we recalculate even if unchanged
-            embed_text = f"{new_question}\n{new_sql}"
-            new_embedding = self._embedding_service.encode(embed_text)
+        # Embedding is question-only (must stay consistent with insert() and
+        # FewShotReader.search_similar). Milvus query doesn't return vectors,
+        # so recalculate even when the question is unchanged.
+        new_embedding = self._embedding_service.encode(new_question)
 
         # Delete old record
         self.client.delete(

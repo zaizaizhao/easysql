@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 from easysql.config import get_settings
+from easysql.federation import DatabaseScope, FederatedSqlExecutor, FederatedSqlRequest
 from easysql.llm.tools.base import BaseSqlExecutor, ExecutionResult
 from easysql.llm.tools.factory import create_sql_executor
 from easysql.utils.logger import get_logger
@@ -54,6 +55,7 @@ class ExecuteService:
 
     def __init__(self, executor: BaseSqlExecutor | None = None) -> None:
         self._executor = executor
+        self._federated_executor = FederatedSqlExecutor()
         self._thread_pool = ThreadPoolExecutor(max_workers=4)
 
     @property
@@ -73,7 +75,7 @@ class ExecuteService:
             if re.search(pattern, normalized, re.IGNORECASE):
                 warnings.append(warning_msg)
 
-        if normalized.startswith("SELECT"):
+        if normalized.startswith(("SELECT", "WITH")) and not is_mutation:
             statement_type = "SELECT"
         elif normalized.startswith("INSERT"):
             statement_type = "INSERT"
@@ -102,7 +104,7 @@ class ExecuteService:
     def _apply_limit(self, sql: str, limit: int) -> str:
         """Apply LIMIT clause if not already present (for SELECT queries)."""
         normalized = sql.strip().upper()
-        if not normalized.startswith("SELECT"):
+        if not normalized.startswith(("SELECT", "WITH")):
             return sql
 
         if re.search(r"\bLIMIT\s+\d+", normalized, re.IGNORECASE):
@@ -112,12 +114,31 @@ class ExecuteService:
         return f"{sql_stripped} LIMIT {limit}"
 
     def _execute_with_timeout(
-        self, sql: str, db_name: str, timeout: int
+        self,
+        sql: str,
+        primary_db: str,
+        db_names: list[str],
+        timeout: int,
     ) -> tuple[ExecutionResult, float]:
         """Execute SQL with timeout control. Returns (result, execution_time_ms)."""
         start_time = time.perf_counter()
 
-        future = self._thread_pool.submit(self.executor.execute_sql, sql, db_name)
+        if self._executor is not None and len(db_names) == 1:
+            future = self._thread_pool.submit(
+                self.executor.execute_sql,
+                sql,
+                primary_db,
+            )
+        else:
+            future = self._thread_pool.submit(
+                self._federated_executor.execute,
+                FederatedSqlRequest(
+                    sql=sql,
+                    primary_db=primary_db,
+                    db_names=tuple(db_names),
+                    timeout_seconds=timeout,
+                ),
+            )
 
         try:
             result = future.result(timeout=timeout)
@@ -132,12 +153,17 @@ class ExecuteService:
 
     def execute(self, request: ExecuteRequest) -> ExecuteResponse:
         """Execute SQL query with all safety checks and controls."""
-        settings = get_settings()
-        db_config = settings.databases.get(request.db_name.lower())
-        if not db_config:
+        try:
+            scope = DatabaseScope.resolve(
+                get_settings(),
+                db_names=request.db_names,
+                db_name=request.db_name,
+            )
+            primary_db = scope.require_primary(request.primary_db).name
+        except ValueError as exc:
             return ExecuteResponse(
                 status=ExecuteStatus.FAILED,
-                error=f"Database '{request.db_name}' not configured",
+                error=str(exc),
             )
 
         check_result = self.check_sql(request.sql)
@@ -150,7 +176,7 @@ class ExecuteService:
             )
 
         if check_result.warnings:
-            logger.warning(f"SQL safety warnings for {request.db_name}: {check_result.warnings}")
+            logger.warning(f"SQL safety warnings for {primary_db}: {check_result.warnings}")
             if not request.allow_mutation:
                 return ExecuteResponse(
                     status=ExecuteStatus.FORBIDDEN,
@@ -163,7 +189,10 @@ class ExecuteService:
 
         try:
             result, execution_time_ms = self._execute_with_timeout(
-                sql_to_execute, request.db_name, request.timeout
+                sql_to_execute,
+                primary_db,
+                scope.names,
+                request.timeout,
             )
         except Exception as e:
             logger.error(f"SQL execution failed: {e}")
@@ -182,6 +211,8 @@ class ExecuteService:
                 status=status,
                 error=result.error,
                 execution_time_ms=execution_time_ms,
+                db_names=scope.names,
+                primary_db=primary_db,
             )
 
         data = result.data or []
@@ -197,6 +228,8 @@ class ExecuteService:
             affected_rows=result.row_count if check_result.is_mutation else None,
             execution_time_ms=round(execution_time_ms, 2),
             truncated=truncated,
+            db_names=scope.names,
+            primary_db=primary_db,
         )
 
 

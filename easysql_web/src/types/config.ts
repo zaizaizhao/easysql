@@ -4,12 +4,67 @@ export interface DatabaseInfo {
   host: string;
   port: number;
   database: string;
+  user?: string;
+  schema?: string;
+  system_type?: string;
   description?: string;
+  dblink_connection_name?: string;
+  has_password?: boolean;
 }
 
 export interface DatabaseList {
   databases: DatabaseInfo[];
   total: number;
+}
+
+export interface DatabaseConfigInput {
+  name: string;
+  type: 'postgresql' | 'mysql' | 'oracle' | 'sqlserver';
+  host: string;
+  port: number;
+  user: string;
+  password?: string;
+  database: string;
+  schema?: string;
+  system_type?: string;
+  description?: string;
+}
+
+export interface DatabaseConfigUpdateResponse extends DatabaseList {
+  updated: string[];
+}
+
+export interface DatabaseConnectionTestResponse {
+  success: boolean;
+  message: string;
+}
+
+export type DatabaseQueryMode = 'single' | 'dblink';
+export type DblinkStatusValue = 'not_required' | 'ready' | 'unavailable';
+
+export interface DblinkRouteStatus {
+  source_db: string;
+  target_db: string;
+  status: 'ready' | 'unavailable';
+  reason: string;
+}
+
+export interface DatabaseDblinkStatus {
+  name: string;
+  connection_name: string;
+  status: DblinkStatusValue;
+  reason: string;
+  extension_installed: boolean | null;
+  connect_allowed: boolean | null;
+  routes: DblinkRouteStatus[];
+}
+
+export interface DatabaseFederationStatus {
+  mode: DatabaseQueryMode;
+  status: DblinkStatusValue;
+  reason: string;
+  db_names: string[];
+  databases: DatabaseDblinkStatus[];
 }
 
 export interface LLMConfig {
@@ -18,6 +73,10 @@ export interface LLMConfig {
   model: string;
   planning_model?: string;
   temperature: number;
+  use_agent_mode: boolean;
+  agent_max_iterations: number;
+  agent_timeout_seconds: number;
+  query_timeout_seconds: number;
   max_sql_retries: number;
 }
 
@@ -29,7 +88,6 @@ export interface RetrievalConfig {
   semantic_filter_threshold: number;
   semantic_filter_min_tables: number;
   bridge_protection_enabled: boolean;
-  bridge_max_hops: number;
   core_tables: string[];
   llm_filter_enabled: boolean;
   llm_filter_max_tables: number;
@@ -45,7 +103,7 @@ export interface StorageConfig {
   neo4j_uri: string;
   neo4j_database: string;
   milvus_uri: string;
-  milvus_collection_prefix: string;
+  project_namespace: string;
 }
 
 export interface CodeContextConfig {

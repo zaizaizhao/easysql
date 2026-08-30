@@ -1,9 +1,9 @@
-import type { QueryStatus } from './query';
+import type { QueryStatus, StreamEvent } from './query';
 import type { VizPlan } from './chart';
 
 export interface StepTrace {
   node: string;
-  data?: any;
+  data?: StreamEvent['data'];
   timestamp: number;
 }
 
@@ -27,6 +27,8 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   sql?: string;
+  dbNames?: string[];
+  primaryDb?: string;
   userAnswer?: string;
   validationPassed?: boolean;
   validationError?: string;

@@ -14,6 +14,7 @@ Main components:
 from easysql.llm.tools.agent_tools import (
     ExecuteSqlTool,
     SearchObjectsTool,
+    SubmitFinalSqlTool,
     create_agent_tools,
     get_agent_tools,
 )
@@ -39,6 +40,7 @@ __all__ = [
     # Agent tools
     "ExecuteSqlTool",
     "SearchObjectsTool",
+    "SubmitFinalSqlTool",
     "create_agent_tools",
     "get_agent_tools",
 ]

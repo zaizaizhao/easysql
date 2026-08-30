@@ -6,6 +6,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from easysql.config import get_settings
+from easysql.infrastructure import (
+    DataPlanePoolConfig,
+    get_data_plane_engine_registry,
+)
 from easysql.llm import close_checkpointer_pool, setup_checkpointer
 from easysql.utils.logger import get_logger
 from easysql_api.routers import (
@@ -31,22 +35,28 @@ async def lifespan(app: FastAPI):
     if not settings.is_session_postgres():
         raise RuntimeError("SESSION_BACKEND must be set to postgres.")
 
-    session_uri = settings.get_session_postgres_uri()
-    if not session_uri:
-        raise RuntimeError(
-            "SESSION_POSTGRES_URI is required for session persistence (PostgreSQL only)."
-        )
-
     from easysql_api.deps import get_config_service_dep, set_session_repository
-    from easysql_api.infrastructure.db import init_engine
+    from easysql_api.infrastructure.db_manager import (
+        ControlPlanePoolConfig,
+        ensure_control_plane_database_exists,
+        get_control_plane_db_manager,
+    )
     from easysql_api.infrastructure.persistence.session_repository import (
         SqlAlchemySessionRepository,
     )
 
-    init_engine(session_uri)
-    from easysql_api.infrastructure.db import get_sessionmaker
+    await ensure_control_plane_database_exists(settings.postgres_uri)
 
-    repository = SqlAlchemySessionRepository(get_sessionmaker())
+    db_manager = get_control_plane_db_manager()
+    db_manager.init_control_plane(
+        settings.postgres_uri,
+        ControlPlanePoolConfig.from_settings(settings),
+    )
+    await db_manager.validate_postgres_version()
+
+    get_data_plane_engine_registry().init_data_plane(DataPlanePoolConfig.from_settings(settings))
+
+    repository = SqlAlchemySessionRepository(db_manager)
     set_session_repository(repository)
     logger.info("  Session Store: PostgreSQL (SQLAlchemy ORM)")
 
@@ -69,12 +79,15 @@ async def lifespan(app: FastAPI):
 
     logger.info("EasySQL API shutting down...")
 
+    from easysql.retrieval.runtime import reset_retrieval_runtime
     from easysql_api.deps import clear_config_service, clear_session_repository
-    from easysql_api.infrastructure.db import dispose_engine
+    from easysql_api.infrastructure.db_manager import get_control_plane_db_manager
 
     clear_session_repository()
     clear_config_service()
-    await dispose_engine()
+    reset_retrieval_runtime()
+    get_data_plane_engine_registry().dispose_all()
+    await get_control_plane_db_manager().dispose()
 
     await close_checkpointer_pool()
 

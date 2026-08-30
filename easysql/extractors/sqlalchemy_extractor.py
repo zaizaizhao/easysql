@@ -5,17 +5,19 @@ Uses SQLAlchemy Inspector to extract schema metadata from any supported database
 delegating database-specific tasks (like comments) to metadata providers.
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import inspect
 from sqlalchemy.engine import Engine, Inspector
 
 from easysql.config import DatabaseConfig
 from easysql.extractors.base import BaseSchemaExtractor
 from easysql.extractors.metadata_providers import MetadataProviderFactory
+from easysql.infrastructure import get_data_plane_engine_registry
 from easysql.models.schema import (
     ColumnMeta,
-    DatabaseMeta,
     DatabaseType,
     ForeignKeyMeta,
     IndexMeta,
@@ -43,7 +45,7 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
         super().__init__(config)
         self._engine: Engine | None = None
         self._inspector: Inspector | None = None
-        self._metadata_provider: "DBMetadataProvider | None" = None
+        self._metadata_provider: DBMetadataProvider | None = None
         self._schema: str | None = None
 
     @property
@@ -54,7 +56,7 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
         return self._inspector
 
     @property
-    def metadata_provider(self) -> "DBMetadataProvider":
+    def metadata_provider(self) -> DBMetadataProvider:
         """Get metadata provider, raising if not connected."""
         if self._metadata_provider is None:
             raise RuntimeError("Not connected. Call connect() first.")
@@ -67,7 +69,7 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
     def connect(self) -> None:
         """Establish connection and initialize inspector."""
         try:
-            self._engine = create_engine(self.config.get_connection_string())
+            self._engine = get_data_plane_engine_registry().get_engine(self.config)
             self._inspector = inspect(self._engine)
             self._metadata_provider = MetadataProviderFactory.create(
                 self.config.db_type, self._engine
@@ -108,14 +110,12 @@ class SQLAlchemySchemaExtractor(BaseSchemaExtractor):
         return schema
 
     def disconnect(self) -> None:
-        """Close the database connection."""
-        if self._engine:
-            self._engine.dispose()
-            self._engine = None
-            self._inspector = None
-            self._metadata_provider = None
-            self._schema = None
-            logger.debug("Database connection closed")
+        """Release per-instance references; engine lifecycle is owned by registry."""
+        self._engine = None
+        self._inspector = None
+        self._metadata_provider = None
+        self._schema = None
+        logger.debug("Schema extractor disconnected")
 
     def extract_tables(self) -> list[TableMeta]:
         """Extract all tables using SQLAlchemy Inspector."""

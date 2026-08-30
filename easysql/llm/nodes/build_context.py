@@ -4,13 +4,15 @@ Build Context Node.
 Uses ContextBuilder to construct the prompts for SQL generation.
 """
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
-from easysql.llm.state import EasySQLState
-from easysql.llm.nodes.base import BaseNode
+from easysql.config import get_settings
 from easysql.context.builder import ContextBuilder
-from easysql.context.models import ContextInput, FewShotExample
 from easysql.context.db_specific_rules import get_db_type_from_config
+from easysql.context.models import ContextInput, FewShotExample
+from easysql.federation import DatabaseScope
+from easysql.llm.nodes.base import BaseNode
+from easysql.llm.state import EasySQLState
 from easysql.retrieval.schema_retrieval import RetrievalResult
 
 if TYPE_CHECKING:
@@ -24,7 +26,7 @@ class BuildContextNode(BaseNode):
     Wraps ContextBuilder with DI support.
     """
 
-    def __init__(self, builder: Optional[ContextBuilder] = None):
+    def __init__(self, builder: ContextBuilder | None = None):
         """Initialize the build context node.
 
         Args:
@@ -67,6 +69,11 @@ class BuildContextNode(BaseNode):
         """
         query = state["clarified_query"] or state["raw_query"]
         db_name = state.get("db_name")
+        scope = DatabaseScope.resolve(
+            get_settings(),
+            db_names=state.get("db_names"),
+            db_name=db_name,
+        )
 
         # Reconstruct RetrievalResult from dict
         retrieval_data = state["retrieval_result"]
@@ -100,11 +107,14 @@ class BuildContextNode(BaseNode):
             question=query,
             retrieval_result=result_obj,
             db_name=db_name,
+            db_names=scope.names,
+            database_context=scope.render_prompt_context(),
             few_shot_examples=few_shot_examples,
+            code_context=state.get("code_context"),
         )
 
         # Use builder with database-specific rules
-        builder = self._get_builder(db_name)
+        builder = self._get_builder(scope.default_primary)
         output = builder.build(context_input)
 
         context_dict = {

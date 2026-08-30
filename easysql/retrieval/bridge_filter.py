@@ -70,27 +70,28 @@ class BridgeFilter(TableFilter):
             if bridge not in result_tables:
                 result_tables.append(bridge)
                 added.append(bridge)
-                if bridge not in context.original_tables:
-                    context.original_tables.append(bridge)
+            # Protect bridges from later filters without rewriting recall provenance
+            context.must_keep.add(bridge)
+            context.table_provenance.setdefault(bridge, "bridge")
 
         direct_neighbors = []
-        if self._include_direct_neighbors:
-            all_expanded = set()
-
-            for table in tables:
-                neighbors = self._neo4j.expand_with_related_tables(
-                    table_names=[table],
+        if self._include_direct_neighbors and self._protected_tables:
+            # Single batched query: neighbors of all tables at once (was one
+            # Neo4j round-trip per table)
+            all_expanded = set(
+                self._neo4j.expand_with_related_tables(
+                    table_names=list(tables),
                     max_depth=1,
                     db_name=context.db_name,
                 )
-                all_expanded.update(neighbors)
+            )
 
             for table in all_expanded:
                 if table in self._protected_tables and table not in result_tables:
                     result_tables.append(table)
                     direct_neighbors.append(table)
-                    if table not in context.original_tables:
-                        context.original_tables.append(table)
+                    context.must_keep.add(table)
+                    context.table_provenance.setdefault(table, "direct_neighbor")
 
         return FilterResult(
             tables=result_tables,

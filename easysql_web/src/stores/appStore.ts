@@ -5,12 +5,14 @@ import type { SupportedLanguage } from '@/i18n';
 
 interface AppState {
   currentDatabase: string | null;
+  selectedDatabases: string[];
   databases: DatabaseInfo[];
   theme: 'light' | 'dark';
   locale: SupportedLanguage;
   sidebarCollapsed: boolean;
   
   setCurrentDatabase: (dbName: string | null) => void;
+  setSelectedDatabases: (dbNames: string[]) => void;
   setDatabases: (databases: DatabaseInfo[]) => void;
   setTheme: (theme: 'light' | 'dark') => void;
   toggleTheme: () => void;
@@ -22,12 +24,21 @@ export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
       currentDatabase: null,
+      selectedDatabases: [],
       databases: [],
       theme: 'light',
       locale: 'zh',
       sidebarCollapsed: false,
 
-      setCurrentDatabase: (dbName) => set({ currentDatabase: dbName }),
+      setCurrentDatabase: (dbName) =>
+        set({ currentDatabase: dbName, selectedDatabases: dbName ? [dbName] : [] }),
+      setSelectedDatabases: (dbNames) => {
+        const normalized = Array.from(new Set(dbNames.filter(Boolean)));
+        set({
+          selectedDatabases: normalized,
+          currentDatabase: normalized[0] || null,
+        });
+      },
       setDatabases: (databases) => set({ databases }),
       setTheme: (theme) => {
         document.documentElement.setAttribute('data-theme', theme);
@@ -45,6 +56,7 @@ export const useAppStore = create<AppState>()(
       name: 'easysql-app-store',
       partialize: (state) => ({
         currentDatabase: state.currentDatabase,
+        selectedDatabases: state.selectedDatabases,
         theme: state.theme,
         locale: state.locale,
         sidebarCollapsed: state.sidebarCollapsed,

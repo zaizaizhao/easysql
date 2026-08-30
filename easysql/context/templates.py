@@ -5,8 +5,8 @@ Provides default and customizable prompt templates for Text2SQL.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
 from pathlib import Path
+from typing import List
 
 from .models import SectionContent
 

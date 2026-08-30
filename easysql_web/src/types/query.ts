@@ -3,6 +3,7 @@ import type { VizPlan } from './chart';
 export interface QueryRequest {
   question: string;
   db_name?: string;
+  db_names?: string[];
   session_id?: string;
   stream?: boolean;
 }
@@ -28,6 +29,8 @@ export interface QueryResponse {
   session_id: string;
   status: QueryStatus;
   sql?: string;
+  db_names?: string[];
+  primary_db?: string;
   validation_passed?: boolean;
   validation_error?: string;
   clarification?: ClarificationInfo;
@@ -49,14 +52,19 @@ export interface StreamEvent {
     parent_message_id?: string;
     turn_id?: string;
     generated_sql?: string;
+    db_names?: string[];
+    primary_db?: string;
     status?: QueryStatus;
     validation_passed?: boolean;
+    validation_error?: string;
     validation_result?: {
       valid: boolean;
       details?: string;
       error?: string;
     };
     clarification_questions?: string[];
+    schema_hint?: unknown;
+    few_shot_examples?: unknown[];
     clarification?: {
       questions: string[];
     };

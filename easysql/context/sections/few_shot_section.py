@@ -5,10 +5,8 @@ Renders few-shot examples for in-context learning.
 This is a placeholder for future implementation.
 """
 
-from typing import List
-
 from ..base import ContextSection
-from ..models import ContextInput, SectionContent, FewShotExample
+from ..models import ContextInput, SectionContent
 
 
 class FewShotSection(ContextSection):

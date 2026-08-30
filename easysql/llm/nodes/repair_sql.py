@@ -16,6 +16,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from easysql.config import LLMConfig, get_settings
+from easysql.federation import DatabaseScope
 from easysql.llm.models import get_llm
 from easysql.llm.nodes.base import BaseNode, SQLResponse
 from easysql.llm.state import EasySQLState
@@ -77,13 +78,23 @@ class RepairSQLNode(BaseNode):
         """
         error = state.get("error")
         original_sql = state.get("generated_sql")
-        context = state.get("context_output")
+        context = state.get("cached_context") or state.get("context_output")
 
         if not error or not original_sql:
-            # Nothing to repair
-            return {}
+            # Nothing to repair. Still consume a retry so the
+            # validate -> repair loop always makes progress and
+            # route_validate's max-retries exit stays reachable.
+            return {
+                "validation_passed": False,
+                "retry_count": state.get("retry_count", 0) + 1,
+                "error": error or "repair skipped: no SQL to repair",
+            }
+
+        question = state.get("clarified_query") or state.get("raw_query") or ""
 
         repair_prompt = f"""原始SQL存在问题，请修复：
+
+用户问题：{question}
 
 错误信息：{error}
 
@@ -92,7 +103,7 @@ class RepairSQLNode(BaseNode):
 {original_sql}
 ```
 
-请基于错误信息修复SQL，只输出修正后的SQL。"""
+请基于错误信息修复SQL，保持与用户问题的语义一致，只输出修正后的SQL。"""
 
         messages: list[BaseMessage] = []
         if context and context.get("system_prompt"):
@@ -110,9 +121,22 @@ class RepairSQLNode(BaseNode):
                     "retry_count": state.get("retry_count", 0) + 1,
                 }
             sql = response.sql
+            scope = DatabaseScope.resolve(
+                get_settings(),
+                db_names=state.get("db_names"),
+                db_name=state.get("db_name"),
+            )
+            requested_primary = response.primary_db or state.get("primary_db")
+            if scope.is_federated and not requested_primary:
+                return {
+                    "error": "Repair response did not preserve primary_db",
+                    "retry_count": state.get("retry_count", 0) + 1,
+                }
+            primary_db = scope.require_primary(requested_primary).name
 
             return {
                 "generated_sql": sql,
+                "primary_db": primary_db,
                 "error": None,
                 "retry_count": state.get("retry_count", 0) + 1,
             }

@@ -3,17 +3,14 @@ Test Multi-Turn Conversation functionality.
 
 Tests for:
 - TokenManager: history preparation and compression
-- ContextMerger: merging old and new retrieval contexts
 - ShiftDetectNode: semantic shift detection
 - Conversation state management
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import MagicMock, patch
-
-import pytest
-
+from unittest.mock import patch
 
 @dataclass
 class MockConversationTurn:
@@ -122,72 +119,11 @@ class TestTokenManager:
         assert messages[0].content == "问题1"
 
 
-class TestContextMerger:
-    def test_merge_no_old_context(self):
-        from easysql.llm.utils.context_merger import ContextMerger
-
-        merger = ContextMerger()
-        new_retrieval = {"tables": ["orders", "products"]}
-
-        result = merger.merge(None, new_retrieval)
-
-        assert result == {"orders", "products"}
-
-    def test_merge_with_old_context(self):
-        from easysql.llm.utils.context_merger import ContextMerger
-
-        merger = ContextMerger()
-
-        old_context = {
-            "system_prompt": "表名: users\n表名: orders\n",
-            "user_prompt": "query",
-        }
-        new_retrieval = {"tables": ["products", "orders"]}
-
-        result = merger.merge(old_context, new_retrieval)
-
-        assert "users" in result
-        assert "orders" in result
-        assert "products" in result
-        assert len(result) == 3
-
-    def test_merge_empty_new_retrieval(self):
-        from easysql.llm.utils.context_merger import ContextMerger
-
-        merger = ContextMerger()
-
-        old_context = {"system_prompt": "表名: users\n", "user_prompt": "query"}
-        new_retrieval = {"tables": []}
-
-        result = merger.merge(old_context, new_retrieval)
-
-        assert result == {"users"}
-
-    def test_extract_tables_from_context(self):
-        from easysql.llm.utils.context_merger import ContextMerger
-
-        merger = ContextMerger()
-
-        context = {
-            "system_prompt": """
-表名: patient (患者表)
-列: patient_id, name, gender
-
-表名: prescription (处方表)
-列: prescription_id, patient_id
-            """,
-            "user_prompt": "test",
-        }
-
-        tables = merger._extract_tables_from_context(context)
-
-        assert "patient" in tables
-        assert "prescription" in tables
-
-
 class TestShiftDetectNode:
-    @pytest.mark.asyncio
-    async def test_no_cached_context_requires_retrieval(self):
+    def test_no_cached_context_requires_retrieval(self):
+        asyncio.run(self._assert_no_cached_context_requires_retrieval())
+
+    async def _assert_no_cached_context_requires_retrieval(self):
         from easysql.llm.nodes.shift_detect import ShiftDetectNode
 
         node = ShiftDetectNode()
@@ -198,8 +134,10 @@ class TestShiftDetectNode:
         assert result["needs_new_retrieval"] is True
         assert result["shift_reason"] == "no_cached_context"
 
-    @pytest.mark.asyncio
-    async def test_no_tables_requires_retrieval(self):
+    def test_no_tables_requires_retrieval(self):
+        asyncio.run(self._assert_no_tables_requires_retrieval())
+
+    async def _assert_no_tables_requires_retrieval(self):
         from easysql.llm.nodes.shift_detect import ShiftDetectNode
 
         node = ShiftDetectNode()
@@ -317,19 +255,10 @@ class TestEdgeCases:
 
         assert len(recent) <= TokenManager.MAX_HISTORY_TURNS
 
-    def test_context_merger_malformed_context(self):
-        from easysql.llm.utils.context_merger import ContextMerger
+    def test_shift_detect_graceful_failure(self):
+        asyncio.run(self._assert_shift_detect_graceful_failure())
 
-        merger = ContextMerger()
-
-        old_context = {"system_prompt": "random content without table markers"}
-
-        result = merger.merge(old_context, {"tables": ["new_table"]})
-
-        assert "new_table" in result
-
-    @pytest.mark.asyncio
-    async def test_shift_detect_graceful_failure(self):
+    async def _assert_shift_detect_graceful_failure(self):
         from easysql.llm.nodes.shift_detect import ShiftDetectNode
 
         node = ShiftDetectNode()
@@ -347,50 +276,6 @@ class TestEdgeCases:
 
         assert result["needs_new_retrieval"] is True
         assert "detection_error" in result["shift_reason"]
-
-
-class TestIntegration:
-    def test_full_conversation_flow_mock(self):
-        from easysql.llm.utils.token_manager import TokenManager
-        from easysql.llm.utils.context_merger import ContextMerger
-
-        manager = TokenManager()
-        merger = ContextMerger()
-
-        history = []
-        cached_context = None
-
-        turn1 = MockConversationTurn(
-            question="查询所有患者",
-            sql="SELECT * FROM patient",
-            tables_used=["patient"],
-            token_count=50,
-        )
-        history.append(turn1)
-
-        retrieval1 = {"tables": ["patient"]}
-        cached_context = {
-            "system_prompt": "表名: patient\n列: id, name",
-            "user_prompt": "查询所有患者",
-        }
-
-        turn2 = MockConversationTurn(
-            question="按性别分组统计",
-            sql="SELECT gender, COUNT(*) FROM patient GROUP BY gender",
-            tables_used=["patient"],
-            token_count=60,
-        )
-        history.append(turn2)
-
-        summary, recent = manager.prepare_history(history, schema_context_tokens=500)
-        assert len(recent) == 2
-        assert summary is None
-
-        turn3_question = "查询每个患者的处方"
-        retrieval2 = {"tables": ["prescription"]}
-        merged_tables = merger.merge(cached_context, retrieval2)
-        assert "patient" in merged_tables
-        assert "prescription" in merged_tables
 
 
 class TestUpdateHistoryNode:
@@ -429,7 +314,3 @@ class TestUpdateHistoryNode:
         result = node(state)
 
         assert result == {}
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

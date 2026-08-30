@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import delete, func, inspect, select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
 from easysql_api.domain.entities.message import Message
@@ -15,6 +14,7 @@ from easysql_api.domain.entities.session import Session, SessionSummary
 from easysql_api.domain.entities.turn import Clarification, Turn, TurnStatus
 from easysql_api.domain.repositories.session_repository import SessionRepository
 from easysql_api.domain.value_objects.query_status import QueryStatus
+from easysql_api.infrastructure.db_manager import ControlPlaneSessionProvider
 from easysql_api.infrastructure.persistence.models import (
     ClarificationModel,
     MessageModel,
@@ -24,23 +24,31 @@ from easysql_api.infrastructure.persistence.models import (
 
 
 class SqlAlchemySessionRepository(SessionRepository):
-    def __init__(self, sessionmaker: async_sessionmaker[AsyncSession]):
-        self._sessionmaker = sessionmaker
+    def __init__(self, session_provider: ControlPlaneSessionProvider):
+        self._session_provider = session_provider
 
-    async def create(self, session_id: str, db_name: str | None = None) -> Session:
-        async with self._sessionmaker() as db:
+    async def create(
+        self,
+        session_id: str,
+        db_name: str | None = None,
+        db_names: list[str] | None = None,
+        primary_db: str | None = None,
+    ) -> Session:
+        async with self._session_provider.session() as db:
             session = SessionModel(
                 id=uuid.UUID(session_id),
                 db_name=db_name,
+                db_names=db_names or ([db_name] if db_name else []),
+                primary_db=primary_db or db_name,
                 status=QueryStatus.PENDING.value,
             )
             db.add(session)
-            await db.commit()
+            await db.flush()
             await db.refresh(session)
             return _map_session(session)
 
     async def get(self, session_id: str) -> Session | None:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             result = await db.execute(
                 select(SessionModel)
                 .where(SessionModel.id == uuid.UUID(session_id))
@@ -55,7 +63,7 @@ class SqlAlchemySessionRepository(SessionRepository):
             return _map_session(model)
 
     async def list_all(self, limit: int = 100, offset: int = 0) -> list[Session]:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             result = await db.execute(
                 select(SessionModel)
                 .options(
@@ -85,11 +93,13 @@ class SqlAlchemySessionRepository(SessionRepository):
         question_count = func.coalesce(question_count_subq, 0).label("question_count")
         title = func.coalesce(SessionModel.title, title_subq).label("title")
 
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             result = await db.execute(
                 select(
                     SessionModel.id,
                     SessionModel.db_name,
+                    SessionModel.db_names,
+                    SessionModel.primary_db,
                     SessionModel.status,
                     SessionModel.created_at,
                     SessionModel.updated_at,
@@ -109,6 +119,8 @@ class SqlAlchemySessionRepository(SessionRepository):
                 SessionSummary(
                     session_id=str(data["id"]),
                     db_name=data["db_name"],
+                    db_names=data["db_names"] or ([data["db_name"]] if data["db_name"] else []),
+                    primary_db=data["primary_db"] or data["db_name"],
                     status=QueryStatus(data["status"]),
                     created_at=data["created_at"],
                     updated_at=data["updated_at"],
@@ -119,12 +131,12 @@ class SqlAlchemySessionRepository(SessionRepository):
         return summaries
 
     async def count(self) -> int:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             result = await db.execute(select(func.count()).select_from(SessionModel))
             return int(result.scalar_one())
 
     async def delete(self, session_id: str) -> bool:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             target_id = uuid.UUID(session_id)
             count_result = await db.execute(
                 select(func.count()).select_from(SessionModel).where(SessionModel.id == target_id)
@@ -134,17 +146,15 @@ class SqlAlchemySessionRepository(SessionRepository):
                 return False
 
             await db.execute(delete(SessionModel).where(SessionModel.id == target_id))
-            await db.commit()
             return True
 
     async def update_status(self, session_id: str, status: QueryStatus) -> None:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             await db.execute(
                 update(SessionModel)
                 .where(SessionModel.id == uuid.UUID(session_id))
                 .values(status=status.value, updated_at=_utc_now())
             )
-            await db.commit()
 
     async def update_session_fields(self, session_id: str, **kwargs: Any) -> None:
         allowed_fields = {
@@ -153,22 +163,22 @@ class SqlAlchemySessionRepository(SessionRepository):
             "validation_passed",
             "state",
             "title",
+            "primary_db",
         }
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
         if not updates:
             return
         updates["updated_at"] = _utc_now()
 
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             await db.execute(
                 update(SessionModel)
                 .where(SessionModel.id == uuid.UUID(session_id))
                 .values(**updates)
             )
-            await db.commit()
 
     async def save_turns(self, session_id: str, turns: list[Turn]) -> None:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             existing_result = await db.execute(
                 select(TurnModel)
                 .where(TurnModel.session_id == uuid.UUID(session_id))
@@ -195,6 +205,7 @@ class SqlAlchemySessionRepository(SessionRepository):
                     model.question = turn.question
                     model.status = turn.status.value
                     model.final_sql = turn.final_sql
+                    model.primary_db = turn.primary_db
                     model.validation_passed = turn.validation_passed
                     model.error = turn.error
                     model.chart_plan = chart_plan
@@ -217,6 +228,7 @@ class SqlAlchemySessionRepository(SessionRepository):
                         question=turn.question,
                         status=turn.status.value,
                         final_sql=turn.final_sql,
+                        primary_db=turn.primary_db,
                         validation_passed=turn.validation_passed,
                         error=turn.error,
                         chart_plan=chart_plan,
@@ -239,7 +251,6 @@ class SqlAlchemySessionRepository(SessionRepository):
                 .where(SessionModel.id == uuid.UUID(session_id))
                 .values(updated_at=_utc_now())
             )
-            await db.commit()
 
     async def add_message(
         self,
@@ -257,7 +268,7 @@ class SqlAlchemySessionRepository(SessionRepository):
         clarification_questions: list[str] | None = None,
     ) -> str:
         message_uuid = uuid.UUID(message_id) if message_id else uuid.uuid4()
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             message = MessageModel(
                 id=message_uuid,
                 session_id=uuid.UUID(session_id),
@@ -272,11 +283,10 @@ class SqlAlchemySessionRepository(SessionRepository):
                 clarification_questions=clarification_questions,
             )
             db.add(message)
-            await db.commit()
             return str(message_uuid)
 
     async def get_message(self, message_id: str) -> Message | None:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             result = await db.execute(
                 select(MessageModel).where(MessageModel.id == uuid.UUID(message_id))
             )
@@ -286,13 +296,12 @@ class SqlAlchemySessionRepository(SessionRepository):
             return _map_message(model)
 
     async def mark_as_few_shot(self, message_id: str, is_few_shot: bool = True) -> None:
-        async with self._sessionmaker() as db:
+        async with self._session_provider.session() as db:
             await db.execute(
                 update(MessageModel)
                 .where(MessageModel.id == uuid.UUID(message_id))
                 .values(is_few_shot=is_few_shot)
             )
-            await db.commit()
 
 
 def _utc_now() -> datetime:
@@ -303,6 +312,8 @@ def _map_session(model: SessionModel) -> Session:
     session = Session(
         session_id=str(model.id),
         db_name=model.db_name,
+        db_names=model.db_names or ([model.db_name] if model.db_name else []),
+        primary_db=model.primary_db or model.db_name,
         status=QueryStatus(model.status),
         created_at=model.created_at,
         updated_at=model.updated_at,
@@ -375,6 +386,7 @@ def _map_turn(model: TurnModel) -> Turn:
         status=TurnStatus(model.status),
         clarifications=clarifications,
         final_sql=model.final_sql,
+        primary_db=model.primary_db,
         validation_passed=model.validation_passed,
         error=model.error,
         chart_plan=model.chart_plan,

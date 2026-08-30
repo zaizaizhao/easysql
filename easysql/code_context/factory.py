@@ -34,7 +34,7 @@ class CodeContextFactory:
     ) -> CodeMilvusConfig:
         """Create Milvus config with prefix from settings or explicit parameter.
 
-        Priority: database_name > settings.code_context_collection_prefix
+        Priority: database_name > settings.project_namespace
         """
         if database_name:
             return CodeMilvusConfig(database_prefix=database_name)
@@ -44,7 +44,7 @@ class CodeContextFactory:
 
             settings = get_settings()
 
-        return CodeMilvusConfig(database_prefix=settings.code_context_collection_prefix)
+        return CodeMilvusConfig(database_prefix=settings.project_namespace)
 
     @staticmethod
     def create_writer(

@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Langfuse bad case → Prompt 迭代闭环</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="eyebrow">Lesson 0001 · EasySQL</div>
+        <h1>用 Langfuse 建立 bad case → Prompt 迭代闭环</h1>
+        <p class="lead">
+          目标不是“把 Langfuse 接上”，而是让每次 Prompt 修改都能回答三个问题：
+          修复了哪些失败？引入了哪些回归？是否可以安全晋级到 production？
+        </p>
+        <p class="small">调研基线：2026-07-13；Langfuse Python SDK 当前 PyPI 版本为 4.14.0。</p>
+      </header>
+
+      <section>
+        <h2>先给结论</h2>
+        <div class="callout good">
+          EasySQL 已经有 Langfuse tracing 的起点，但尚未形成质量闭环。当前集成能看调用链、模型耗时和 SQL Agent span；
+          缺少的是 Prompt version 关联、Dataset、Experiment、结构化 Score、人工反馈入口和 Text2SQL 专用判分器。
+        </div>
+        <div class="grid">
+          <div class="card">
+            <h3>Langfuse 应负责</h3>
+            <p>Trace、Prompt 版本、Dataset、Experiment run、Score、人工审核、比较和 label 发布。</p>
+          </div>
+          <div class="card">
+            <h3>EasySQL 应负责</h3>
+            <p>执行 SQL、结果集等价、Schema Linking、业务约束、失败分类、只读沙箱和发布门禁规则。</p>
+          </div>
+          <div class="card">
+            <h3>最重要的原则</h3>
+            <p>Langfuse 是实验与证据平台，不是 Text2SQL 正确性判分器，也不会自动保证 Prompt 变好。</p>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>完整闭环</h2>
+        <div class="flow" aria-label="迭代闭环">
+          <div class="step">生产 Trace / 离线失败</div><div class="arrow">→</div>
+          <div class="step">Score + 人工审核</div><div class="arrow">→</div>
+          <div class="step">回归 Dataset</div><div class="arrow">→</div>
+          <div class="step">Prompt 候选版本</div>
+        </div>
+        <div class="flow" aria-label="发布闭环">
+          <div class="step">Experiment 回归</div><div class="arrow">→</div>
+          <div class="step">基线对比与门禁</div><div class="arrow">→</div>
+          <div class="step">production label</div><div class="arrow">→</div>
+          <div class="step">继续监控并收集失败</div>
+        </div>
+        <p>
+          这里的关键不是“一轮只跑 bad case”。候选 Prompt 至少要跑核心 golden set 和历史 bad-case regression；
+          发布前再跑一个优化过程中不可见的 holdout，避免为了修 10 条失败而破坏另外 50 条。
+        </p>
+      </section>
+
+      <section>
+        <h2>EasySQL 当前代码处于哪里</h2>
+        <table>
+          <thead><tr><th>位置</th><th>当前行为</th><th>缺口</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><a href="../easysql/llm/agent.py">easysql/llm/agent.py</a></td>
+              <td>创建 Langfuse LangChain CallbackHandler。</td>
+              <td>handler 被 QueryService 缓存复用；没有固定每轮 trace_id，也没有 Prompt version。</td>
+            </tr>
+            <tr>
+              <td><a href="../easysql_api/services/query_service.py">easysql_api/services/query_service.py</a></td>
+              <td>把 callback、session_id 和 text2sql tag 挂到 LangGraph config。</td>
+              <td>没有反馈接口、trace_id 持久化、Dataset 关联和评测运行模式。</td>
+            </tr>
+            <tr>
+              <td><a href="../easysql/context/templates.py">easysql/context/templates.py</a></td>
+              <td>SQL 生成 Prompt 硬编码在代码中。</td>
+              <td>无法在 Langfuse 中版本化、按 label 部署或回滚。</td>
+            </tr>
+            <tr>
+              <td><a href="../easysql/llm/nodes/sql_agent.py">easysql/llm/nodes/sql_agent.py</a></td>
+              <td>SQL Agent 有手写 span，记录 SQL、是否通过验证和迭代次数。</td>
+              <td>有效 Prompt 由两段系统指令拼接，未绑定 Prompt object；工具失败原因未统一评分。</td>
+            </tr>
+            <tr>
+              <td><a href="../easysql/llm/nodes/validate_sql.py">easysql/llm/nodes/validate_sql.py</a></td>
+              <td>通过 EXPLAIN 或语法检查判断 validation_passed。</td>
+              <td>它不能证明业务语义正确，不能作为 Experiment 的唯一 accuracy。</td>
+            </tr>
+            <tr>
+              <td><a href="../easysql/llm/nodes/retrieve_few_shot.py">easysql/llm/nodes/retrieve_few_shot.py</a></td>
+              <td>从 Milvus 检索已确认的问答示例，注入运行时 Prompt。</td>
+              <td>这是 Few-shot 库，不是评测 Dataset；不要把错误 SQL 直接放进去。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout bad">
+          <strong>依赖版本需要先修正。</strong> requirements.txt 目前写的是 langfuse&gt;=2.0.0，
+          但代码已经使用 get_client、start_as_current_observation 和当前 CallbackHandler 接口。
+          2026-07-13 的 SDK 最新版本是 4.14.0，且 v4 在 2026 年 3 月重写。
+          实施前应显式约束主版本，例如 langfuse&gt;=4.14.0,&lt;5.0.0，并跑兼容测试。
+        </div>
+      </section>
+
+      <section>
+        <h2>Langfuse 数据模型如何映射到 Text2SQL</h2>
+        <table>
+          <thead><tr><th>对象</th><th>EasySQL 中的角色</th><th>设计要点</th></tr></thead>
+          <tbody>
+            <tr><td>Trace</td><td>一轮用户问题到最终 SQL 的完整执行</td><td>用 session_id + message_id 生成确定性 trace_id，便于前端反馈。</td></tr>
+            <tr><td>Observation</td><td>retrieve、build_context、generation、validate、execute</td><td>输出结构化字段，不只保留日志字符串。</td></tr>
+            <tr><td>Prompt Version</td><td>SQL 生成或 SQL Agent 的不可变提示词版本</td><td>Experiment 固定 version；生产只读 production label；不用 latest。</td></tr>
+            <tr><td>Dataset Item</td><td>一个问题、一个数据库快照和一组期望证据</td><td>expected_output 不应只有 SQL 文本，还要有结果、表、过滤条件和澄清预期。</td></tr>
+            <tr><td>Experiment Run</td><td>某一固定配置在整个数据集上的回归执行</td><td>记录 dataset version、prompt version、model、retrieval hash、git SHA。</td></tr>
+            <tr><td>Score</td><td>每条 case 或整轮 run 的质量度量</td><td>Boolean/Numeric/Categorical/Correction/Text 分开建模。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>Dataset 应怎样设计</h2>
+        <p>建议先建三个数据集，而不是把所有东西塞进一个“测试集”：</p>
+        <div class="grid">
+          <div class="card"><h3>easysql-golden-core</h3><p>30～100 条长期稳定、覆盖核心业务能力的人工确认样本。</p></div>
+          <div class="card"><h3>easysql-badcase-regression</h3><p>从生产或历史实验中筛出并完成纠正的失败案例。</p></div>
+          <div class="card"><h3>easysql-holdout</h3><p>优化 Prompt 时不查看，发布前才跑，用来识别过拟合。</p></div>
+        </div>
+
+        <p>Langfuse v4 支持为 Dataset 设置 input_schema 和 expected_output_schema，建议直接用 JSON Schema 约束字段：</p>
+        <pre><code>from langfuse import get_client
+
+langfuse = get_client()
+
+langfuse.create_dataset(
+    name="easysql-badcase-regression",
+    description="Curated Text2SQL production regressions",
+    input_schema={
+        "type": "object",
+        "required": ["case_id", "question", "db_name"],
+        "properties": {
+            "case_id": {"type": "string"},
+            "question": {"type": "string"},
+            "db_name": {"type": "string"},
+            "dialect": {"type": "string"},
+            "conversation_history": {"type": "array"},
+        },
+    },
+    expected_output_schema={
+        "type": "object",
+        "properties": {
+            "reference_sql": {"type": "string"},
+            "expected_tables": {"type": "array", "items": {"type": "string"}},
+            "required_filters": {"type": "array", "items": {"type": "string"}},
+            "expected_result_digest": {"type": "string"},
+        },
+    },
+)</code></pre>
+
+        <p>创建样本时保留来源 Trace，并使用稳定 ID 去重：</p>
+        <pre><code>import uuid
+from langfuse import get_client
+
+langfuse = get_client()
+item_id = str(
+    uuid.uuid5(
+        uuid.NAMESPACE_URL,
+        "easysql:product:最近一个月支付成功的订单金额是多少？",
+    )
+)
+
+langfuse.create_dataset_item(
+    id=item_id,
+    dataset_name="easysql-badcase-regression",
+    input={
+        "case_id": "product-payment-001",
+        "question": "最近一个月支付成功的订单金额是多少？",
+        "db_name": "product",
+        "dialect": "postgresql",
+        "conversation_history": [],
+    },
+    expected_output={
+        "reference_sql": "SELECT ...",
+        "expected_tables": ["orders", "payments"],
+        "required_filters": ["payments.status = 'SUCCESS'"],
+        "expected_result_digest": "sha256:...",
+    },
+    metadata={
+        "tags": ["join", "time_range", "business_status"],
+        "failure_category": "MISSING_FILTER",
+        "source": "production_feedback",
+    },
+    source_trace_id=trace_id,
+    source_observation_id=generation_id,
+)</code></pre>
+
+        <div class="callout warn">
+          原始 thumbs-down 不应立即进入正式 regression dataset。先写 Score 并进入 Annotation Queue；
+          只有审核人补齐 failure_category、正确 SQL 或正确结果后，才晋级为回归样本。
+          否则测试集会充满“知道错、但不知道正确答案”的脏标签。
+        </div>
+      </section>
+
+      <section>
+        <h2>Score：不要只看 validation_passed</h2>
+        <p>建议把质量拆成四层，每层回答不同问题：</p>
+        <table>
+          <thead><tr><th>层</th><th>指标</th><th>判分来源</th></tr></thead>
+          <tbody>
+            <tr><td>L1 可运行</td><td>syntax_valid、execution_valid、read_only_safe</td><td>SQLAlchemy / 数据库沙箱</td></tr>
+            <tr><td>L2 语义正确</td><td>result_equivalent、required_filters、business_constraints</td><td>结果集比较器 + 规则</td></tr>
+            <tr><td>L3 检索正确</td><td>table_recall、column_recall、join_path_coverage、noise_rate</td><td>retrieval_result 与 expected schema</td></tr>
+            <tr><td>L4 成本效率</td><td>latency、token、tool_calls、retry_count</td><td>Trace / Agent artifact</td></tr>
+          </tbody>
+        </table>
+
+        <pre><code>from langfuse import Evaluation
+
+def text2sql_evaluator(*, output, expected_output, **kwargs):
+    result_ok = compare_result_sets(
+        generated=output["execution_result"],
+        expected_digest=expected_output["expected_result_digest"],
+    )
+    expected_tables = set(expected_output.get("expected_tables", []))
+    retrieved_tables = set(output.get("retrieved_tables", []))
+    table_recall = (
+        len(expected_tables &amp; retrieved_tables) / len(expected_tables)
+        if expected_tables
+        else 1.0
+    )
+
+    return [
+        Evaluation(
+            name="execution_valid",
+            value=bool(output["execution_valid"]),
+            data_type="BOOLEAN",
+        ),
+        Evaluation(
+            name="result_equivalent",
+            value=result_ok,
+            data_type="BOOLEAN",
+        ),
+        Evaluation(name="table_recall", value=table_recall),
+        Evaluation(
+            name="failure_category",
+            value=classify_failure(output, expected_output),
+            data_type="CATEGORICAL",
+        ),
+    ]</code></pre>
+
+        <p>生产反馈可以直接写成不同类型的 Score：</p>
+        <pre><code>langfuse.create_score(
+    trace_id=trace_id,
+    name="answer_correct",
+    value=0,
+    data_type="BOOLEAN",
+    comment="User marked the SQL as incorrect",
+)
+
+langfuse.create_score(
+    trace_id=trace_id,
+    name="failure_category",
+    value="WRONG_JOIN",
+    data_type="CATEGORICAL",
+)
+
+langfuse.create_score(
+    trace_id=trace_id,
+    name="sql_correction",
+    value=corrected_sql,
+    data_type="CORRECTION",
+)</code></pre>
+      </section>
+
+      <section>
+        <h2>Prompt Management 的正确接入 seam</h2>
+        <p>
+          不建议在每个 Graph node 里散落 get_prompt 调用。应建立一个深模块，例如
+          <code>easysql/prompts/</code>，用很小的 interface 隐藏缓存、fallback、label/version、SDK 对象、
+          LangChain metadata 和可观测性关联。
+        </p>
+
+        <div class="grid">
+          <div class="card">
+            <h3>PromptRuntime interface</h3>
+            <p>resolve(role, variables, selector) → 编译后的 messages + 可序列化 PromptRef。</p>
+          </div>
+          <div class="card">
+            <h3>Langfuse adapter</h3>
+            <p>通过 name/version/label 获取 Prompt，处理 cache、fallback、PromptClient 和追踪关联。</p>
+          </div>
+          <div class="card">
+            <h3>Local adapter</h3>
+            <p>测试和 Langfuse 不可用时使用代码内模板；同一 interface，不让调用方感知外部 SDK。</p>
+          </div>
+        </div>
+
+        <p>PromptRef 必须可序列化，因为它会进入 LangGraph state；PromptClient 只能短暂存在于调用进程内：</p>
+        <pre><code>from dataclasses import dataclass
+from typing import Any
+
+@dataclass(frozen=True)
+class PromptRef:
+    name: str
+    version: int
+    labels: tuple[str, ...]
+    is_fallback: bool
+
+@dataclass(frozen=True)
+class RenderedPrompt:
+    messages: list[dict[str, Any]]
+    ref: PromptRef
+
+class PromptRuntime:
+    def resolve(
+        self,
+        *,
+        role: str,
+        variables: dict[str, Any],
+        version: int | None = None,
+        label: str | None = None,
+    ) -> RenderedPrompt:
+        ...
+
+    def attach_to_runnable_config(
+        self,
+        *,
+        ref: PromptRef,
+        config: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        ...</code></pre>
+
+        <p>Langfuse adapter 的核心逻辑可以是：</p>
+        <pre><code>prompt = langfuse.get_prompt(
+    "easysql/sql-agent-generation",
+    type="chat",
+    version=explicit_version,
+    label=label,
+    cache_ttl_seconds=60,
+    fallback=LOCAL_CHAT_PROMPT,
+)
+
+messages = list(
+    prompt.compile(
+        db_rules=db_rules,
+        sections=sections_text,
+        question=question,
+    )
+)
+
+prompt_ref = PromptRef(
+    name=prompt.name,
+    version=prompt.version,
+    labels=tuple(prompt.labels),
+    is_fallback=prompt.is_fallback,
+)</code></pre>
+
+        <p>在真正调用 LangChain LLM 时，用当前 v4 CallbackHandler 支持的 metadata 绑定 Prompt version：</p>
+        <pre><code>llm_config = dict(config or {})
+llm_config["metadata"] = {
+    **llm_config.get("metadata", {}),
+    "langfuse_prompt": exact_prompt_client,
+    "prompt_name": prompt_ref.name,
+    "prompt_version": prompt_ref.version,
+}
+
+response = await structured_llm.ainvoke(
+    messages,
+    config=llm_config,
+)</code></pre>
+
+        <div class="callout warn">
+          当前 BuildContextNode 和 GenerateSQLNode 是分开的。不要把 PromptClient 放进 context_output。
+          可以在 build_context 中保存 PromptRef 和已编译文本，在 generation 中按 PromptRef.version 从缓存重新获取精确 PromptClient；
+          或在后续重构中把最终 Prompt 编译收口到 generation module。
+        </div>
+
+        <div class="callout warn">
+          Agent Mode 与 Legacy Mode 的有效 Prompt 不相同。Agent Mode 还拼接了工具使用、强制验证和迭代规则。
+          应分别管理 easysql/sql-agent-generation 与 easysql/sql-generation，不能用同一个版本号假装它们是同一实验变量。
+        </div>
+      </section>
+
+      <section>
+        <h2>Trace：每一轮都要有稳定 ID</h2>
+        <p>
+          QueryService 当前缓存 CallbackHandler。CallbackHandler 本身保存 run map、prompt map 和 last_trace_id；
+          复用至少会让“这一轮对应哪个 trace_id”难以可靠读取。建议每轮创建新 handler，并提前生成确定性 trace_id：
+        </p>
+        <pre><code>from langfuse import get_client
+from langfuse.langchain import CallbackHandler
+
+def make_langfuse_run_config(
+    *,
+    session_id: str,
+    message_id: str,
+    thread_id: str,
+) -> tuple[dict, str]:
+    langfuse = get_client()
+    trace_id = langfuse.create_trace_id(
+        seed=f"easysql:{session_id}:{message_id}"
+    )
+    handler = CallbackHandler(trace_context={"trace_id": trace_id})
+
+    config = {
+        "configurable": {"thread_id": thread_id},
+        "callbacks": [handler],
+        "metadata": {
+            "langfuse_session_id": session_id,
+            "langfuse_tags": ["text2sql"],
+            "message_id": message_id,
+        },
+    }
+    return config, trace_id</code></pre>
+        <p>随后把 trace_id 持久化到 Turn 或 Message，这样前端 thumbs-down、SQL 编辑和人工审核都能精确回写到同一 Trace。</p>
+      </section>
+
+      <section>
+        <h2>Experiment Runner：不要通过在线 HTTP 绕一圈</h2>
+        <p>
+          建议建立 <code>easysql/eval/</code> 深模块，直接调用 graph。它的 interface 可以只有
+          <code>run(spec) → EvaluationReport</code>，内部隐藏 Langfuse Dataset、并发、Trace、SQL 沙箱、判分和报告。
+        </p>
+
+        <pre><code>from langfuse import Evaluation, RegressionError, get_client
+
+langfuse = get_client()
+dataset = langfuse.get_dataset(
+    "easysql-badcase-regression",
+    version=dataset_as_of_utc,
+)
+
+async def task(*, item, **kwargs):
+    return await eval_runner.run_case(
+        question=item.input["question"],
+        db_name=item.input["db_name"],
+        conversation_history=item.input.get("conversation_history", []),
+        prompt_name="easysql/sql-agent-generation",
+        prompt_version=candidate_prompt_version,
+    )
+
+result = dataset.run_experiment(
+    name="sql-agent-prompt-candidate",
+    run_name=f"prompt-v{candidate_prompt_version}-{git_sha[:8]}",
+    description="Candidate prompt regression on curated bad cases",
+    task=task,
+    evaluators=[text2sql_evaluator],
+    run_evaluators=[aggregate_text2sql_metrics],
+    max_concurrency=5,
+    metadata={
+        "prompt_version": str(candidate_prompt_version),
+        "model": model_name,
+        "temperature": str(temperature),
+        "retrieval_config_hash": retrieval_config_hash,
+        "git_sha": git_sha,
+        "use_agent_mode": str(use_agent_mode),
+    },
+)
+
+print(result.format(include_item_results=True))
+
+execution_accuracy = find_run_metric(result, "execution_accuracy")
+if execution_accuracy &lt; 0.90:
+    raise RegressionError(
+        result=result,
+        metric="execution_accuracy",
+        value=execution_accuracy,
+        threshold=0.90,
+    )</code></pre>
+
+        <p>
+          Langfuse Experiment runner 会自动创建 Dataset Run、追踪 task、把结果连接到 Dataset Item，并支持同步或异步 task/evaluator。
+          EasySQL 只需要让 task 返回足够完整的结构化 artifact。
+        </p>
+      </section>
+
+      <section>
+        <h2>如何根据 bad case 优化 Prompt</h2>
+        <ol>
+          <li><strong>先分类根因。</strong> WRONG_TABLE、MISSING_COLUMN 更可能是 retrieval；WRONG_JOIN、MISSING_FILTER 可能是 Prompt 或上下文；DIALECT_ERROR 可能是数据库规则；不要把所有失败都归因于 Prompt。</li>
+          <li><strong>形成最小修复假设。</strong> 例如“模型漏掉状态过滤，是因为 Prompt 没要求显式核对业务状态字段”。</li>
+          <li><strong>创建不可变候选版本。</strong> 写清 commit_message，不直接覆盖 production。</li>
+          <li><strong>先跑失败子集。</strong> 快速验证修复假设是否成立。</li>
+          <li><strong>再跑 core + regression。</strong> 确认没有广泛回归。</li>
+          <li><strong>最后跑 holdout。</strong> 防止针对已知 bad case 过拟合。</li>
+          <li><strong>通过门禁后晋级。</strong> 把 production label 移到候选 version；保留旧版本用于一键回滚。</li>
+        </ol>
+
+        <pre><code>candidate = langfuse.create_prompt(
+    name="easysql/sql-agent-generation",
+    type="chat",
+    prompt=candidate_messages,
+    labels=["candidate"],
+    config={
+        "model": model_name,
+        "temperature": 0,
+        "query_mode": "plan",
+        "use_agent_mode": True,
+    },
+    commit_message="Require explicit verification of business status filters",
+)
+
+# Experiment 必须使用 candidate.version，而不是 candidate/latest label。
+run_candidate_experiment(prompt_version=candidate.version)
+
+# 通过 core、regression、holdout 门禁后晋级。
+langfuse.update_prompt(
+    name=candidate.name,
+    version=candidate.version,
+    new_labels=["production"],
+)
+
+# 发生线上回归时，把 production label 指回旧版本。
+langfuse.update_prompt(
+    name=candidate.name,
+    version=previous_production_version,
+    new_labels=["production"],
+)</code></pre>
+      </section>
+
+      <section>
+        <h2>Bad case 与 Few-shot 的关系</h2>
+        <div class="callout good">
+          Bad case 首先是 regression case，用来防止错误再次发生；Few-shot 是运行时上下文，用来影响模型行为。二者可以有关联，但不能自动互转。
+        </div>
+        <ol>
+          <li>错误输出只进入 Trace、Score 和审核队列，不能进入 Milvus Few-shot。</li>
+          <li>审核人提供正确 SQL，样本进入 Langfuse regression dataset。</li>
+          <li>如果该正确案例具有代表性、不会泄露敏感信息、且相似检索有帮助，再通过 EasySQL 现有 /few-shot 流程加入 Milvus。</li>
+          <li>Experiment 应记录本轮实际召回了哪些 Few-shot，避免把 Prompt 改进和 Few-shot 变化混为一谈。</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>推荐实施顺序</h2>
+        <ol class="checklist">
+          <li><strong>P0：固定 SDK 主版本。</strong> 升级并约束 Langfuse v4，补 auth、callback、prompt fetch 和 experiment smoke tests。</li>
+          <li><strong>P0：稳定 Trace identity。</strong> 每轮新建 CallbackHandler，生成并持久化 trace_id。</li>
+          <li><strong>P1：建立 PromptRuntime 深模块。</strong> 先迁移最终 SQL generation/agent Prompt，保留 local fallback。</li>
+          <li><strong>P1：建立 30～50 条 golden cases。</strong> 优先覆盖真实中文业务、JOIN、过滤、聚合、时间和方言。</li>
+          <li><strong>P1：实现 EvalRunner + result-set comparator。</strong> 直接跑 graph，完整保留 retrieval、prompt、tool 和 execution artifact。</li>
+          <li><strong>P1：接 Langfuse Experiment。</strong> Dataset version + Prompt version + metadata + evaluator + run evaluator。</li>
+          <li><strong>P2：增加反馈接口和 Annotation Queue。</strong> thumbs-down、失败类别、SQL correction、审核晋级。</li>
+          <li><strong>P2：加入 CI 发布门禁。</strong> 使用 Langfuse Experiment Action 或项目自己的 RegressionError 逻辑。</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>自检：你现在应该能回答</h2>
+        <ol>
+          <li>为什么 validation_passed=True 仍可能是 bad case？</li>
+          <li>为什么 Experiment 必须固定 Prompt version，而不是读取 latest？</li>
+          <li>为什么 PromptClient 不能放进 EasySQLState？</li>
+          <li>为什么 thumbs-down 不能直接成为 golden case？</li>
+          <li>为什么修完 bad-case dataset 后还必须跑 core 和 holdout？</li>
+        </ol>
+        <p class="small">
+          如果其中任何一题不确定，可以继续问我；下一课最适合直接落地 PromptRuntime interface 和第一个可运行的 Langfuse Experiment runner。
+        </p>
+      </section>
+
+      <section>
+        <h2>主要参考资料</h2>
+        <ul>
+          <li><a href="https://langfuse.com/docs/evaluation/experiments/datasets">Langfuse Datasets</a></li>
+          <li><a href="https://langfuse.com/docs/evaluation/experiments/experiments-via-sdk">Langfuse Experiments via SDK</a></li>
+          <li><a href="https://langfuse.com/docs/prompt-management/data-model">Langfuse Prompt Management Data Model</a></li>
+          <li><a href="https://langfuse.com/docs/prompt-management/features/prompt-version-control">Langfuse Prompt Version Control</a></li>
+          <li><a href="https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues">Langfuse Annotation Queues</a></li>
+          <li><a href="https://langfuse.com/docs/observability/sdk/upgrade-path/python-v3-to-v4">Langfuse Python SDK v4 Migration</a></li>
+          <li><a href="../reference/langfuse-text2sql-eval-cheatsheet.html">配套速查表</a></li>
+        </ul>
+      </section>
+
+      <footer>Mission：为 EasySQL 建立可重复、可比较、可回滚的 Text2SQL Prompt 优化流程。</footer>
+    </main>
+  </body>
+</html>

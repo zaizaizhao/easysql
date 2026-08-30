@@ -9,15 +9,18 @@ This script tests the complete flow:
 4. Verify data in both stores
 
 Usage:
-    # 先修改下面的配置，然后运行:
-    python tests/test_e2e_pipeline.py
+    # 先修改下面的配置，然后显式启用外部基础设施测试:
+    EASYSQL_RUN_E2E=1 pytest tests/test_e2e_pipeline.py -v
 """
 
-import sys
-from pathlib import Path
+import os
 
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("EASYSQL_RUN_E2E") != "1",
+    reason="E2E pipeline test requires local PostgreSQL, Neo4j, and Milvus; set EASYSQL_RUN_E2E=1",
+)
 
 # =============================================================================
 # 🔧 修改这里的配置
@@ -48,7 +51,7 @@ MILVUS_CONFIG = {
 }
 
 
-def test_postgresql_connection():
+def _connect_postgresql():
     """Step 1: 测试 PostgreSQL 连接"""
     print("\n" + "=" * 60)
     print("Step 1: 测试 PostgreSQL 连接")
@@ -73,7 +76,7 @@ def test_postgresql_connection():
     return config
 
 
-def test_schema_extraction(db_config):
+def _extract_schema(db_config):
     """Step 2: 测试 Schema 提取"""
     print("\n" + "=" * 60)
     print("Step 2: 测试 Schema 提取")
@@ -103,7 +106,7 @@ def test_schema_extraction(db_config):
     return db_meta
 
 
-def test_neo4j_write(db_meta):
+def _write_neo4j(db_meta):
     """Step 3: 测试 Neo4j 写入"""
     print("\n" + "=" * 60)
     print("Step 3: 测试 Neo4j 写入")
@@ -154,7 +157,7 @@ def test_neo4j_write(db_meta):
         repo.close()
 
 
-def test_milvus_write(db_meta):
+def _write_milvus(db_meta):
     """Step 4: 测试 Milvus 写入"""
     print("\n" + "=" * 60)
     print("Step 4: 测试 Milvus 写入 (首次会下载 Embedding 模型，约 1.3GB)")
@@ -214,42 +217,24 @@ def test_milvus_write(db_meta):
         repo.close()
 
 
-def main():
-    """运行完整测试"""
+def test_e2e_pipeline():
+    """Run the complete extraction and indexing flow against opted-in infrastructure."""
     print("\n" + "🚀 EasySql 端到端测试" + "\n")
 
-    try:
-        # Step 1: 测试 PostgreSQL 连接
-        db_config = test_postgresql_connection()
+    # Step 1: 测试 PostgreSQL 连接
+    db_config = _connect_postgresql()
 
-        # Step 2: 提取 Schema
-        db_meta = test_schema_extraction(db_config)
+    # Step 2: 提取 Schema
+    db_meta = _extract_schema(db_config)
 
-        if not db_meta.tables:
-            print("\n⚠️  警告: 没有提取到任何表，请检查数据库配置或权限")
-            return
+    assert db_meta.tables, "没有提取到任何表，请检查数据库配置或权限"
 
-        # Step 3: 写入 Neo4j
-        test_neo4j_write(db_meta)
+    # Step 3: 写入 Neo4j
+    _write_neo4j(db_meta)
 
-        # Step 4: 写入 Milvus
-        test_milvus_write(db_meta)
+    # Step 4: 写入 Milvus
+    _write_milvus(db_meta)
 
-        print("\n" + "=" * 60)
-        print("🎉 全部测试通过!")
-        print("=" * 60)
-        print("\n后续步骤:")
-        print("  1. 访问 Neo4j Browser: http://localhost:7474")
-        print("     运行 Cypher: MATCH (n) RETURN n LIMIT 50")
-        print("  2. 使用 Milvus 语义搜索功能进行表/列检索")
-
-    except Exception as e:
-        print(f"\n❌ 测试失败: {e}")
-        import traceback
-
-        traceback.print_exc()
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+    print("\n" + "=" * 60)
+    print("🎉 全部测试通过!")
+    print("=" * 60)

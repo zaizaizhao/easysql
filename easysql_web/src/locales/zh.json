@@ -210,6 +210,7 @@
     "statsEditableFields": "可编辑配置项",
     "statsOverridden": "已覆盖配置",
     "tabs": {
+      "databases": "数据源",
       "runtime": "运行时配置",
       "sync": "同步状态",
       "overview": "系统概览"
@@ -236,6 +237,7 @@
       "between_0_1": "范围：0~1",
       "between_0_2": "范围：0~2",
       "non_empty": "不能为空",
+      "namespace": "字母、数字、下划线",
       "nullable": "可为空"
     },
     "effects": {
@@ -246,6 +248,49 @@
       "code_context_cache": "刷新代码上下文缓存",
       "callbacks": "重建回调",
       "langfuse_env": "刷新 Langfuse 环境"
+    },
+    "databases": {
+      "title": "数据库配置",
+      "add": "新增数据库",
+      "addTitle": "新增数据源",
+      "editTitle": "编辑 {{name}}",
+      "multiDbTitle": "单库与多库查询",
+      "multiDbDescription": "选择一个库时使用普通 SQL；选择多个 PostgreSQL 库时，LLM 根据问题选择主库，执行器使用已保存的数据库凭据自动建立 dblink 连接。",
+      "singleModeTitle": "当前为单库模式",
+      "singleModeDescription": "当前只选择了一个数据库，将直接执行普通 SQL，不需要也不会调用 dblink。",
+      "multiModeReadyTitle": "多库 dblink 已就绪（{{count}} 个库）",
+      "multiModeReadyDescription": "所有选中数据库都可以作为主执行库，并能通过保存的账号密码访问其余选中库。",
+      "multiModeCheckingTitle": "正在检查多库 dblink（{{count}} 个库）",
+      "multiModeCheckingDescription": "正在验证扩展、执行权限和每一条数据库间连接通路。",
+      "multiModeUnavailableTitle": "多库 dblink 不可用（{{count}} 个库）",
+      "multiModeUnavailableDescription": "至少有一个选中数据库不能作为主执行库或不能访问其他选中库，请查看状态后重新检测。",
+      "recheckDblink": "重新检测",
+      "logicalName": "逻辑库名",
+      "type": "数据库类型",
+      "systemType": "业务系统",
+      "host": "主机",
+      "port": "端口",
+      "user": "用户名",
+      "password": "密码",
+      "passwordKeep": "留空表示保留现有密码",
+      "database": "物理数据库名",
+      "schema": "默认 Schema",
+      "connection": "连接",
+      "modeStatus": "查询模式 / dblink 状态",
+      "connectionAlias": "自动连接别名",
+      "notSelected": "未纳入当前查询范围",
+      "description": "说明",
+      "actions": "操作",
+      "singleOnly": "仅单库",
+      "empty": "尚未配置数据源",
+      "nameRule": "以字母开头，仅允许字母、数字和下划线",
+      "test": "测试连接",
+      "testFailed": "连接测试失败",
+      "saveSuccess": "数据库配置已保存",
+      "saveFailed": "数据库配置保存失败",
+      "deleteConfirm": "确定删除 {{name}}？",
+      "deleteSuccess": "数据库已删除",
+      "deleteFailed": "数据库删除失败"
     },
     "fields": {
       "llm": {
@@ -280,6 +325,14 @@
         "agent_max_iterations": {
           "label": "Agent 最大迭代次数",
           "description": "限制 Agent 的最大循环次数，避免耗时过长。"
+        },
+        "agent_timeout_seconds": {
+          "label": "Agent 总超时（秒）",
+          "description": "限制单次 SQL Agent 从开始到结束的总耗时，超时后按失败处理。"
+        },
+        "query_timeout_seconds": {
+          "label": "查询总超时（秒）",
+          "description": "限制规划、检索、SQL Agent 在内的整条查询总耗时，超时或取消后按失败收口。"
         },
         "max_sql_retries": {
           "label": "SQL 最大重试次数",
@@ -331,10 +384,6 @@
           "label": "启用桥接保护",
           "description": "保护关键路径，避免跨表路径被过度裁剪。"
         },
-        "bridge_max_hops": {
-          "label": "桥接最大跳数",
-          "description": "桥接路径允许的最大跳数。"
-        },
         "core_tables": {
           "label": "核心表名单",
           "description": "逗号分隔的核心表名，优先参与上下文构建。"
@@ -350,14 +399,6 @@
         "llm_filter_model": {
           "label": "LLM 过滤模型",
           "description": "用于检索二次过滤的模型名称。"
-        },
-        "llm_api_key": {
-          "label": "检索 LLM API Key",
-          "description": "检索过滤专用的 API 凭证。"
-        },
-        "llm_api_base": {
-          "label": "检索 LLM API Base",
-          "description": "检索过滤专用的接口地址。"
         }
       },
       "few_shot": {
@@ -372,10 +413,6 @@
         "few_shot_min_similarity": {
           "label": "Few-Shot 最低相似度",
           "description": "低于该分数的示例将被过滤。"
-        },
-        "few_shot_collection_name": {
-          "label": "Few-Shot 集合名",
-          "description": "用于存储和检索示例的集合名称。"
         }
       },
       "code_context": {
@@ -501,7 +538,37 @@
     }
   },
   "database": {
-    "select": "选择数据库"
+    "select": "选择一个或多个数据库",
+    "singleSelected": "单库查询",
+    "multiSelected": "已选择 {{count}} 个数据库，将启用 dblink 多库查询",
+    "multiPostgresOnly": "dblink 多库查询只能同时选择 PostgreSQL 数据库",
+    "newSessionOnChange": "数据库范围已更改，已开始一个新会话",
+    "singleMode": "单库 SQL",
+    "singleModeDescription": "直接查询选中的数据库，无需 dblink",
+    "dblinkChecking": "检查 dblink",
+    "dblinkCheckingDescription": "正在验证选中数据库之间的实际 dblink 通路",
+    "dblinkReady": "多库 dblink 就绪",
+    "dblinkReadyDescription": "所有选中数据库都可作为主库，并能连接其他选中库",
+    "dblinkUnavailable": "dblink 不可用",
+    "dblinkUnavailableDescription": "至少有一条选中数据库间的 dblink 通路不可用",
+    "routesReady": "条通路就绪",
+    "statusReason": {
+      "ready": "就绪",
+      "single_database": "单库模式无需 dblink",
+      "multi_requires_postgresql": "多库 dblink 只支持 PostgreSQL",
+      "primary_connection_failed": "主库连接失败",
+      "extension_missing": "未安装 dblink 扩展",
+      "connect_permission_missing": "当前账号无权调用 dblink_connect",
+      "password_authentication_failed": "远端账号或密码错误",
+      "password_authentication_required": "远端没有使用密码认证",
+      "host_not_found": "无法解析远端主机",
+      "connection_refused": "远端拒绝连接",
+      "connection_timeout": "远端连接超时",
+      "permission_denied": "权限不足",
+      "remote_database_mismatch": "连接到的物理数据库与配置不一致",
+      "remote_query_failed": "远端探测查询失败",
+      "remote_connection_failed": "远端连接失败"
+    }
   },
   "session": {
     "empty": "暂无会话",

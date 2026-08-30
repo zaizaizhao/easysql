@@ -9,7 +9,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ExecuteStatus(str, Enum):
@@ -33,13 +33,37 @@ class ExecuteRequest(BaseModel):
     """
 
     sql: str = Field(..., min_length=1, max_length=50000, description="SQL query to execute")
-    db_name: str = Field(..., min_length=1, description="Target database name")
+    db_name: str | None = Field(default=None, min_length=1, description="Legacy target database")
+    db_names: list[str] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=20,
+        description="Databases selected for this SQL",
+    )
+    primary_db: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Database on which the SQL is executed",
+    )
     limit: int = Field(default=1000, ge=1, le=10000, description="Max rows to return")
     timeout: int = Field(default=30, ge=1, le=300, description="Query timeout in seconds")
     allow_mutation: bool = Field(
         default=False,
         description="Allow mutation statements (INSERT/UPDATE/DELETE). Disabled by default for safety.",
     )
+
+    @model_validator(mode="after")
+    def validate_database_scope(self) -> ExecuteRequest:
+        primary = self.primary_db or self.db_name
+        names = self.db_names or ([primary] if primary else [])
+        if not primary:
+            raise ValueError("primary_db or db_name is required")
+        if primary.lower() not in {name.lower() for name in names}:
+            raise ValueError("primary_db must be included in db_names")
+        self.primary_db = primary
+        self.db_name = primary
+        self.db_names = names
+        return self
 
 
 class ExecuteResponse(BaseModel):
@@ -64,6 +88,8 @@ class ExecuteResponse(BaseModel):
     execution_time_ms: float | None = None
     truncated: bool = False
     error: str | None = None
+    db_names: list[str] = Field(default_factory=list)
+    primary_db: str | None = None
 
 
 class SqlCheckResult(BaseModel):

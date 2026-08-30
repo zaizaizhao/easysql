@@ -146,6 +146,12 @@
   flex-wrap: wrap;
 }
 
+.database-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+}
+
 @media (max-width: 980px) {
   .settings-hero-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -158,6 +164,10 @@
 
   .settings-field-meta {
     justify-content: flex-start;
+  }
+
+  .database-form-grid {
+    grid-template-columns: 1fr;
   }
 }
 

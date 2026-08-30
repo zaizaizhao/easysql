@@ -13,28 +13,6 @@ from pydantic import Field
 from easysql.models.base import BaseModel
 
 
-class DataType(str, Enum):
-    """Common database data types."""
-
-    VARCHAR = "varchar"
-    CHAR = "char"
-    TEXT = "text"
-    INT = "int"
-    BIGINT = "bigint"
-    SMALLINT = "smallint"
-    DECIMAL = "decimal"
-    FLOAT = "float"
-    DOUBLE = "double"
-    BOOLEAN = "boolean"
-    DATE = "date"
-    TIME = "time"
-    DATETIME = "datetime"
-    TIMESTAMP = "timestamp"
-    JSON = "json"
-    BLOB = "blob"
-    OTHER = "other"
-
-
 class DatabaseType(str, Enum):
     """Supported database types."""
 

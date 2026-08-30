@@ -11,6 +11,8 @@ from easysql_api.models.turn import TurnInfo
 class SessionInfo(BaseModel):
     session_id: str
     db_name: str | None = None
+    db_names: list[str] = Field(default_factory=list)
+    primary_db: str | None = None
     status: str
     created_at: datetime
     updated_at: datetime
@@ -26,6 +28,8 @@ class SessionList(BaseModel):
 class SessionDetail(BaseModel):
     session_id: str
     db_name: str | None = None
+    db_names: list[str] = Field(default_factory=list)
+    primary_db: str | None = None
     status: str
     created_at: datetime
     updated_at: datetime

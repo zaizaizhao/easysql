@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prometheus × Langfuse：指标监控与 LLM 可观测性</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="eyebrow">Lesson 0003 · EasySQL / 多部门文档审核</div>
+        <h1>Prometheus 是做什么的？它和 Langfuse 有什么区别？</h1>
+        <p class="lead">
+          Prometheus 负责回答“系统整体现在是否健康、趋势是否异常、要不要报警”；
+          Langfuse 负责回答“具体哪次 LLM 请求出了问题、用了哪个 Prompt、模型为何产生这个结果”。
+          两者观察的是同一个系统的不同层次，不是替代关系。
+        </p>
+        <p class="small">文档核实日期：2026-07-25。内容依据当前 Prometheus 与 Langfuse 官方文档。</p>
+      </header>
+
+      <section>
+        <h2>一句话建立正确心智模型</h2>
+        <div class="grid">
+          <div class="card term">
+            <h3>Prometheus：数字趋势</h3>
+            <p>
+              定时采集带标签的数值时间序列，用 PromQL 聚合，用规则触发告警。
+              典型问题是错误率、吞吐量、P95 延迟、CPU、连接池和队列深度。
+            </p>
+          </div>
+          <div class="card term">
+            <h3>Langfuse：单次 LLM 执行</h3>
+            <p>
+              保存 Trace、Observation、Generation、Prompt、输入输出、Token、成本和 Score。
+              典型问题是某次审核用了哪个 Prompt，在哪个步骤失败，输出为什么不合格。
+            </p>
+          </div>
+          <div class="card term">
+            <h3>OpenTelemetry：共同管道</h3>
+            <p>
+              标准化产生和传输 traces、metrics、logs。它可以把指标送往 Prometheus 体系，
+              把 LLM Trace 送往 Langfuse，但自身不是最终分析后端。
+            </p>
+          </div>
+        </div>
+        <p class="formula">Prometheus 发现“面上异常” · Langfuse下钻“点上原因” · Trace ID 负责把两层关联起来</p>
+      </section>
+
+      <section>
+        <h2>Prometheus 在一般工程中怎样工作</h2>
+        <div class="pipeline" aria-label="Prometheus 采集、存储、查询和告警流程">
+          <div class="pipeline-node">应用 / Exporter<br /><span class="small">暴露 /metrics</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-node accent">Prometheus Server<br /><span class="small">定时 scrape</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-node accent">本地时序数据库<br /><span class="small">数值 + 时间戳 + Labels</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="branch">
+            <div class="pipeline-node good">PromQL / Grafana</div>
+            <div class="pipeline-node good">Rules / Alertmanager</div>
+          </div>
+        </div>
+        <ol>
+          <li>应用或 exporter 在 HTTP <code>/metrics</code> 暴露当前指标。</li>
+          <li>Prometheus 按固定周期主动拉取这些指标，并写入时间序列数据库。</li>
+          <li>PromQL 对窗口内的序列做速率、比例、分位数和多维聚合。</li>
+          <li>Grafana 通常用来画大盘；Prometheus 规则发现异常后将告警交给 Alertmanager 路由。</li>
+        </ol>
+        <div class="callout good">
+          <strong>它尤其适合值班与 SRE 场景。</strong>
+          例如“最近 5 分钟审核错误率是否超过 5%”“某部门队列是否堆积”“P95 响应是否超过 60 秒”。
+        </div>
+      </section>
+
+      <section>
+        <h2>工程中最常见的四类指标</h2>
+        <table>
+          <thead>
+            <tr><th>类型</th><th>含义</th><th>文档审核示例</th><th>常见查询方式</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Counter</td>
+              <td>只增加或重置的累计值</td>
+              <td><code>document_review_requests_total</code>、<code>llm_tokens_total</code></td>
+              <td>对它使用 <code>rate()</code> 求每秒速率</td>
+            </tr>
+            <tr>
+              <td>Gauge</td>
+              <td>可以上升也可以下降的当前值</td>
+              <td><code>document_review_queue_depth</code>、<code>active_review_jobs</code></td>
+              <td>当前值、最大值、平均值</td>
+            </tr>
+            <tr>
+              <td>Histogram</td>
+              <td>将观测值分桶，保留 count 与 sum</td>
+              <td><code>document_review_duration_seconds</code>、<code>llm_request_duration_seconds</code></td>
+              <td>跨实例聚合后计算 P95 / P99</td>
+            </tr>
+            <tr>
+              <td>Summary</td>
+              <td>客户端计算滑动窗口分位数</td>
+              <td>少数客户端本地延迟统计</td>
+              <td>分位数通常不适合跨实例直接聚合</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          Web 服务最基本的一组信号经常概括为
+          <span class="pill">Rate</span>
+          <span class="pill">Errors</span>
+          <span class="pill">Duration</span>；
+          再补上资源饱和度、队列积压和依赖健康度。
+        </p>
+      </section>
+
+      <section>
+        <h2>Prometheus 和 Langfuse 的核心区别</h2>
+        <table>
+          <thead><tr><th>维度</th><th>Prometheus</th><th>Langfuse</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>基本数据单元</td>
+              <td>一个数值时间序列样本</td>
+              <td>Trace / Observation / Generation / Score</td>
+            </tr>
+            <tr>
+              <td>主要问题</td>
+              <td>整体是否异常？何时开始？影响多大？</td>
+              <td>具体请求做了什么？Prompt 和输出是什么？为什么失败？</td>
+            </tr>
+            <tr>
+              <td>数据内容</td>
+              <td>数值、时间戳和低基数 labels</td>
+              <td>调用树、输入输出、模型、Token、成本、Prompt version、元数据</td>
+            </tr>
+            <tr>
+              <td>查询与呈现</td>
+              <td>PromQL、recording rules、Grafana</td>
+              <td>Langfuse UI、Public API、Metrics API</td>
+            </tr>
+            <tr>
+              <td>告警</td>
+              <td>成熟的规则评估和 Alertmanager 生态</td>
+              <td>重点是 LLM 追踪、评测、人工标注和质量分析</td>
+            </tr>
+            <tr>
+              <td>Prompt 生命周期</td>
+              <td>不管理 Prompt</td>
+              <td>Prompt 版本、labels、trace 关联和实验对比</td>
+            </tr>
+            <tr>
+              <td>质量评测</td>
+              <td>可保存聚合后的业务指标，但不了解评测语义</td>
+              <td>Score、Dataset、Experiment、人工/模型评测</td>
+            </tr>
+            <tr>
+              <td>高基数明细</td>
+              <td>应避免；会造成时间序列爆炸</td>
+              <td>Trace ID、Session ID、请求元数据是其正常查询维度</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>你的多部门文档审核项目：数据应该怎样分工</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>放进 Prometheus</h3>
+            <ul>
+              <li>每秒审核请求数、成功数、失败数</li>
+              <li>端到端和 LLM 调用 P50 / P95 / P99 延迟</li>
+              <li>待审核队列深度、运行中任务数、worker 饱和度</li>
+              <li>API、数据库、OCR、向量库错误率</li>
+              <li>CPU、内存、磁盘、连接池和进程存活</li>
+              <li>按模型聚合的 Token 速率或预算消耗趋势</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>放进 Langfuse</h3>
+            <ul>
+              <li>某次文档审核的完整调用树</li>
+              <li>使用的 Prompt 名称、版本和实际编译结果</li>
+              <li>LLM 输入输出、模型、Token 与成本</li>
+              <li>检索、规则检查、生成、复核各步骤耗时</li>
+              <li>审核正确率、完整性、风险漏检等 Score</li>
+              <li>bad case、人工纠正、Dataset 与 Experiment</li>
+            </ul>
+          </div>
+        </div>
+        <pre><code># Counter：department 和 result 都是有限枚举
+document_review_requests_total{
+  department="finance",
+  result="success"
+} 18352
+
+# Gauge：当前队列深度
+document_review_queue_depth{department="legal"} 47
+
+# Histogram：客户端会产生 _bucket、_sum、_count 序列
+document_review_duration_seconds_bucket{
+  department="legal",
+  le="30"
+} 912</code></pre>
+      </section>
+
+      <section>
+        <h2>三个真正有用的 PromQL 示例</h2>
+        <h3>1. 最近 5 分钟各部门每秒审核量</h3>
+        <pre><code>sum by (department) (
+  rate(document_review_requests_total[5m])
+)</code></pre>
+
+        <h3>2. 最近 5 分钟各部门错误率</h3>
+        <pre><code>sum by (department) (
+  rate(document_review_requests_total{result="error"}[5m])
+)
+/
+sum by (department) (
+  rate(document_review_requests_total[5m])
+)</code></pre>
+
+        <h3>3. 各部门审核 P95 延迟</h3>
+        <pre><code>histogram_quantile(
+  0.95,
+  sum by (department, le) (
+    rate(document_review_duration_seconds_bucket[5m])
+  )
+)</code></pre>
+        <p class="small">
+          Histogram bucket 要按 <code>le</code> 保留后再传给
+          <code>histogram_quantile()</code>；实际 bucket 边界应按你的审核时长分布配置。
+        </p>
+      </section>
+
+      <section>
+        <h2>最重要的坑：不要把请求 ID 做成 Prometheus Label</h2>
+        <p>
+          Prometheus 中“指标名 + 全部 label 值”唯一确定一条时间序列。
+          每个新 document ID 或 trace ID 都会创建新序列；这会快速放大内存、磁盘和查询成本。
+        </p>
+        <table>
+          <thead><tr><th>适合做 label</th><th>不要做 label</th><th>明细应该放哪里</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>有限的 <code>department</code>、<code>environment</code>、<code>route</code></td>
+              <td><code>trace_id</code>、<code>request_id</code>、<code>session_id</code></td>
+              <td>Langfuse Trace metadata 或日志</td>
+            </tr>
+            <tr>
+              <td><code>status</code>、<code>provider</code>、有限模型名</td>
+              <td><code>document_id</code>、用户名、邮箱、文件名</td>
+              <td>业务数据库或受控 Trace 元数据</td>
+            </tr>
+            <tr>
+              <td>受控错误码，例如 <code>timeout</code>、<code>rate_limit</code></td>
+              <td>完整错误文本、Prompt、文档正文、模型输出</td>
+              <td>脱敏后的 Langfuse / 日志系统</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="callout bad">
+          <strong>安全与性能是同一个结论：</strong>
+          文档正文、Prompt、模型输出和身份信息都不应进入 Prometheus labels。
+          即使写入 Langfuse，也要先做权限隔离、数据最小化与脱敏。
+        </div>
+      </section>
+
+      <section>
+        <h2>Prometheus 发现告警后，怎样跳到 Langfuse</h2>
+        <div class="pipeline" aria-label="Prometheus 与 Langfuse 的关联方式">
+          <div class="pipeline-node">一次文档审核<br /><span class="small">当前 OTel Context</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="branch">
+            <div class="pipeline-node accent">Histogram + Exemplar<br /><span class="small">附加 trace_id</span></div>
+            <div class="pipeline-node accent">Langfuse Trace<br /><span class="small">相同 trace_id</span></div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="branch">
+            <div class="pipeline-node good">Grafana 告警 / 图表</div>
+            <div class="pipeline-node good">Langfuse 请求明细</div>
+          </div>
+        </div>
+        <p>
+          正确做法是使用 <strong>exemplar</strong>：它给某个 Histogram 样本附加一个代表性
+          <code>trace_id</code>，Grafana 等前端可以从延迟尖峰跳到具体 Trace。
+          它不会像普通 label 那样为每个 trace ID 建立永久时间序列。
+        </p>
+        <div class="callout warn">
+          Exemplar 只提供“代表性样本”，不是每次请求的精确索引。
+          精确逐请求审计仍应查询 Langfuse、日志或业务数据库。
+        </div>
+      </section>
+
+      <section>
+        <h2>推荐的联合架构</h2>
+        <div class="pipeline" aria-label="文档审核联合可观测性架构">
+          <div class="pipeline-node">FastAPI / Worker<br /><span class="small">文档审核服务</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="branch">
+            <div class="pipeline-node accent">/metrics 或 OTel Metrics</div>
+            <div class="pipeline-node accent">Langfuse / OTel Trace</div>
+            <div class="pipeline-node accent">结构化 Logs</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="branch">
+            <div class="pipeline-node good">Prometheus + Grafana</div>
+            <div class="pipeline-node good">部门对应 Langfuse Project</div>
+            <div class="pipeline-node good">Loki / ELK</div>
+          </div>
+        </div>
+        <ul>
+          <li>最简单的实现：应用直接暴露 <code>/metrics</code> 给 Prometheus 拉取；Langfuse SDK 单独发送 LLM Trace。</li>
+          <li>服务较多时：让 OpenTelemetry Collector 统一接收、过滤、批处理和路由，但指标与 Trace 仍进入各自后端。</li>
+          <li>多部门 Langfuse Project 的选择仍由认证后的部门上下文决定；Prometheus 可以用有限的 <code>department</code> label 做聚合。</li>
+          <li>Project Secret Key 只存在于服务端 client/exporter 配置，不能放进 metric、label、trace attribute 或 baggage。</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Langfuse 也有 Metrics，为什么还要 Prometheus？</h2>
+        <p>
+          Langfuse 的 Metrics API 可以从已经采集的 Observation 和 Score 中聚合成本、Token、
+          延迟、调用量和质量分数；所以“LLM 成本趋势”“某 Prompt version 的平均 Score”
+          可以直接在 Langfuse 分析。
+        </p>
+        <p>
+          但它不是 Prometheus 的通用替代品：官方 Metrics API 是针对 Langfuse 数据模型的分析接口，
+          而 Prometheus 提供通用时间序列采集、PromQL、recording/alerting rules，以及覆盖主机、
+          容器、数据库、队列和任意服务的 exporter 生态。
+        </p>
+        <table>
+          <thead><tr><th>你要问的问题</th><th>优先工具</th></tr></thead>
+          <tbody>
+            <tr><td>LLM 调用量、Token、成本、延迟是否按天上涨？</td><td>两者都能聚合；Langfuse 上下文更丰富</td></tr>
+            <tr><td>Prompt v12 是否比 v11 的完整性 Score 更好？</td><td>Langfuse</td></tr>
+            <tr><td>API P95、数据库连接池、CPU 和队列是否异常？</td><td>Prometheus</td></tr>
+            <tr><td>凌晨错误率超过 5% 时通知值班群？</td><td>Prometheus rules + Alertmanager</td></tr>
+            <tr><td>某次审核为什么错误、输入输出是什么？</td><td>Langfuse</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h2>边界：Prometheus 不适合做什么</h2>
+        <ul>
+          <li>不适合保存 Prompt、文档正文、完整异常栈或逐请求业务对象。</li>
+          <li>不适合依赖无限基数 labels 做逐用户、逐文档、逐 Trace 查询。</li>
+          <li>不保证每个事件都适合作为精确账单或法务审计记录；Prometheus 官方也不建议把它用于要求 100% 准确性的逐请求计费。</li>
+          <li>它不是日志系统，也不是完整的分布式 Trace 后端；通用日志可用 Loki/ELK，通用 Trace 可用 Tempo/Jaeger。</li>
+        </ul>
+      </section>
+
+      <section class="quiz">
+        <h2>30 秒自测</h2>
+        <details>
+          <summary>1. Prometheus 已发现“法务部 P95 审核耗时升到 90 秒”，下一步去哪找原因？</summary>
+          <p>用 exemplar 或共享 trace ID 下钻 Langfuse，查看具体请求的 OCR、检索、LLM 和复核步骤，以及 Prompt、模型和输出。</p>
+        </details>
+        <details>
+          <summary>2. 为什么不能把 document_id 放进 Prometheus label？</summary>
+          <p>每个不同 label 组合都会创建新时间序列；逐文档 ID 会导致高基数和序列爆炸。它应进入 Langfuse metadata、日志或业务数据库。</p>
+        </details>
+        <details>
+          <summary>3. Langfuse 有 Metrics API 后，Prometheus 是否多余？</summary>
+          <p>不多余。Langfuse 聚合其 LLM Trace 与 Score；Prometheus 负责整个工程的通用指标采集、PromQL、告警和基础设施生态。</p>
+        </details>
+        <details>
+          <summary>4. 多部门场景能否把 department 做成 label？</summary>
+          <p>如果部门来自服务端认证上下文且数量有限、稳定，通常可以；不要接受任意用户输入，也不要把部门名称扩展成无限动态值。</p>
+        </details>
+      </section>
+
+      <section>
+        <h2>官方资料</h2>
+        <ol>
+          <li><a href="https://prometheus.io/docs/introduction/overview/">Prometheus 官方：Overview</a></li>
+          <li><a href="https://prometheus.io/docs/concepts/metric_types/">Prometheus 官方：Metric types</a></li>
+          <li><a href="https://prometheus.io/docs/practices/instrumentation/">Prometheus 官方：Instrumentation</a></li>
+          <li><a href="https://prometheus.io/docs/practices/naming/">Prometheus 官方：Metric and label naming</a></li>
+          <li><a href="https://prometheus.io/docs/prometheus/latest/feature_flags/#exemplars-storage">Prometheus 官方：Exemplars storage</a></li>
+          <li><a href="https://langfuse.com/docs/metrics/features/metrics-api">Langfuse 官方：Metrics API</a></li>
+          <li><a href="https://langfuse.com/docs/api-and-data-platform/features/observations-api">Langfuse 官方：Observations API</a></li>
+          <li><a href="https://langfuse.com/docs/evaluation/scores/overview">Langfuse 官方：Scores</a></li>
+          <li><a href="https://langfuse.com/docs/administration/rbac">Langfuse 官方：Projects 与 RBAC</a></li>
+        </ol>
+        <p>
+          快速复习时打开
+          <a href="../reference/prometheus-langfuse-cheatsheet.html">Prometheus × Langfuse 速查表</a>。
+        </p>
+      </section>
+
+      <footer>
+        上一课：<a href="./0002-langfuse-opentelemetry-interoperability.html">Langfuse × OpenTelemetry：从 Trace 到多平台观测</a> ·
+        参考：<a href="../reference/langfuse-opentelemetry-cheatsheet.html">Langfuse × OpenTelemetry 速查表</a>
+      </footer>
+    </main>
+  </body>
+</html>

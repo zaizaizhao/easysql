@@ -2,6 +2,11 @@ export { useStreamQuery } from './useStreamQuery';
 export { useSessions, useSessionDetail, useDeleteSession } from './useSessions';
 export {
   useDatabases,
+  useManagedDatabases,
+  useFederationStatus,
+  useReplaceManagedDatabases,
+  useDeleteManagedDatabase,
+  useTestManagedDatabase,
   useConfig,
   useConfigOverrides,
   useEditableConfig,

@@ -6,6 +6,9 @@ delegating to the configured provider (local or API-based).
 Maintains backward compatibility with the original EmbeddingService API.
 """
 
+from collections import OrderedDict
+from hashlib import sha256
+from threading import RLock
 from typing import TYPE_CHECKING
 
 from easysql.utils.logger import get_logger
@@ -37,14 +40,23 @@ class EmbeddingService:
         service = EmbeddingService.create_local(model_name="BAAI/bge-large-zh-v1.5")
     """
 
-    def __init__(self, provider: BaseEmbeddingProvider):
+    def __init__(
+        self,
+        provider: BaseEmbeddingProvider,
+        query_cache_size: int = 256,
+    ):
         """
         Initialize with a specific provider.
 
         Args:
-            provider: Concrete implementation of BaseEmbeddingProvider
+            provider: Concrete implementation of BaseEmbeddingProvider.
+            query_cache_size: Maximum number of single-text embeddings cached in
+                this service. Batch encoding intentionally bypasses this cache.
         """
         self._provider = provider
+        self._query_cache_size = max(0, query_cache_size)
+        self._query_cache: OrderedDict[bytes, tuple[float, ...]] = OrderedDict()
+        self._query_cache_lock = RLock()
 
     @classmethod
     def from_settings(cls, settings: "Settings | None" = None) -> "EmbeddingService":
@@ -92,7 +104,30 @@ class EmbeddingService:
         return self._provider.dimension
 
     def encode(self, text: str) -> list[float]:
-        return self._provider.encode(text)
+        if self._query_cache_size == 0:
+            return self._provider.encode(text)
+
+        cache_key = sha256(text.encode("utf-8")).digest()
+        with self._query_cache_lock:
+            cached = self._query_cache.get(cache_key)
+            if cached is not None:
+                self._query_cache.move_to_end(cache_key)
+                return list(cached)
+
+        embedding = tuple(self._provider.encode(text))
+
+        with self._query_cache_lock:
+            # Another request may have populated the same key while this one was
+            # encoding. Keep the first completed value and return a defensive copy.
+            cached = self._query_cache.get(cache_key)
+            if cached is None:
+                self._query_cache[cache_key] = embedding
+                self._query_cache.move_to_end(cache_key)
+                while len(self._query_cache) > self._query_cache_size:
+                    self._query_cache.popitem(last=False)
+                cached = embedding
+
+        return list(cached)
 
     def encode_batch(
         self,
@@ -101,6 +136,11 @@ class EmbeddingService:
         show_progress: bool = False,
     ) -> list[list[float]]:
         return self._provider.encode_batch(texts, batch_size, show_progress)
+
+    def clear_query_cache(self) -> None:
+        """Clear cached single-text embeddings."""
+        with self._query_cache_lock:
+            self._query_cache.clear()
 
     def compute_similarity(self, text1: str, text2: str) -> float:
         """Compute cosine similarity between two texts."""

@@ -21,10 +21,20 @@ class FilterContext:
     """Database name for isolation (optional)."""
 
     original_tables: list[str] = field(default_factory=list)
-    """Tables from original Milvus search (should not be filtered out)."""
+    """Tables from original Milvus search. Immutable provenance record —
+    filters must never modify this list."""
+
+    must_keep: set[str] = field(default_factory=set)
+    """Tables protected from removal (original recall, bridge tables, core
+    tables). Filters that add protection (e.g. BridgeFilter) register tables
+    here instead of rewriting ``original_tables``."""
 
     table_scores: dict[str, float] = field(default_factory=dict)
     """Semantic similarity scores for each table."""
+
+    table_provenance: dict[str, str] = field(default_factory=dict)
+    """Where each candidate came from: vector_recall / schema_hint /
+    fk_expansion / bridge / direct_neighbor / fk_target."""
 
     table_metadata: dict[str, dict[str, Any]] = field(default_factory=dict)
     """Additional metadata for tables (chinese_name, description, etc.)."""

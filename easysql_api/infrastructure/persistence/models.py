@@ -30,6 +30,8 @@ class SessionModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     db_name: Mapped[str | None] = mapped_column(String(100))
+    db_names: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
+    primary_db: Mapped[str | None] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -44,10 +46,10 @@ class SessionModel(Base):
     state: Mapped[dict | None] = mapped_column(JSONB)
     title: Mapped[str | None] = mapped_column(Text)
 
-    turns: Mapped[list["TurnModel"]] = relationship(
+    turns: Mapped[list[TurnModel]] = relationship(
         back_populates="session", cascade="all, delete-orphan", order_by="TurnModel.position"
     )
-    messages: Mapped[list["MessageModel"]] = relationship(
+    messages: Mapped[list[MessageModel]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
 
@@ -104,6 +106,7 @@ class TurnModel(Base):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     final_sql: Mapped[str | None] = mapped_column(Text)
+    primary_db: Mapped[str | None] = mapped_column(String(100))
     validation_passed: Mapped[bool | None] = mapped_column(Boolean)
     error: Mapped[str | None] = mapped_column(Text)
     chart_plan: Mapped[dict | None] = mapped_column(JSONB)
@@ -113,8 +116,8 @@ class TurnModel(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    session: Mapped["SessionModel"] = relationship(back_populates="turns")
-    clarifications: Mapped[list["ClarificationModel"]] = relationship(
+    session: Mapped[SessionModel] = relationship(back_populates="turns")
+    clarifications: Mapped[list[ClarificationModel]] = relationship(
         back_populates="turn", cascade="all, delete-orphan", order_by="ClarificationModel.position"
     )
 
@@ -137,7 +140,7 @@ class ClarificationModel(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    turn: Mapped["TurnModel"] = relationship(back_populates="clarifications")
+    turn: Mapped[TurnModel] = relationship(back_populates="clarifications")
 
 
 class FewShotMetaModel(Base):

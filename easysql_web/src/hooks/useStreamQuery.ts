@@ -60,7 +60,7 @@ export function useStreamQuery() {
     messages,
   } = useChatStore();
   
-  const { currentDatabase } = useAppStore();
+  const { currentDatabase, selectedDatabases } = useAppStore();
 
   const sendQuery = useCallback(async (question: string) => {
     if (isLoading) return;
@@ -90,6 +90,7 @@ export function useStreamQuery() {
         { 
           question, 
           db_name: currentDatabase || undefined,
+          db_names: selectedDatabases.length > 0 ? selectedDatabases : undefined,
           session_id: sessionId || undefined,
         }
       );
@@ -102,7 +103,16 @@ export function useStreamQuery() {
       setError(errorMessage);
       setIsLoading(false);
     }
-  }, [isLoading, currentDatabase, sessionId, addMessage, handleStreamEvent, setIsLoading, setError]);
+  }, [
+    isLoading,
+    currentDatabase,
+    selectedDatabases,
+    sessionId,
+    addMessage,
+    handleStreamEvent,
+    setIsLoading,
+    setError,
+  ]);
 
   const continueStream = useCallback(async (answer: string) => {
     if (isLoading || !sessionId) return;

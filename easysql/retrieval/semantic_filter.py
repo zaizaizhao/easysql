@@ -58,15 +58,15 @@ class SemanticFilter(TableFilter):
                 tables=tables, stats={"action": "skipped", "reason": "no scores available"}
             )
 
-        original_set = set(context.original_tables)
+        protected_set = set(context.original_tables) | context.must_keep
 
         # Categorize tables
         must_keep = []
         candidates = []
 
         for table in tables:
-            # Original tables and core tables are always kept
-            if table in original_set or table in self._core_tables:
+            # Original, protected, and core tables are always kept
+            if table in protected_set or table in self._core_tables:
                 must_keep.append(table)
             else:
                 score = context.table_scores.get(table, 0)

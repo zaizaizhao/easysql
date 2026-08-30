@@ -36,7 +36,7 @@ def get_milvus_repository() -> MilvusRepository:
     return MilvusRepository(
         uri=settings.milvus_uri,
         token=settings.milvus_token,
-        collection_prefix=settings.milvus_collection_prefix,
+        collection_prefix=settings.project_namespace,
     )
 
 
@@ -48,7 +48,6 @@ def get_few_shot_writer(
     return FewShotWriter(
         repository=repo,
         embedding_service=embedding_service,
-        collection_name=settings.few_shot_collection_name,
     )
 
 
@@ -60,7 +59,6 @@ def get_few_shot_reader(
     return FewShotReader(
         repository=repo,
         embedding_service=embedding_service,
-        collection_name=settings.few_shot_collection_name,
     )
 
 

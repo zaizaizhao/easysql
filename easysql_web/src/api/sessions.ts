@@ -15,10 +15,14 @@ const LLM_TIMEOUT = 120000;
 
 export interface CreateSessionRequest {
   db_name?: string;
+  db_names?: string[];
 }
 
-export async function createSession(dbName?: string): Promise<SessionInfo> {
-  const response = await apiClient.post<SessionInfo>('/sessions', { db_name: dbName });
+export async function createSession(dbName?: string, dbNames?: string[]): Promise<SessionInfo> {
+  const response = await apiClient.post<SessionInfo>('/sessions', {
+    db_name: dbName,
+    db_names: dbNames,
+  });
   return response.data;
 }
 

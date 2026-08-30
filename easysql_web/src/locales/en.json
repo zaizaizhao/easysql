@@ -208,6 +208,7 @@
     "statsEditableFields": "Editable Config Items",
     "statsOverridden": "Overridden Items",
     "tabs": {
+      "databases": "Data Sources",
       "runtime": "Runtime Config",
       "sync": "Sync Status",
       "overview": "System Overview"
@@ -234,6 +235,7 @@
       "between_0_1": "Range: 0~1",
       "between_0_2": "Range: 0~2",
       "non_empty": "Non-empty",
+      "namespace": "Letters, numbers, and underscores",
       "nullable": "Nullable"
     },
     "effects": {
@@ -244,6 +246,49 @@
       "code_context_cache": "Refresh code-context cache",
       "callbacks": "Rebuild callbacks",
       "langfuse_env": "Refresh Langfuse env"
+    },
+    "databases": {
+      "title": "Database Configuration",
+      "add": "Add Database",
+      "addTitle": "Add Data Source",
+      "editTitle": "Edit {{name}}",
+      "multiDbTitle": "Single and multi-database queries",
+      "multiDbDescription": "Selecting one database uses normal SQL. With multiple PostgreSQL databases, the LLM chooses a primary database and the executor opens dblink connections from the saved credentials.",
+      "singleModeTitle": "Single-database mode",
+      "singleModeDescription": "Only one database is selected. EasySQL runs normal SQL directly and does not invoke dblink.",
+      "multiModeReadyTitle": "Multi-database dblink ready ({{count}} databases)",
+      "multiModeReadyDescription": "Every selected database can be the primary executor and can reach every other selected database with the saved credentials.",
+      "multiModeCheckingTitle": "Checking multi-database dblink ({{count}} databases)",
+      "multiModeCheckingDescription": "Checking the extension, execution permission, and every database-to-database route.",
+      "multiModeUnavailableTitle": "Multi-database dblink unavailable ({{count}} databases)",
+      "multiModeUnavailableDescription": "At least one selected database cannot be the primary executor or cannot reach another selected database. Review the status and check again.",
+      "recheckDblink": "Check again",
+      "logicalName": "Logical Name",
+      "type": "Database Type",
+      "systemType": "Business System",
+      "host": "Host",
+      "port": "Port",
+      "user": "User",
+      "password": "Password",
+      "passwordKeep": "Leave blank to keep the existing password",
+      "database": "Physical Database",
+      "schema": "Default Schema",
+      "connection": "Connection",
+      "modeStatus": "Query Mode / dblink Status",
+      "connectionAlias": "Automatic connection alias",
+      "notSelected": "Not in the current query scope",
+      "description": "Description",
+      "actions": "Actions",
+      "singleOnly": "Single DB only",
+      "empty": "No data sources configured",
+      "nameRule": "Start with a letter; use letters, numbers, and underscores only",
+      "test": "Test Connection",
+      "testFailed": "Connection test failed",
+      "saveSuccess": "Database configuration saved",
+      "saveFailed": "Failed to save database configuration",
+      "deleteConfirm": "Delete {{name}}?",
+      "deleteSuccess": "Database deleted",
+      "deleteFailed": "Failed to delete database"
     },
     "fields": {
       "llm": {
@@ -278,6 +323,14 @@
         "agent_max_iterations": {
           "label": "Agent Max Iterations",
           "description": "Upper bound of Agent loop iterations."
+        },
+        "agent_timeout_seconds": {
+          "label": "Agent Total Timeout (seconds)",
+          "description": "Wall-clock limit for one SQL Agent execution; timeout is reported as failure."
+        },
+        "query_timeout_seconds": {
+          "label": "Query Total Timeout (seconds)",
+          "description": "End-to-end limit covering planning, retrieval, and SQL Agent; timeout or cancellation fails closed."
         },
         "max_sql_retries": {
           "label": "Max SQL Retries",
@@ -329,10 +382,6 @@
           "label": "Enable Bridge Protection",
           "description": "Protects bridge paths from being over-pruned."
         },
-        "bridge_max_hops": {
-          "label": "Bridge Max Hops",
-          "description": "Maximum hop distance for bridge traversal."
-        },
         "core_tables": {
           "label": "Core Tables",
           "description": "Comma-separated table names prioritized in context building."
@@ -348,14 +397,6 @@
         "llm_filter_model": {
           "label": "LLM Filter Model",
           "description": "Model name used for retrieval-stage filtering."
-        },
-        "llm_api_key": {
-          "label": "Retrieval LLM API Key",
-          "description": "Credential used by retrieval LLM filtering."
-        },
-        "llm_api_base": {
-          "label": "Retrieval LLM API Base",
-          "description": "API base URL used by retrieval LLM filtering."
         }
       },
       "few_shot": {
@@ -370,10 +411,6 @@
         "few_shot_min_similarity": {
           "label": "Few-Shot Min Similarity",
           "description": "Examples below this score are filtered out."
-        },
-        "few_shot_collection_name": {
-          "label": "Few-Shot Collection Name",
-          "description": "Collection name used to store and retrieve examples."
         }
       },
       "code_context": {
@@ -492,7 +529,37 @@
     }
   },
   "database": {
-    "select": "Select database"
+    "select": "Select one or more databases",
+    "singleSelected": "Single-database query",
+    "multiSelected": "{{count}} databases selected; dblink mode is enabled",
+    "multiPostgresOnly": "dblink multi-database queries can select PostgreSQL databases only",
+    "newSessionOnChange": "Database scope changed; a new session has been started",
+    "singleMode": "Single DB SQL",
+    "singleModeDescription": "Queries the selected database directly without dblink",
+    "dblinkChecking": "Checking dblink",
+    "dblinkCheckingDescription": "Validating the actual dblink routes between selected databases",
+    "dblinkReady": "Multi-DB dblink ready",
+    "dblinkReadyDescription": "Every selected database can be primary and reach the other selected databases",
+    "dblinkUnavailable": "dblink unavailable",
+    "dblinkUnavailableDescription": "At least one dblink route between selected databases is unavailable",
+    "routesReady": "routes ready",
+    "statusReason": {
+      "ready": "Ready",
+      "single_database": "dblink is not required in single-database mode",
+      "multi_requires_postgresql": "Multi-database dblink supports PostgreSQL only",
+      "primary_connection_failed": "Primary database connection failed",
+      "extension_missing": "dblink extension is not installed",
+      "connect_permission_missing": "The account cannot execute dblink_connect",
+      "password_authentication_failed": "Remote username or password is incorrect",
+      "password_authentication_required": "The remote server did not use password authentication",
+      "host_not_found": "Remote host could not be resolved",
+      "connection_refused": "Remote connection was refused",
+      "connection_timeout": "Remote connection timed out",
+      "permission_denied": "Permission denied",
+      "remote_database_mismatch": "Connected physical database does not match the configuration",
+      "remote_query_failed": "Remote probe query failed",
+      "remote_connection_failed": "Remote connection failed"
+    }
   },
   "session": {
     "empty": "No sessions yet",

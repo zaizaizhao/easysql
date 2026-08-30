@@ -19,11 +19,19 @@ class Neo4jRepository:
     for both read and write operations.
     """
 
-    def __init__(self, uri: str, user: str, password: str, database: str = "neo4j"):
+    def __init__(
+        self,
+        uri: str,
+        user: str,
+        password: str,
+        database: str = "neo4j",
+        project_namespace: str = "default",
+    ):
         self.uri = uri
         self.user = user
         self.password = password
         self.database = database
+        self.project_namespace = project_namespace
         self._driver: Driver | None = None
 
     def connect(self) -> None:
@@ -81,17 +89,11 @@ class Neo4jRepository:
 
     @property
     def driver(self) -> Driver:
-        """Get the Neo4j driver, connecting if necessary.
+        """Get the long-lived Neo4j driver, connecting if necessary.
 
-        Includes health check to automatically reconnect if the connection is lost.
+        Connectivity is verified when the driver is created. Business queries do
+        not perform a separate health-check round trip before opening a session.
         """
-        if self._driver:
-            try:
-                self._driver.verify_connectivity()
-            except Exception:
-                logger.warning("Neo4j connection lost, reconnecting...")
-                self._driver = None
-
         if not self._driver:
             self.connect()
         assert self._driver is not None

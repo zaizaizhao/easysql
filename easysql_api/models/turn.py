@@ -25,6 +25,7 @@ class TurnInfo(BaseModel):
     status: TurnStatus
     clarifications: list[ClarificationInfo] = Field(default_factory=list)
     final_sql: str | None = None
+    primary_db: str | None = None
     validation_passed: bool | None = None
     error: str | None = None
     tables_used: list[str] = Field(default_factory=list)
@@ -46,6 +47,7 @@ class TurnInfo(BaseModel):
                 for c in turn.clarifications
             ],
             final_sql=turn.final_sql,
+            primary_db=turn.primary_db,
             validation_passed=turn.validation_passed,
             error=turn.error,
             tables_used=turn.tables_used,

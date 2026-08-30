@@ -21,6 +21,7 @@ from easysql_api.services.query_service import QueryService
 
 class CreateSessionRequest(BaseModel):
     db_name: str | None = None
+    db_names: list[str] | None = None
 
 
 router = APIRouter()
@@ -31,10 +32,18 @@ async def create_session(
     request: CreateSessionRequest,
     service: Annotated[QueryService, Depends(get_query_service_dep)],
 ) -> SessionInfo:
-    session = await service.create_session(db_name=request.db_name)
+    try:
+        session = await service.create_session(
+            db_name=request.db_name,
+            db_names=request.db_names,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return SessionInfo(
         session_id=session.session_id,
         db_name=session.db_name,
+        db_names=session.db_names,
+        primary_db=session.primary_db,
         status=session.status,
         created_at=session.created_at,
         updated_at=session.updated_at,
@@ -55,6 +64,8 @@ async def list_sessions(
         SessionInfo(
             session_id=s.session_id,
             db_name=s.db_name,
+            db_names=s.db_names,
+            primary_db=s.primary_db,
             status=s.status,
             created_at=s.created_at,
             updated_at=s.updated_at,
@@ -81,6 +92,8 @@ async def get_session(
     return SessionDetail(
         session_id=session.session_id,
         db_name=session.db_name,
+        db_names=session.db_names,
+        primary_db=session.primary_db,
         status=session.status,
         created_at=session.created_at,
         updated_at=session.updated_at,

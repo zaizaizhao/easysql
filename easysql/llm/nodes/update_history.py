@@ -27,9 +27,9 @@ class UpdateHistoryNode(BaseNode):
     def __call__(
         self,
         state: EasySQLState,
-        config: "RunnableConfig | None" = None,
+        config: RunnableConfig | None = None,
         *,
-        writer: "StreamWriter | None" = None,
+        writer: StreamWriter | None = None,
     ) -> dict[Any, Any]:
         question = state.get("raw_query") or ""
         sql = state.get("generated_sql")
@@ -55,6 +55,8 @@ class UpdateHistoryNode(BaseNode):
                 "validation_passed": state.get("validation_passed"),
                 "error": error,
                 "db_name": state.get("db_name"),
+                "db_names": state.get("db_names") or [],
+                "primary_db": state.get("primary_db"),
                 "created_at": datetime.now(timezone.utc).isoformat(),
             }
         )
@@ -69,9 +71,9 @@ class UpdateHistoryNode(BaseNode):
 
 def update_history_node(
     state: EasySQLState,
-    config: "RunnableConfig | None" = None,
+    config: RunnableConfig | None = None,
     *,
-    writer: "StreamWriter | None" = None,
+    writer: StreamWriter | None = None,
 ) -> dict[Any, Any]:
     node = UpdateHistoryNode()
     return node(state, config, writer=writer)

@@ -4,10 +4,9 @@ LangGraph State Definition for EasySQL Agent.
 
 from typing import Annotated, TypedDict
 
-from typing_extensions import NotRequired
-
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from typing_extensions import NotRequired
 
 
 class ContextOutputDict(TypedDict):
@@ -36,6 +35,9 @@ class SchemaHintColumn(TypedDict):
     is_pk: bool
     is_fk: bool
     is_time: bool
+    database_name: NotRequired[str]
+    schema_name: NotRequired[str]
+    qualified_table_id: NotRequired[str]
 
 
 class SchemaHintTable(TypedDict):
@@ -46,6 +48,9 @@ class SchemaHintTable(TypedDict):
     description: str | None
     score: float
     key_columns: list[SchemaHintColumn]
+    database_name: NotRequired[str]
+    schema_name: NotRequired[str]
+    qualified_table_id: NotRequired[str]
 
 
 class SchemaHintDict(TypedDict):
@@ -77,6 +82,8 @@ class ConversationTurn(TypedDict):
     validation_passed: NotRequired[bool | None]
     error: NotRequired[str | None]
     db_name: NotRequired[str | None]
+    db_names: NotRequired[list[str]]
+    primary_db: NotRequired[str | None]
     created_at: NotRequired[str | None]
 
 
@@ -104,7 +111,9 @@ class EasySQLState(TypedDict):
         retry_count: Number of times SQL generation has been retried.
         error: Latest error message if any.
 
-        db_name: Target database name for query execution.
+        db_name: Legacy single target database name.
+        db_names: User-selected logical databases for this session.
+        primary_db: LLM-selected database on which the SQL is executed.
     """
 
     # --- Input & Conversation ---
@@ -133,6 +142,8 @@ class EasySQLState(TypedDict):
 
     # --- Options ---
     db_name: str | None
+    db_names: list[str] | None
+    primary_db: str | None
 
     # --- Multi-turn Conversation ---
     conversation_history: list[ConversationTurn] | None

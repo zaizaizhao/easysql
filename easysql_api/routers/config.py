@@ -7,9 +7,22 @@ from pydantic import BaseModel
 
 from easysql.config import Settings
 from easysql_api.deps import get_config_service_dep, get_settings_dep
+from easysql_api.models.database import (
+    DatabaseConfigInput,
+    DatabaseConfigListResponse,
+    DatabaseConfigUpdateRequest,
+    DatabaseConfigUpdateResponse,
+    DatabaseConfigView,
+    DatabaseConnectionTestResponse,
+    DatabaseFederationStatusRequest,
+    DatabaseFederationStatusResponse,
+)
 from easysql_api.services.config_service import ConfigService
 
 router = APIRouter()
+
+# Fixed in code since the config refactoring (no longer a Settings field).
+CODE_CONTEXT_SUPPORTED_LANGUAGES = ["csharp", "python", "java", "javascript", "typescript"]
 
 
 class LLMConfigResponse(BaseModel):
@@ -18,6 +31,10 @@ class LLMConfigResponse(BaseModel):
     model: str
     planning_model: str | None
     temperature: float
+    use_agent_mode: bool
+    agent_max_iterations: int
+    agent_timeout_seconds: int
+    query_timeout_seconds: int
     max_sql_retries: int
 
 
@@ -29,7 +46,6 @@ class RetrievalConfigResponse(BaseModel):
     semantic_filter_threshold: float
     semantic_filter_min_tables: int
     bridge_protection_enabled: bool
-    bridge_max_hops: int
     core_tables: list[str]
     llm_filter_enabled: bool
     llm_filter_max_tables: int
@@ -45,7 +61,7 @@ class StorageConfigResponse(BaseModel):
     neo4j_uri: str
     neo4j_database: str
     milvus_uri: str
-    milvus_collection_prefix: str
+    project_namespace: str
 
 
 class CodeContextConfigResponse(BaseModel):
@@ -76,6 +92,10 @@ async def get_config(
             model=settings.llm.get_model(),
             planning_model=settings.llm.model_planning,
             temperature=settings.llm.temperature,
+            use_agent_mode=settings.llm.use_agent_mode,
+            agent_max_iterations=settings.llm.agent_max_iterations,
+            agent_timeout_seconds=settings.llm.agent_timeout_seconds,
+            query_timeout_seconds=settings.llm.query_timeout_seconds,
             max_sql_retries=settings.llm.max_sql_retries,
         ),
         retrieval=RetrievalConfigResponse(
@@ -86,7 +106,6 @@ async def get_config(
             semantic_filter_threshold=settings.semantic_filter_threshold,
             semantic_filter_min_tables=settings.semantic_filter_min_tables,
             bridge_protection_enabled=settings.bridge_protection_enabled,
-            bridge_max_hops=settings.bridge_max_hops,
             core_tables=settings.core_tables_list,
             llm_filter_enabled=settings.llm_filter_enabled,
             llm_filter_max_tables=settings.llm_filter_max_tables,
@@ -100,37 +119,87 @@ async def get_config(
             neo4j_uri=settings.neo4j_uri,
             neo4j_database=settings.neo4j_database,
             milvus_uri=settings.milvus_uri,
-            milvus_collection_prefix=settings.milvus_collection_prefix,
+            project_namespace=settings.project_namespace,
         ),
         code_context=CodeContextConfigResponse(
             enabled=settings.code_context_enabled,
             search_top_k=settings.code_context_search_top_k,
             score_threshold=settings.code_context_score_threshold,
             max_snippets=settings.code_context_max_snippets,
-            supported_languages=settings.code_context_languages_list,
+            supported_languages=CODE_CONTEXT_SUPPORTED_LANGUAGES,
         ),
         log_level=settings.log_level,
     )
 
 
-@router.get("/config/databases")
+@router.get("/config/databases", response_model=DatabaseConfigListResponse)
 async def get_database_configs(
-    settings: Annotated[Settings, Depends(get_settings_dep)],
-) -> dict:
-    databases = {}
-    for name, config in settings.databases.items():
-        databases[name] = {
-            "name": config.name,
-            "type": config.db_type,
-            "host": config.host,
-            "port": config.port,
-            "database": config.database,
-            "schema": config.get_default_schema(),
-            "system_type": config.system_type,
-            "description": config.description,
-        }
+    service: Annotated[ConfigService, Depends(get_config_service_dep)],
+) -> DatabaseConfigListResponse:
+    databases = await service.get_database_configs()
+    return DatabaseConfigListResponse(
+        databases=[DatabaseConfigView(**item) for item in databases],
+        total=len(databases),
+    )
 
-    return {"databases": databases}
+
+@router.post(
+    "/config/databases/federation-status",
+    response_model=DatabaseFederationStatusResponse,
+)
+async def get_database_federation_status(
+    request: DatabaseFederationStatusRequest,
+    service: Annotated[ConfigService, Depends(get_config_service_dep)],
+) -> DatabaseFederationStatusResponse:
+    try:
+        result = await service.get_database_federation_status(request.db_names)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return DatabaseFederationStatusResponse(**result)
+
+
+@router.put("/config/databases", response_model=DatabaseConfigUpdateResponse)
+async def replace_database_configs(
+    request: DatabaseConfigUpdateRequest,
+    service: Annotated[ConfigService, Depends(get_config_service_dep)],
+    warmup: bool = False,
+) -> DatabaseConfigUpdateResponse:
+    try:
+        result = await service.replace_database_configs(
+            [item.model_dump() for item in request.databases],
+            warmup=warmup,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return DatabaseConfigUpdateResponse(**result)
+
+
+@router.delete("/config/databases/{name}", response_model=DatabaseConfigUpdateResponse)
+async def delete_database_config(
+    name: str,
+    service: Annotated[ConfigService, Depends(get_config_service_dep)],
+    warmup: bool = False,
+) -> DatabaseConfigUpdateResponse:
+    try:
+        result = await service.delete_database_config(name, warmup=warmup)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return DatabaseConfigUpdateResponse(**result)
+
+
+@router.post("/config/databases/test", response_model=DatabaseConnectionTestResponse)
+async def test_database_config(
+    request: DatabaseConfigInput,
+    service: Annotated[ConfigService, Depends(get_config_service_dep)],
+) -> DatabaseConnectionTestResponse:
+    try:
+        message = await service.test_database_config(request.model_dump())
+        return DatabaseConnectionTestResponse(success=True, message=message)
+    except Exception as exc:  # noqa: BLE001 - connection errors are returned to the settings UI
+        return DatabaseConnectionTestResponse(
+            success=False,
+            message=f"{type(exc).__name__}: {exc}",
+        )
 
 
 class ConfigUpdateResponse(BaseModel):

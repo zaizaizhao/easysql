@@ -6,15 +6,13 @@ Retrieves similar Q&A examples from Milvus for in-context learning.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from easysql.config import get_settings
-from easysql.embeddings.embedding_service import EmbeddingService
 from easysql.llm.nodes.base import BaseNode
 from easysql.llm.state import EasySQLState, FewShotExampleDict
 from easysql.readers.few_shot_reader import FewShotReader
-from easysql.repositories.milvus_repository import MilvusRepository
+from easysql.retrieval.runtime import get_retrieval_runtime
 from easysql.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -24,25 +22,9 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-@lru_cache(maxsize=1)
 def get_few_shot_reader() -> FewShotReader:
-    """Get or create a cached FewShotReader instance."""
-    settings = get_settings()
-
-    embedding_service = EmbeddingService.from_settings(settings)
-
-    milvus_repo = MilvusRepository(
-        uri=settings.milvus_uri,
-        token=settings.milvus_token,
-        collection_prefix=settings.milvus_collection_prefix,
-    )
-    milvus_repo.connect()
-
-    return FewShotReader(
-        repository=milvus_repo,
-        embedding_service=embedding_service,
-        collection_name=settings.few_shot_collection_name,
-    )
+    """Return the few-shot reader backed by shared retrieval resources."""
+    return get_retrieval_runtime().few_shot_reader
 
 
 class RetrieveFewShotNode(BaseNode):
@@ -71,9 +53,9 @@ class RetrieveFewShotNode(BaseNode):
     def __call__(
         self,
         state: EasySQLState,
-        config: "RunnableConfig | None" = None,
+        config: RunnableConfig | None = None,
         *,
-        writer: "StreamWriter | None" = None,
+        writer: StreamWriter | None = None,
     ) -> dict[Any, Any]:
         """Retrieve few-shot examples based on the user's question.
 
@@ -134,29 +116,10 @@ class RetrieveFewShotNode(BaseNode):
 
 def retrieve_few_shot_node(
     state: EasySQLState,
-    config: "RunnableConfig | None" = None,
+    config: RunnableConfig | None = None,
     *,
-    writer: "StreamWriter | None" = None,
+    writer: StreamWriter | None = None,
 ) -> dict[Any, Any]:
     """Legacy function wrapper for RetrieveFewShotNode."""
     node = RetrieveFewShotNode()
     return node(state, config, writer=writer)
-
-
-def reset_few_shot_reader_cache() -> None:
-    cache_info_fn = getattr(get_few_shot_reader, "cache_info", None)
-    should_close = False
-    if callable(cache_info_fn):
-        should_close = getattr(cache_info_fn(), "currsize", 0) > 0
-
-    if should_close:
-        reader = get_few_shot_reader()
-        repository = getattr(reader, "_repo", None)
-        if repository is not None and hasattr(repository, "close"):
-            repository.close()
-
-    get_few_shot_reader.cache_clear()
-
-
-def warm_few_shot_reader_cache() -> None:
-    get_few_shot_reader()

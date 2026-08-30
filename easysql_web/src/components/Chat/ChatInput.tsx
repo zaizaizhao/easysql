@@ -15,7 +15,7 @@ export function ChatInput({ onSend }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const { isLoading } = useChatStore();
-  const { currentDatabase } = useAppStore();
+  const { selectedDatabases } = useAppStore();
   const { token } = theme.useToken();
 
   const handleSend = () => {
@@ -33,10 +33,11 @@ export function ChatInput({ onSend }: ChatInputProps) {
   };
 
   const getPlaceholder = () => {
-    if (!currentDatabase) {
+    if (selectedDatabases.length === 0) {
       return t('chat.placeholderNoDb');
     }
-    return t('chat.placeholder', { database: currentDatabase.toUpperCase() });
+    const databaseLabel = selectedDatabases.map((name) => name.toUpperCase()).join(' + ');
+    return t('chat.placeholder', { database: databaseLabel });
   };
 
   return (
@@ -71,7 +72,7 @@ export function ChatInput({ onSend }: ChatInputProps) {
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder={getPlaceholder()}
-          disabled={!currentDatabase || isLoading}
+          disabled={selectedDatabases.length === 0 || isLoading}
           autoSize={{ minRows: 1, maxRows: 8 }}
           variant="borderless"
           style={{ 
@@ -90,7 +91,7 @@ export function ChatInput({ onSend }: ChatInputProps) {
           shape="circle"
           icon={isLoading ? <LoadingOutlined /> : <SendOutlined />}
           onClick={handleSend}
-          disabled={!input.trim() || isLoading || !currentDatabase}
+          disabled={!input.trim() || isLoading || selectedDatabases.length === 0}
           size="large"
           style={{ 
             flexShrink: 0,

@@ -21,6 +21,12 @@ from .base import (
 )
 from .bridge_filter import BridgeFilter
 from .llm_filter import LLMFilter
+from .runtime import (
+    RetrievalRuntime,
+    get_retrieval_runtime,
+    reset_retrieval_runtime,
+    warm_retrieval_runtime,
+)
 from .schema_retrieval import (
     RetrievalConfig,
     RetrievalResult,
@@ -44,4 +50,9 @@ __all__ = [
     "SchemaRetrievalService",
     "RetrievalConfig",
     "RetrievalResult",
+    # Runtime resources
+    "RetrievalRuntime",
+    "get_retrieval_runtime",
+    "reset_retrieval_runtime",
+    "warm_retrieval_runtime",
 ]

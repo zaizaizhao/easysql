@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { MessageTree, ChatInput, WelcomeScreen } from '@/components/Chat';
 import { getSessionDetail } from '@/api';
 import { useStreamQuery } from '@/hooks';
-import { useChatStore } from '@/stores';
+import { useAppStore, useChatStore } from '@/stores';
 import type { ChatMessage, SessionDetail } from '@/types';
 import axios from 'axios';
 
@@ -20,6 +20,7 @@ export default function ChatPage() {
     removeSession,
   } = useChatStore();
   const { token } = theme.useToken();
+  const { setSelectedDatabases } = useAppStore();
 
   useEffect(() => {
     if (!routeSessionId) return;
@@ -34,6 +35,12 @@ export default function ChatPage() {
 
     const cached = currentSessionCache.get(routeSessionId);
     if (cached) {
+      const summary = useChatStore
+        .getState()
+        .sessions.find((item) => item.session_id === routeSessionId);
+      if (summary?.db_names?.length) {
+        setSelectedDatabases(summary.db_names);
+      }
       switchSession(routeSessionId);
       return;
     }
@@ -59,6 +66,8 @@ export default function ChatPage() {
           content: '',
           timestamp: new Date(turn.created_at),
           sql: turn.final_sql,
+          dbNames: detail.db_names || (detail.db_name ? [detail.db_name] : []),
+          primaryDb: turn.primary_db || detail.primary_db || detail.db_name,
           validationPassed: turn.validation_passed,
           turnId: turn.turn_id,
           serverId: turn.assistant_message_id,
@@ -92,6 +101,10 @@ export default function ChatPage() {
       try {
         const detail = await getSessionDetail(routeSessionId);
         if (cancelled) return;
+        const databases = detail.db_names || (detail.db_name ? [detail.db_name] : []);
+        if (databases.length > 0) {
+          setSelectedDatabases(databases);
+        }
         const loadedMessages = buildMessages(detail);
         switchSession(routeSessionId, loadedMessages);
       } catch (error) {
@@ -111,7 +124,7 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [routeSessionId, switchSession, removeSession, t]);
+  }, [routeSessionId, switchSession, removeSession, setSelectedDatabases, t]);
 
   const handleSend = (message: string) => {
     if (sessionId) {

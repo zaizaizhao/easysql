@@ -1,16 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getDatabases,
+  getDatabaseFederationStatus,
+  getManagedDatabases,
   getConfig,
   getConfigOverrides,
   getEditableConfig,
   getPipelineStatus,
   resetConfigCategory,
+  replaceManagedDatabases,
+  deleteManagedDatabase,
+  testManagedDatabase,
   runPipeline,
   type PipelineRunRequest,
   updateConfigCategory,
 } from '@/api';
-import type { ConfigCategory } from '@/types';
+import type { ConfigCategory, DatabaseConfigInput } from '@/types';
 
 export function useDatabases() {
   return useQuery({
@@ -25,6 +30,55 @@ export function useConfig() {
     queryKey: ['config'],
     queryFn: getConfig,
     staleTime: 60000,
+  });
+}
+
+export function useManagedDatabases() {
+  return useQuery({
+    queryKey: ['managed-databases'],
+    queryFn: getManagedDatabases,
+    staleTime: 30000,
+  });
+}
+
+export function useFederationStatus(dbNames: string[]) {
+  const normalized = Array.from(new Set(dbNames.filter(Boolean))).sort();
+  return useQuery({
+    queryKey: ['federation-status', normalized],
+    queryFn: () => getDatabaseFederationStatus(normalized),
+    enabled: normalized.length > 1,
+    staleTime: 30000,
+    retry: false,
+  });
+}
+
+export function useReplaceManagedDatabases() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (databases: DatabaseConfigInput[]) => replaceManagedDatabases(databases),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['managed-databases'] });
+      queryClient.invalidateQueries({ queryKey: ['databases'] });
+      queryClient.invalidateQueries({ queryKey: ['federation-status'] });
+    },
+  });
+}
+
+export function useDeleteManagedDatabase() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => deleteManagedDatabase(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['managed-databases'] });
+      queryClient.invalidateQueries({ queryKey: ['databases'] });
+      queryClient.invalidateQueries({ queryKey: ['federation-status'] });
+    },
+  });
+}
+
+export function useTestManagedDatabase() {
+  return useMutation({
+    mutationFn: (database: DatabaseConfigInput) => testManagedDatabase(database),
   });
 }
 
@@ -57,7 +111,7 @@ export function usePipelineStatus() {
 
 export function useRunPipeline() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: (request: PipelineRunRequest) => runPipeline(request),
     onSuccess: () => {

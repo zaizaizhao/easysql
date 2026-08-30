@@ -28,7 +28,13 @@ async def create_query(
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
     else:
-        session = await service.create_session(db_name=request.db_name)
+        try:
+            session = await service.create_session(
+                db_name=request.db_name,
+                db_names=request.db_names,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     if request.stream:
         return StreamingResponse(
@@ -42,6 +48,8 @@ async def create_query(
         session_id=session.session_id,
         status=result.get("status", QueryStatus.FAILED),
         sql=result.get("sql"),
+        db_names=result.get("db_names", session.db_names),
+        primary_db=result.get("primary_db", session.primary_db),
         validation_passed=result.get("validation_passed"),
         validation_error=result.get("validation_error"),
         clarification=result.get("clarification"),
@@ -74,6 +82,8 @@ async def continue_query(
         session_id=session.session_id,
         status=result.get("status", QueryStatus.FAILED),
         sql=result.get("sql"),
+        db_names=result.get("db_names", session.db_names),
+        primary_db=result.get("primary_db", session.primary_db),
         validation_passed=result.get("validation_passed"),
         validation_error=result.get("validation_error"),
         clarification=result.get("clarification"),

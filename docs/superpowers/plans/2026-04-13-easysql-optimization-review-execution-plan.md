@@ -57,9 +57,10 @@
 - `easysql_api/domain/**/*.py`
 - `tests/test_query_service_graph_pinning.py`
 - `tests/test_sql_agent_stream.py`
-- `tests/test_retrieval_service.py`
-- `tests/test_semantic_search.py`
-- `tests/test_full_retrieval.py`
+- `tests/test_schema_retrieval_service.py`
+- `tests/test_filter_chain.py`
+- `tests/test_milvus_reader_filters.py`
+- `tests/test_retrieval_runtime.py`
 - `tests/test_config_schema.py`
 - `tests/test_config_service.py`
 - `tests/test_langfuse_config.py`
@@ -389,9 +390,10 @@ EOF
 - Read: `easysql/context/sections/few_shot_section.py`
 - Read: `easysql/code_context/pipeline/sync_pipeline.py`
 - Read: `easysql/code_context/retrieval/code_retrieval.py`
-- Read: `tests/test_retrieval_service.py`
-- Read: `tests/test_semantic_search.py`
-- Read: `tests/test_full_retrieval.py`
+- Read: `tests/test_schema_retrieval_service.py`
+- Read: `tests/test_filter_chain.py`
+- Read: `tests/test_milvus_reader_filters.py`
+- Read: `tests/test_retrieval_runtime.py`
 - Test: `docs/review/2026-04-13-rag-and-storage-review.md`
 
 - [ ] **Step 1: Inspect the retrieval stack and storage abstractions**

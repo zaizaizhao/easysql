@@ -35,6 +35,10 @@ class Neo4jSchemaWriter:
     def database(self) -> str:
         return self._repo.database
 
+    @property
+    def project_namespace(self) -> str:
+        return self._repo.project_namespace
+
     def write_database(self, db_meta: DatabaseMeta) -> dict[str, int]:
         """Write complete database metadata to Neo4j."""
         logger.info(f"Writing database '{db_meta.name}' to Neo4j")
@@ -42,16 +46,26 @@ class Neo4jSchemaWriter:
         stats = {"databases": 0, "tables": 0, "columns": 0, "foreign_keys": 0}
 
         with self.driver.session(database=self.database) as session:
-            session.execute_write(self._create_database_node, db_meta)
+            session.execute_write(self._create_database_node, db_meta, self.project_namespace)
             stats["databases"] = 1
 
             for table in db_meta.tables:
-                session.execute_write(self._create_table_with_columns, db_meta.name, table)
+                session.execute_write(
+                    self._create_table_with_columns,
+                    db_meta.name,
+                    table,
+                    self.project_namespace,
+                )
                 stats["tables"] += 1
                 stats["columns"] += len(table.columns)
 
             for fk in db_meta.foreign_keys:
-                session.execute_write(self._create_foreign_key_relationship, db_meta.name, fk)
+                session.execute_write(
+                    self._create_foreign_key_relationship,
+                    db_meta.name,
+                    fk,
+                    self.project_namespace,
+                )
                 stats["foreign_keys"] += 1
 
         logger.info(
@@ -61,10 +75,10 @@ class Neo4jSchemaWriter:
         return stats
 
     @staticmethod
-    def _create_database_node(tx: Any, db_meta: DatabaseMeta) -> None:
+    def _create_database_node(tx: Any, db_meta: DatabaseMeta, project_namespace: str) -> None:
         tx.run(
             """
-            MERGE (db:Database {name: $name})
+            MERGE (db:Database {name: $name, project_namespace: $project_namespace})
             SET db.db_type = $db_type,
                 db.host = $host,
                 db.port = $port,
@@ -78,16 +92,22 @@ class Neo4jSchemaWriter:
             port=db_meta.port,
             system_type=db_meta.system_type,
             description=db_meta.description,
+            project_namespace=project_namespace,
         )
 
     @staticmethod
-    def _create_table_with_columns(tx: Any, db_name: str, table: TableMeta) -> None:
+    def _create_table_with_columns(
+        tx: Any,
+        db_name: str,
+        table: TableMeta,
+        project_namespace: str,
+    ) -> None:
         table_id = table.get_id(db_name)
 
         tx.run(
             """
-            MATCH (db:Database {name: $db_name})
-            MERGE (t:Table {id: $table_id})
+            MATCH (db:Database {name: $db_name, project_namespace: $project_namespace})
+            MERGE (t:Table {id: $table_id, project_namespace: $project_namespace})
             SET t.name = $name,
                 t.database = $db_name,
                 t.schema_name = $schema_name,
@@ -103,6 +123,7 @@ class Neo4jSchemaWriter:
             """,
             db_name=db_name,
             table_id=table_id,
+            project_namespace=project_namespace,
             name=table.name,
             schema_name=table.schema_name,
             chinese_name=table.chinese_name,
@@ -118,8 +139,8 @@ class Neo4jSchemaWriter:
             col_id = col.get_id(db_name, table.schema_name, table.name)
             tx.run(
                 """
-                MATCH (t:Table {id: $table_id})
-                MERGE (c:Column {id: $col_id})
+                MATCH (t:Table {id: $table_id, project_namespace: $project_namespace})
+                MERGE (c:Column {id: $col_id, project_namespace: $project_namespace})
                 SET c.name = $name,
                     c.chinese_name = $chinese_name,
                     c.data_type = $data_type,
@@ -136,6 +157,7 @@ class Neo4jSchemaWriter:
                 """,
                 table_id=table_id,
                 col_id=col_id,
+                project_namespace=project_namespace,
                 name=col.name,
                 chinese_name=col.chinese_name,
                 data_type=col.data_type,
@@ -150,15 +172,23 @@ class Neo4jSchemaWriter:
             )
 
     @staticmethod
-    def _create_foreign_key_relationship(tx: Any, db_name: str, fk: ForeignKeyMeta) -> None:
+    def _create_foreign_key_relationship(
+        tx: Any,
+        db_name: str,
+        fk: ForeignKeyMeta,
+        project_namespace: str,
+    ) -> None:
         from_table_id = fk.get_from_table_id(db_name)
         to_table_id = fk.get_to_table_id(db_name)
 
         tx.run(
             """
-            MATCH (t1:Table {id: $from_table_id})
-            MATCH (t2:Table {id: $to_table_id})
-            MERGE (t1)-[r:FOREIGN_KEY {constraint_name: $constraint_name}]->(t2)
+            MATCH (t1:Table {id: $from_table_id, project_namespace: $project_namespace})
+            MATCH (t2:Table {id: $to_table_id, project_namespace: $project_namespace})
+            MERGE (t1)-[r:FOREIGN_KEY {
+                constraint_name: $constraint_name,
+                project_namespace: $project_namespace
+            }]->(t2)
             SET r.fk_column = $fk_column,
                 r.pk_column = $pk_column,
                 r.from_schema = $from_schema,
@@ -170,6 +200,7 @@ class Neo4jSchemaWriter:
             from_table_id=from_table_id,
             to_table_id=to_table_id,
             constraint_name=fk.constraint_name,
+            project_namespace=project_namespace,
             fk_column=fk.from_column,
             pk_column=fk.to_column,
             from_schema=fk.from_schema,
@@ -185,17 +216,20 @@ class Neo4jSchemaWriter:
         with self.driver.session(database=self.database) as session:
             result = session.run(
                 """
-                MATCH (db:Database {name: $db_name})-[:HAS_TABLE]->(t:Table)-[:HAS_COLUMN]->(c:Column)
+                MATCH (db:Database {name: $db_name, project_namespace: $project_namespace})
+                    -[:HAS_TABLE]->(t:Table)-[:HAS_COLUMN]->(c:Column)
                 DETACH DELETE c
                 WITH count(*) as deleted_cols
-                MATCH (db:Database {name: $db_name})-[:HAS_TABLE]->(t:Table)
+                MATCH (db:Database {name: $db_name, project_namespace: $project_namespace})
+                    -[:HAS_TABLE]->(t:Table)
                 DETACH DELETE t
                 WITH count(*) as deleted_tables
-                MATCH (db:Database {name: $db_name})
+                MATCH (db:Database {name: $db_name, project_namespace: $project_namespace})
                 DETACH DELETE db
                 RETURN deleted_tables + 1 as total_deleted
                 """,
                 db_name=db_name,
+                project_namespace=self.project_namespace,
             )
             record = result.single()
             deleted = record["total_deleted"] if record else 0

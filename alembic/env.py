@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy.pool import NullPool
 
+from alembic import context
 from easysql.config import get_settings
 from easysql_api.infrastructure.persistence.models import Base
 
@@ -20,16 +20,7 @@ target_metadata = Base.metadata
 
 def _get_database_url() -> str:
     settings = get_settings()
-    uri = settings.get_session_postgres_uri()
-    if not uri:
-        raise RuntimeError(
-            "SESSION_POSTGRES_URI is required to run migrations (PostgreSQL only)."
-        )
-    if uri.startswith("postgresql://"):
-        return uri.replace("postgresql://", "postgresql+asyncpg://", 1)
-    if uri.startswith("postgres://"):
-        return uri.replace("postgres://", "postgresql+asyncpg://", 1)
-    return uri
+    return settings.postgres_sqlalchemy_async_uri
 
 
 def run_migrations_offline() -> None:

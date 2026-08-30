@@ -1,90 +1,338 @@
-# Config And Runtime Review
+# 配置与运行时评审
 
-## Scope And Thesis
+## 范围与核心判断
 
-This review covers the EasySQL configuration and runtime lane across docs, settings loading, API startup, runtime override persistence, editable config schema, and config-related tests. The main thesis is that EasySQL has the beginnings of a sensible FastAPI plus Pydantic settings setup, but it currently operates with multiple competing configuration authorities. That weakens source-of-truth clarity, makes live override safety more fragile than the docs imply, and leaves operators with an incomplete mental model of what actually wins when config values disagree.
+本文关注 EasySQL 的配置系统与运行时配置行为，主要包括：
 
-## Current Implementation In EasySQL
+- `.env` / 环境变量 / CLI `--env`
+- `Settings` 与嵌套配置模型
+- API 启动时的持久化配置加载
+- 配置控制面（config API）
+- live override 对 graph / node cache 的影响
 
-The documented story says configuration comes from `.env` plus environment variables, and `docs/ENVIRONMENT.md` says the env-file path can be overridden through the CLI. The actual CLI does expose `--env`, but on the Typer callback and `config` command, not on a `run` subcommand, because there is no `run` command in the current CLI shape ([docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md):3, [docs/ENVIRONMENT.md](../docs/ENVIRONMENT.md):10; [easysql/main.py](../easysql/main.py):18, [easysql/main.py](../easysql/main.py):27, [easysql/main.py](../easysql/main.py):30, [easysql/main.py](../easysql/main.py):140, [easysql/main.py](../easysql/main.py):182). This is the first visible sign that the operator contract and the implementation are drifting.
+核心判断是：这个项目已经有了“看起来像一个配置系统”的东西，但还没有形成一个真正清晰的一致性模型。现在至少存在四种配置权威来源：
 
-At the code level, the top-level `Settings` model is a cached `BaseSettings` object with `.env`, case-insensitive loading, and `extra="allow"` so dynamic `DB_<NAME>_*` groups can be parsed from merged input and `os.environ` ([easysql/config.py](../easysql/config.py):315, [easysql/config.py](../easysql/config.py):323, [easysql/config.py](../easysql/config.py):508, [easysql/config.py](../easysql/config.py):582). That part is coherent. The complication is that `LLMConfig`, `LangfuseConfig`, and `CheckpointerConfig` are also independent `BaseSettings` classes with their own `.env` declarations and `default_factory` construction inside `Settings` ([easysql/config.py](../easysql/config.py):131, [easysql/config.py](../easysql/config.py):194, [easysql/config.py](../easysql/config.py):224, [easysql/config.py](../easysql/config.py):489). In effect, EasySQL has one top-level settings object, but also several nested settings loaders.
+- 顶层 `Settings`
+- 嵌套 `BaseSettings`
+- DB 持久化 override
+- 运行时环境变量副作用
 
-The API startup path introduces a third authority. On startup the app requires PostgreSQL-backed session persistence, initializes the SQLAlchemy engine, constructs a config service, loads persisted config rows from the DB into runtime overrides, and then re-reads effective settings ([easysql_api/app.py](../easysql_api/app.py):25, [easysql_api/app.py](../easysql_api/app.py):30, [easysql_api/app.py](../easysql_api/app.py):33, [easysql_api/app.py](../easysql_api/app.py):52, [easysql_api/app.py](../easysql_api/app.py):53). Runtime overrides themselves are implemented as a global in-memory path map. `ConfigService.bootstrap_from_db()` calls `replace_runtime_overrides(...)`, request-time updates call `update_runtime_overrides(...)`, and `get_settings()` later applies those overrides by walking dotted paths and mutating an instantiated settings object with `setattr(...)` ([easysql/config.py](../easysql/config.py):23, [easysql/config.py](../easysql/config.py):53, [easysql/config.py](../easysql/config.py):590, [easysql_api/services/config_service.py](../easysql_api/services/config_service.py):44, [easysql_api/services/config_service.py](../easysql_api/services/config_service.py):63, [easysql_api/services/config_service.py](../easysql_api/services/config_service.py):165).
+这会直接影响 operator 对“当前到底以谁为准”的理解，也会影响 live config change 是否真的生效。
 
-The editable persisted schema is not “all runtime config”; it is a curated subset. `CONFIG_SPEC_LIST` covers selected knobs across `llm`, `retrieval`, `few_shot`, `code_context`, and `langfuse`, but does not cover session store settings, checkpointer settings, source database groups, embedding configuration, logging, or Neo4j and Milvus endpoints ([easysql_api/services/config_schema.py](../easysql_api/services/config_schema.py):146, [easysql_api/services/config_schema.py](../easysql_api/services/config_schema.py):243, [easysql_api/services/config_schema.py](../easysql_api/services/config_schema.py):351, [easysql_api/services/config_schema.py](../easysql_api/services/config_schema.py):383, [easysql_api/services/config_schema.py](../easysql_api/services/config_schema.py):415). The router then exposes several different views of configuration: assembled config, database config, editable config metadata, and persisted overrides ([easysql_api/routers/config.py](../easysql_api/routers/config.py):68, [easysql_api/routers/config.py](../easysql_api/routers/config.py):116, [easysql_api/routers/config.py](../easysql_api/routers/config.py):149, [easysql_api/routers/config.py](../easysql_api/routers/config.py):156).
+## 当前实现（结合代码）
 
-There are also subtle runtime inconsistencies. The code documents `SESSION_POSTGRES_URI` as required, but `get_session_postgres_uri()` explicitly falls back to the checkpointer Postgres URI when the session URI is absent and the checkpointer is configured for Postgres ([easysql/config.py](../easysql/config.py):427, [easysql/config.py](../easysql/config.py):439). And while persisted config updates carry invalidation tags, not all LLM-related settings invalidate the compiled graph even though the graph structure and node-level caches may depend on them. `use_agent_mode` invalidates the graph, but many other LLM keys only invalidate `settings` ([easysql_api/services/config_schema.py](../easysql_api/services/config_schema.py):146, [easysql_api/services/config_schema.py](../easysql_api/services/config_schema.py):182, [easysql_api/services/config_schema.py](../easysql_api/services/config_schema.py):190; [easysql_api/services/config_service.py](../easysql_api/services/config_service.py):111).
+### 1. 文档和 CLI 入口已经有第一层漂移
 
-The tests cover several useful pieces: schema mapping, config service persistence, config router behavior, LLM temperature configuration, and Langfuse alias precedence ([tests/test_config_schema.py](../tests/test_config_schema.py):13, [tests/test_config_service.py](../tests/test_config_service.py):84, [tests/test_config_router.py](../tests/test_config_router.py):60, [tests/test_llm_temperature_configurable.py](../tests/test_llm_temperature_configurable.py):5, [tests/test_langfuse_config.py](../tests/test_langfuse_config.py):4). What they do not currently prove is the full precedence story across alternate env files, nested settings loaders, DB overrides, and graph-cache invalidation.
+`docs/ENVIRONMENT.md` 仍然写着：
 
-## Comparison With Strong Reference Patterns
+```bash
+python main.py run --env /path/to/.env
+```
 
-Pydantic Settings guidance strongly favors an explicit source-precedence model, ideally with one place to define custom sources and precedence. EasySQL diverges from that pattern by mixing top-level `Settings(_env_file=...)`, nested `BaseSettings` submodels with their own `.env` files, and a post-instantiation runtime override layer. The system can still work, but its precedence model is far less inspectable than the reference pattern.
+但当前 CLI 实现里并没有 `run` 子命令，真正的 `--env` 是挂在 callback 和 `config` 命令上的：
 
-FastAPI’s settings guidance favors a single cached `get_settings()` dependency and explicit dependency overrides in tests. EasySQL partially aligns here: it has a cached `get_settings()` and uses `Depends(get_settings_dep)` at the API layer. The divergence is that runtime behavior is also shaped by global singleton services and mutable process-wide override state, which makes the real effective config path more complex than the common FastAPI pattern suggests.
+```python
+@app.callback(invoke_without_command=True)
+def main_callback(
+    ctx: typer.Context,
+    env_file: Optional[Path] = typer.Option(None, "--env", "-e", ...)
+):
+    ...
+```
 
-The 12-factor configuration principle assumes config is externalized and orthogonal. EasySQL still uses env-driven settings, but DB-persisted overrides and environment backfilling for Langfuse move the system away from a purely environment-sourced configuration model. That can be a valid product choice, but only if the precedence model is explicit and operator-visible.
+对应代码位置：
 
-## Review Findings
+- [docs/ENVIRONMENT.md](/Users/zhaoyanan/Downloads/demo/easysql/docs/ENVIRONMENT.md#L6)
+- [easysql/main.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql/main.py#L27)
+- [easysql/main.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql/main.py#L138)
 
-1. The core architectural issue is source-of-truth ambiguity. EasySQL currently has at least four relevant config authorities:
-   top-level `Settings`,
-   nested `BaseSettings` submodels,
-   DB-persisted runtime overrides,
-   and process-environment side effects for Langfuse.
-   The system functions, but the precedence model is not explicit enough to reason about safely.
+这不是小问题，因为它说明 operator contract 已经和实际配置加载路径不完全一致。
 
-2. The documented alternate env-file override is likely only partially true. `load_settings(env_file)` passes `_env_file` to `Settings`, but the nested config models still declare their own `env_file=".env"`. That suggests `--env` may diverge between top-level fields and nested LLM, Langfuse, or checkpointer fields.
+### 2. 顶层 `Settings` 是一个配置源，但不是唯一配置源
 
-3. Runtime overrides are applied post-instantiation by walking dotted paths and calling `setattr(...)`. That means the authoritative validation boundary is split between Pydantic model construction and `ConfigSpec`-level validators. This is acceptable for simple scalar tuning knobs, but weaker than reconstructing one fully validated settings object from declared sources.
+顶层 `Settings` 使用 `BaseSettings`，并从 `.env` 和环境变量读取：
 
-4. Live override safety is incomplete for the query lane. The compiled graph and several nodes cache config-dependent objects, but many LLM-related config keys only invalidate `settings` and not `graph`. The API can therefore accept and persist a config change that the in-memory graph may not actually pick up until a rebuild happens.
+```python
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="allow",
+    )
+```
 
-5. The persisted config control plane is too narrow to be a full runtime source of truth, but broad enough to create that expectation. It does not cover session store, checkpointer, embedding, database groups, logging, or storage endpoints, even though those settings materially affect whether the system can run.
+对应代码位置：
 
-6. The code and docs disagree on whether `SESSION_POSTGRES_URI` is truly required. The implementation explicitly allows fallback to the checkpointer Postgres URI, while the docs present the session URI as mandatory. That may be a deliberate convenience, but it is still an undocumented precedence edge.
+- [easysql/config.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql/config.py#L315)
 
-7. Operability is hurt by config-surface noise. The docs still mention a nonexistent `run` subcommand, and operator-facing configuration references include stale, unused, or not-yet-wired variables. That makes the configuration surface look larger and less stable than it really is.
+但问题在于，`LLMConfig`、`LangfuseConfig`、`CheckpointerConfig` 也都是单独的 `BaseSettings`：
 
-## Optimization Directions
+```python
+class CheckpointerConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", ...)
 
-1. Collapse configuration loading to one authoritative settings boundary. The cleanest shape is a top-level `Settings` as the only `BaseSettings`, with nested submodels converted to plain `BaseModel` structures. Then define source precedence once and explicitly.
+class LangfuseConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", ...)
 
-2. Replace post-instantiation `setattr(...)` overrides with a declared settings source or a settings rebuild step. If DB-persisted overrides are a product feature, construct a fresh validated `Settings` object from explicit precedence rather than mutating a cached instance in place.
+class LLMConfig(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", ...)
+```
 
-3. Tie live config changes to the runtime objects they actually affect. Any LLM or graph-affecting key should either invalidate and rebuild the compiled graph, or nodes should stop caching config- and model-dependent objects across requests.
+对应代码位置：
 
-4. Decide whether persisted config is “tuning only” or “full runtime config.” If it is tuning only, say so clearly in docs and UI. If it is intended to be a real control plane, extend the schema coverage to session, checkpointer, storage, and related runtime boundaries.
+- [easysql/config.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql/config.py#L131)
+- [easysql/config.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql/config.py#L194)
+- [easysql/config.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql/config.py#L224)
 
-5. Reduce operator-facing config noise. Remove stale `run` wording, move unsupported or future variables out of the main operator docs, and separate supported runtime knobs, legacy aliases, and non-runtime placeholders.
+这意味着当前系统不是“一个 `Settings` 从所有 source 中统一装配”，而更像是“一个顶层 settings + 多个嵌套 settings loader 并存”。
 
-6. Add precedence and staleness tests:
-   alternate `--env` propagation into nested settings,
-   DB override precedence over env and defaults,
-   and proof that live config changes actually take effect in the query lane.
+### 3. API 启动后又引入了 DB 持久化 override 这一层 authority
 
-## Why These Changes Are Justified
+FastAPI 启动时，`ConfigService.bootstrap_from_db()` 会把 DB 中的持久化配置加载进全局 override map：
 
-The single biggest risk in this lane is not “a bad default”; it is ambiguity. When operators cannot tell whether `.env`, alternate env files, DB rows, nested submodels, or in-memory mutation wins, the system becomes hard to debug even if each mechanism works in isolation.
+```python
+async def bootstrap_from_db(self) -> None:
+    rows = await self._repository.load_all()
+    overrides: dict[str, Any] = {}
+    ...
+    replace_runtime_overrides(overrides)
+    get_settings.cache_clear()
+```
 
-The current override path is also only partially safe for live systems because the API can accept and persist changes that the query graph may not actually observe until caches are rebuilt. That is a correctness issue, not just a style issue.
+对应代码位置：
 
-Finally, the persisted config surface is currently large enough to create control-plane expectations, but too narrow to fully describe runtime state. Clarifying what it is for, and enforcing one explicit precedence model, will reduce both operator confusion and runtime drift.
+- [easysql_api/services/config_service.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql_api/services/config_service.py#L44)
 
-## Suggested Priority And Follow-up Questions
+而 `get_settings()` 在返回时又会把 override 逐个打到实例上：
 
-Priority:
+```python
+@lru_cache
+def get_settings() -> Settings:
+    settings = Settings()
+    with _RUNTIME_OVERRIDES_LOCK:
+        for path, value in _RUNTIME_OVERRIDES.items():
+            _apply_override_path(settings, path, value)
+    return settings
+```
 
-- `P0`: unify config source precedence and remove the split between top-level and nested settings loaders.
-- `P0`: make live LLM and query config changes either rebuild the graph or stop caching stale config and LLM instances.
-- `P1`: make docs and `.env.example` reflect the real runtime contract, especially around `--env`, session persistence, and unused variables.
-- `P1`: decide whether DB-persisted config is an authoritative control plane or a limited tuning layer, then align schema, UI, and docs to that decision.
-- `P2`: extend tests to cover precedence and staleness boundaries that the current suite does not prove.
+对应代码位置：
 
-Follow-up questions:
+- [easysql/config.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql/config.py#L582)
 
-- Should session store and checkpointer settings remain strictly env-only operational config, or are they intended to become editable through the API control plane?
-- Is the product requirement that runtime config changes take effect immediately for running API instances, or is restart-level consistency acceptable?
-- Should DB-persisted overrides outrank process environment, or should env remain the emergency operator override above persisted state?
-- Is Langfuse environment backfilling only a compatibility bridge, or an intentional long-term design?
+这说明：
+
+- 配置不是在模型构造阶段一次性决定
+- 而是在模型构造后，再通过路径赋值进行二次修改
+
+这就是当前配置系统最核心的不透明点之一。
+
+### 4. live override 的 invalidate 范围并不总是和真实运行时对象一致
+
+`CONFIG_SPEC_LIST` 为每个可编辑 key 定义了 invalidate tags。例如：
+
+```python
+_spec(
+    "llm", "use_agent_mode", "llm.use_agent_mode", "bool",
+    invalidate_tags={"settings", "graph"}
+)
+
+_spec(
+    "llm", "temperature", "llm.temperature", "float",
+    invalidate_tags={"settings"}
+)
+```
+
+对应代码位置：
+
+- [easysql_api/services/config_schema.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql_api/services/config_schema.py#L146)
+- [easysql_api/services/config_schema.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql_api/services/config_schema.py#L182)
+
+这里的问题非常具体：有些配置改动会真正影响 graph 和 node 内缓存的对象，但 invalidate tag 却只有 `settings` 没有 `graph`。这意味着 config API 可能告诉你“改成功了”，但运行时 compiled graph 未必真的吃到了新值。
+
+### 5. config control plane 实际只覆盖了部分 runtime
+
+从 `config_schema.py` 看，可持久化可编辑的范围主要覆盖：
+
+- `llm`
+- `retrieval`
+- `few_shot`
+- `code_context`
+- `langfuse`
+
+但并不覆盖：
+
+- session store
+- checkpointer
+- source DB group
+- embedding
+- logging
+- Neo4j / Milvus endpoint
+
+对应代码位置：
+
+- [easysql_api/services/config_schema.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql_api/services/config_schema.py#L146)
+- [easysql_api/services/config_schema.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql_api/services/config_schema.py#L415)
+
+所以现在的 persisted config 更像“部分调参面板”，但因为它已经叫 config，又提供 `/config/editable`、`/config/overrides` 等接口，使用者很容易误以为它是完整控制面。
+
+### 6. 文档写“必须有 SESSION_POSTGRES_URI”，代码却允许 fallback
+
+这段代码很关键：
+
+```python
+def get_session_postgres_uri(self) -> str | None:
+    if self.session_postgres_uri:
+        return self.session_postgres_uri
+    if self.checkpointer.is_postgres():
+        logger.warning(
+            "SESSION_POSTGRES_URI not set; falling back to checkpointer Postgres URI"
+        )
+        return self.checkpointer.postgres_uri
+    return None
+```
+
+对应代码位置：
+
+- [easysql/config.py](/Users/zhaoyanan/Downloads/demo/easysql/easysql/config.py#L439)
+
+这说明代码里的 precedence 和文档里的说法已经不完全一致了。这个 fallback 可能是实用设计，但它一定要被清楚写出来，否则配置语义就不透明。
+
+## 与更成熟实践的对比
+
+更成熟的配置体系通常会尽量做到两件事：
+
+1. **只有一个 authoritative settings boundary**
+2. **source precedence 是显式定义的**
+
+以 Pydantic Settings 的最佳实践来说，更推荐：
+
+- 顶层一个 `BaseSettings`
+- 嵌套结构用普通 `BaseModel`
+- 如果要支持 DB override，就把它建模成显式 source 或 rebuild 流程
+
+FastAPI 层面则更强调：
+
+- `get_settings()` 作为唯一依赖入口
+- 测试时用 dependency override 明确控制行为
+
+EasySQL 当前的问题是：API 看起来是这样设计的，但内部真实行为已经不是“一个统一 settings 入口”，而是“统一入口 + 多个隐含来源 + post-hoc mutation”。
+
+## 主要问题
+
+### 1. 最高优先级问题：配置 authority 不唯一
+
+如果你问“当前配置最终是谁说了算”，答案不是一句话能讲清的：
+
+- `.env`
+- env vars
+- nested settings loader
+- DB override
+- runtime env side effect
+
+这些一起存在时，就很难保证 operator、开发者和系统本身拥有同样的理解。
+
+### 2. `--env` 很可能不是完整意义上的统一入口
+
+从代码形态看，`Settings(_env_file=...)` 并不天然保证嵌套 `BaseSettings` 也用同一个 env file。这个问题如果不通过测试钉住，后面很容易演变成“顶层配置对了，nested LLM 配置却还是旧的”。
+
+### 3. live override 只在“配置层”成功，不一定在“运行时对象层”成功
+
+当前 config API 的成功语义，更像是：
+
+- DB 已写入
+- runtime override map 已更新
+- 部分 cache 已失效
+
+但这不等于：
+
+- compiled graph 已重建
+- node 内部缓存的 llm / config 已刷新
+- 运行中实例一定用到了新值
+
+### 4. persisted config 的边界没有讲清楚
+
+目前它既不像“完整控制面”，也不只是“少量调参参数”。边界不清楚会直接造成运维和开发协作上的误解。
+
+### 5. operator-facing 配置面噪音偏大
+
+文档里同时出现：
+
+- 已废弃命令写法
+- not-yet-wired 变量
+- 与真实运行路径不一致的说明
+
+这些都会放大配置系统的学习成本。
+
+## 优化方向
+
+### 方向 1：只保留一个 authoritative settings boundary
+
+建议把顶层 `Settings` 保留为唯一 `BaseSettings`，而把 `LLMConfig`、`LangfuseConfig`、`CheckpointerConfig` 改成普通嵌套模型。这样 precedence 才能真正统一下来。
+
+### 方向 2：把 DB override 改成显式 source 或显式 rebuild
+
+不要继续依赖“实例生成后再 setattr 覆盖”的模式。更稳的方式是：
+
+- 通过显式 source 构建 settings
+- 或在 override 变化后重建一个完整、重新校验过的 settings 实例
+
+### 方向 3：live config change 必须绑定到真实 runtime object
+
+需要明确：
+
+- 哪些 key 影响 graph 结构
+- 哪些 key 影响 llm instance
+- 哪些 key 只影响普通读取逻辑
+
+然后分别做：
+
+- rebuild graph
+- clear model cache
+- or simple settings refresh
+
+而不是一律只打 `settings` tag。
+
+### 方向 4：明确 persisted config 的产品定位
+
+必须先回答一个问题：
+
+> persisted config 到底是“调参控制面”，还是“真正的运行时控制面”？
+
+两种定位都可以，但不能同时模糊存在。
+
+### 方向 5：压缩 operator-facing 配置噪音
+
+建议把文档拆清楚：
+
+- 当前真实支持的 runtime 配置
+- 历史兼容 alias
+- 未来预留但未接线的变量
+
+## 建议为何成立
+
+这些建议之所以重要，不是因为当前默认值多差，而是因为当前系统的**配置语义不够透明**。一旦一个系统里“设置成功”和“真正生效”不是同一件事，它后续的 debug 成本会迅速上升。
+
+从代码上看，这个问题已经不是猜测：
+
+- `Settings` 与嵌套 `BaseSettings` 并存
+- `ConfigService` 在运行后再把值 patch 到实例上
+- invalidate tag 与 graph/runtime object 影响范围不完全对应
+
+这三点已经足够说明：当前配置系统需要的是“统一 authority 模型”，而不是继续加新的 config key。
+
+## 优先级与待确认问题
+
+优先级建议：
+
+- `P0`：统一配置 source precedence
+- `P0`：保证 live LLM / graph config change 真正作用到运行时对象
+- `P1`：修正 docs 与 `.env.example`
+- `P1`：明确 persisted config 是 tuning layer 还是 control plane
+- `P2`：补 precedence 和 staleness 测试
+
+待确认问题：
+
+- session store / checkpointer 配置未来是否也要进入 API 控制面？
+- 运行时配置变更是否要求立即生效，还是允许 restart-level consistency？
+- process env 是否要保留为高优先级 emergency override？

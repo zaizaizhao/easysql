@@ -11,7 +11,13 @@ from easysql_api.domain.value_objects.query_status import QueryStatus
 
 
 class SessionRepository(Protocol):
-    async def create(self, session_id: str, db_name: str | None = None) -> Session: ...
+    async def create(
+        self,
+        session_id: str,
+        db_name: str | None = None,
+        db_names: list[str] | None = None,
+        primary_db: str | None = None,
+    ) -> Session: ...
 
     async def get(self, session_id: str) -> Session | None: ...
 

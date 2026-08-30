@@ -3,6 +3,8 @@ import type { VizPlan } from './chart';
 export interface SessionInfo {
   session_id: string;
   db_name?: string;
+  db_names?: string[];
+  primary_db?: string;
   status: string;
   created_at: string;
   updated_at: string;
@@ -28,6 +30,7 @@ export interface TurnInfo {
   status: TurnStatus;
   clarifications: TurnClarification[];
   final_sql?: string;
+  primary_db?: string;
   validation_passed?: boolean;
   error?: string;
   tables_used?: string[];
@@ -41,6 +44,8 @@ export interface TurnInfo {
 export interface SessionDetail {
   session_id: string;
   db_name?: string;
+  db_names?: string[];
+  primary_db?: string;
   status: string;
   created_at: string;
   updated_at: string;

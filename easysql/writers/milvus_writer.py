@@ -50,7 +50,11 @@ class MilvusVectorWriter:
         dim = self._embedding_service.dimension
 
         if self.client.has_collection(collection_name):
-            if drop_existing:
+            schema_outdated = self._collection_missing_fields(
+                collection_name,
+                {"schema_name", "qualified_table_id"},
+            )
+            if drop_existing or schema_outdated:
                 logger.warning(f"Dropping existing collection: {collection_name}")
                 self.client.drop_collection(collection_name)
             else:
@@ -65,6 +69,7 @@ class MilvusVectorWriter:
         schema.add_field("database_name", DataType.VARCHAR, max_length=128)
         schema.add_field("schema_name", DataType.VARCHAR, max_length=128)
         schema.add_field("table_name", DataType.VARCHAR, max_length=128)
+        schema.add_field("qualified_table_id", DataType.VARCHAR, max_length=256)
         schema.add_field("chinese_name", DataType.VARCHAR, max_length=256)
         schema.add_field("description", DataType.VARCHAR, max_length=2048)
         schema.add_field("business_domain", DataType.VARCHAR, max_length=64)
@@ -95,7 +100,11 @@ class MilvusVectorWriter:
         dim = self._embedding_service.dimension
 
         if self.client.has_collection(collection_name):
-            if drop_existing:
+            schema_outdated = self._collection_missing_fields(
+                collection_name,
+                {"schema_name", "qualified_table_id"},
+            )
+            if drop_existing or schema_outdated:
                 logger.warning(f"Dropping existing collection: {collection_name}")
                 self.client.drop_collection(collection_name)
             else:
@@ -108,7 +117,9 @@ class MilvusVectorWriter:
 
         schema.add_field("id", DataType.VARCHAR, max_length=256, is_primary=True)
         schema.add_field("database_name", DataType.VARCHAR, max_length=128)
+        schema.add_field("schema_name", DataType.VARCHAR, max_length=128)
         schema.add_field("table_name", DataType.VARCHAR, max_length=128)
+        schema.add_field("qualified_table_id", DataType.VARCHAR, max_length=256)
         schema.add_field("column_name", DataType.VARCHAR, max_length=128)
         schema.add_field("chinese_name", DataType.VARCHAR, max_length=256)
         schema.add_field("data_type", DataType.VARCHAR, max_length=64)
@@ -134,6 +145,39 @@ class MilvusVectorWriter:
         )
         logger.info(f"Collection created: {collection_name}")
 
+    def _collection_missing_fields(
+        self,
+        collection_name: str,
+        required_fields: set[str],
+    ) -> bool:
+        """Detect the multi-database schema upgrade and trigger one rebuild."""
+        describe = getattr(self.client, "describe_collection", None)
+        if describe is None:
+            return False
+        try:
+            description = describe(collection_name=collection_name)
+            raw_fields = description.get("fields", []) if isinstance(description, dict) else []
+            field_names = {
+                field.get("name")
+                for field in raw_fields
+                if isinstance(field, dict) and field.get("name")
+            }
+            missing = required_fields - field_names
+            if missing:
+                logger.warning(
+                    "Collection {} is missing multi-database fields {}; rebuilding it",
+                    collection_name,
+                    sorted(missing),
+                )
+                return True
+        except Exception as exc:  # noqa: BLE001 - keep legacy clients compatible
+            logger.warning(
+                "Could not inspect Milvus collection {} schema: {}",
+                collection_name,
+                exc,
+            )
+        return False
+
     def write_table_embeddings(
         self,
         db_meta: DatabaseMeta,
@@ -156,6 +200,7 @@ class MilvusVectorWriter:
                     "database_name": db_meta.name,
                     "schema_name": table.schema_name,
                     "table_name": table.name,
+                    "qualified_table_id": table_id,
                     "chinese_name": table.chinese_name or "",
                     "description": (table.description or "")[:2048],
                     "business_domain": table.business_domain or "",
@@ -179,7 +224,7 @@ class MilvusVectorWriter:
         total_inserted = 0
         for i in range(0, len(data_batch), batch_size):
             batch = data_batch[i : i + batch_size]
-            self.client.insert(collection_name=self.table_collection, data=batch)
+            self._upsert_batch(self.table_collection, batch)
             total_inserted += len(batch)
             logger.debug(f"Inserted {total_inserted}/{len(data_batch)} tables")
 
@@ -207,7 +252,9 @@ class MilvusVectorWriter:
                     {
                         "id": col_id,
                         "database_name": db_meta.name,
+                        "schema_name": table.schema_name,
                         "table_name": table.name,
+                        "qualified_table_id": table.get_id(db_meta.name),
                         "column_name": col.name,
                         "chinese_name": col.chinese_name or "",
                         "data_type": col.data_type,
@@ -234,12 +281,20 @@ class MilvusVectorWriter:
         total_inserted = 0
         for i in range(0, len(data_batch), batch_size):
             batch = data_batch[i : i + batch_size]
-            self.client.insert(collection_name=self.column_collection, data=batch)
+            self._upsert_batch(self.column_collection, batch)
             total_inserted += len(batch)
             logger.debug(f"Inserted {total_inserted}/{len(data_batch)} columns")
 
         logger.info(f"Column embeddings written: {total_inserted}")
         return total_inserted
+
+    def _upsert_batch(self, collection_name: str, batch: list[dict]) -> None:
+        """Keep repeated schema syncs idempotent on qualified primary keys."""
+        upsert = getattr(self.client, "upsert", None)
+        if upsert is not None:
+            upsert(collection_name=collection_name, data=batch)
+            return
+        self.client.insert(collection_name=collection_name, data=batch)
 
     def __enter__(self) -> "MilvusVectorWriter":
         return self

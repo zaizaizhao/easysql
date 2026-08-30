@@ -18,7 +18,23 @@ def test_config_schema_contains_expected_keys() -> None:
     assert "between_0_2" in get_spec("llm", "temperature").constraints
     assert get_spec("llm", "openai_api_base").settings_path == "llm.openai_api_base"
     assert get_spec("langfuse", "host").env_var == "LANGFUSE_BASE_URL"
-    assert len(CONFIG_SPEC_LIST) >= 36
+    assert len(CONFIG_SPEC_LIST) >= 35
+
+
+def test_config_schema_removes_derived_or_infra_only_keys() -> None:
+    removed_keys = [
+        ("retrieval", "bridge_max_hops"),
+        ("retrieval", "llm_api_key"),
+        ("retrieval", "llm_api_base"),
+        ("few_shot", "few_shot_collection_name"),
+        # project_namespace is L1 infrastructure (env-only): hot-editing it
+        # would point retrieval at unindexed collections
+        ("storage", "project_namespace"),
+    ]
+
+    for category, key in removed_keys:
+        with pytest.raises(KeyError):
+            get_spec(category, key)
 
 
 def test_serialize_deserialize_round_trip() -> None:

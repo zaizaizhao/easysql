@@ -20,6 +20,9 @@ from easysql.writers.neo4j_writer import Neo4jSchemaWriter
 
 logger = get_logger(__name__)
 
+# Batch size for Milvus embedding writes. Fixed value — not worth a config knob.
+BATCH_SIZE = 1000
+
 
 @dataclass
 class PipelineStats:
@@ -82,6 +85,7 @@ class SchemaPipeline:
                 user=self.settings.neo4j_user,
                 password=self.settings.neo4j_password,
                 database=self.settings.neo4j_database,
+                project_namespace=self.settings.project_namespace,
             )
         return self._neo4j_repo
 
@@ -91,7 +95,7 @@ class SchemaPipeline:
             self._milvus_repo = MilvusRepository(
                 uri=self.settings.milvus_uri,
                 token=self.settings.milvus_token,
-                collection_prefix=self.settings.milvus_collection_prefix,
+                collection_prefix=self.settings.project_namespace,
             )
         return self._milvus_repo
 
@@ -138,7 +142,7 @@ class SchemaPipeline:
         logger.info(f"Starting pipeline for {len(databases)} database(s)")
 
         db_metas: list[DatabaseMeta] = []
-        if extract and self.settings.enable_schema_extraction:
+        if extract:
             for db_config in databases:
                 try:
                     meta = self._extract_database(db_config)
@@ -152,7 +156,7 @@ class SchemaPipeline:
                     logger.error(error_msg)
                     stats.errors.append(error_msg)
 
-        if write_neo4j and self.settings.enable_neo4j_write and db_metas:
+        if write_neo4j and db_metas:
             try:
                 with self.neo4j_repo:
                     neo4j_stats = self._write_to_neo4j(db_metas, drop_existing)
@@ -164,7 +168,7 @@ class SchemaPipeline:
                 logger.error(error_msg)
                 stats.errors.append(error_msg)
 
-        if write_milvus and self.settings.enable_milvus_write and db_metas:
+        if write_milvus and db_metas:
             try:
                 with self.milvus_repo:
                     milvus_stats = self._write_to_milvus(db_metas, drop_existing)
@@ -232,10 +236,10 @@ class SchemaPipeline:
 
         for meta in db_metas:
             tables_written = self.milvus_writer.write_table_embeddings(
-                meta, batch_size=self.settings.batch_size
+                meta, batch_size=BATCH_SIZE
             )
             columns_written = self.milvus_writer.write_column_embeddings(
-                meta, batch_size=self.settings.batch_size
+                meta, batch_size=BATCH_SIZE
             )
             stats["tables"] += tables_written
             stats["columns"] += columns_written

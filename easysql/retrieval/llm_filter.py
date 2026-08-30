@@ -183,19 +183,19 @@ class LLMFilter(TableFilter):
                 # Ensure we don't exceed max_tables
                 valid_tables = valid_tables[: self._max_tables]
 
-                # IMPORTANT: Always include original_tables (Milvus results + bridge tables)
-                # These are critical for the query and should never be filtered out
-                must_keep = set(context.original_tables)
+                # IMPORTANT: original recall and explicitly protected tables
+                # (bridge tables, core tables) must survive LLM selection
+                protected = list(dict.fromkeys(list(context.original_tables) + sorted(context.must_keep)))
 
                 final_tables = []
-                # First add must-keep tables that LLM selected
+                # First add tables that LLM selected
                 for t in valid_tables:
                     if t not in final_tables:
                         final_tables.append(t)
 
-                # Then add must-keep tables that LLM didn't select (but we need to keep)
+                # Then add protected tables that LLM didn't select
                 kept_by_must_keep = []
-                for t in context.original_tables:
+                for t in protected:
                     if t not in final_tables and t in tables:
                         final_tables.append(t)
                         kept_by_must_keep.append(t)

@@ -1,4 +1,9 @@
-"""Editable runtime configuration schema for API-driven overrides."""
+"""Editable runtime configuration schema for API-driven overrides.
+
+PROJECT_NAMESPACE is intentionally NOT editable here: it is an L1
+infrastructure setting (env-only). Hot-editing it would point retrieval at
+empty Milvus collections / Neo4j scopes without reindexing.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +21,7 @@ ConstraintCode = Literal[
     "between_0_1",
     "between_0_2",
     "non_empty",
+    "namespace",
     "nullable",
 ]
 
@@ -199,6 +205,22 @@ CONFIG_SPEC_LIST: list[ConfigSpec] = [
     ),
     _spec(
         "llm",
+        "agent_timeout_seconds",
+        "llm.agent_timeout_seconds",
+        "int",
+        validator=_validate_positive_int,
+        invalidate_tags={"settings"},
+    ),
+    _spec(
+        "llm",
+        "query_timeout_seconds",
+        "llm.query_timeout_seconds",
+        "int",
+        validator=_validate_positive_int,
+        invalidate_tags={"settings"},
+    ),
+    _spec(
+        "llm",
         "max_sql_retries",
         "llm.max_sql_retries",
         "int",
@@ -296,14 +318,6 @@ CONFIG_SPEC_LIST: list[ConfigSpec] = [
     ),
     _spec(
         "retrieval",
-        "bridge_max_hops",
-        "bridge_max_hops",
-        "int",
-        validator=_validate_at_least_one,
-        invalidate_tags={"settings", "retrieval_cache"},
-    ),
-    _spec(
-        "retrieval",
         "core_tables",
         "core_tables",
         "str",
@@ -329,23 +343,6 @@ CONFIG_SPEC_LIST: list[ConfigSpec] = [
         "llm_filter_model",
         "llm_filter_model",
         "str",
-        invalidate_tags={"settings", "retrieval_cache"},
-    ),
-    _spec(
-        "retrieval",
-        "llm_api_key",
-        "llm_api_key",
-        "str",
-        nullable=True,
-        secret=True,
-        invalidate_tags={"settings", "retrieval_cache"},
-    ),
-    _spec(
-        "retrieval",
-        "llm_api_base",
-        "llm_api_base",
-        "str",
-        nullable=True,
         invalidate_tags={"settings", "retrieval_cache"},
     ),
     # few-shot
@@ -370,14 +367,6 @@ CONFIG_SPEC_LIST: list[ConfigSpec] = [
         "few_shot_min_similarity",
         "float",
         validator=_validate_probability,
-        invalidate_tags={"settings", "few_shot_cache"},
-    ),
-    _spec(
-        "few_shot",
-        "few_shot_collection_name",
-        "few_shot_collection_name",
-        "str",
-        validator=_validate_non_empty,
         invalidate_tags={"settings", "few_shot_cache"},
     ),
     # code_context

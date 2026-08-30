@@ -1,4 +1,12 @@
-import type { ChatMessage, StreamEvent, QueryStatus, SessionCache, AgentStep, SessionInfo } from '@/types';
+import type {
+  AgentStep,
+  ChatMessage,
+  QueryStatus,
+  SessionCache,
+  SessionInfo,
+  StepTrace,
+  StreamEvent,
+} from '@/types';
 
 export interface StreamHandlerResult {
   messages?: ChatMessage[];
@@ -81,6 +89,8 @@ export const processStreamEvent = (
               updated_at: new Date().toISOString(),
               question_count: 1,
               title: firstUserMessage?.content?.slice(0, 50),
+              db_names: event.data.db_names,
+              primary_db: event.data.primary_db,
             };
             result.sessions = [newSession, ...sessions];
           }
@@ -91,6 +101,8 @@ export const processStreamEvent = (
           if (event.data.message_id) updates.serverId = event.data.message_id;
           if (event.data.thread_id) updates.threadId = event.data.thread_id;
           if (event.data.turn_id) updates.turnId = event.data.turn_id;
+          if (event.data.db_names) updates.dbNames = event.data.db_names;
+          if (event.data.primary_db) updates.primaryDb = event.data.primary_db;
           const updated = updateSessionState(messages, messageMap, updates);
           if (updated) {
             result.messages = updated.messages;
@@ -109,6 +121,8 @@ export const processStreamEvent = (
             if (event.data.message_id) updates.serverId = event.data.message_id;
             if (event.data.thread_id) updates.threadId = event.data.thread_id;
             if (event.data.turn_id) updates.turnId = event.data.turn_id;
+            if (event.data.db_names) updates.dbNames = event.data.db_names;
+            if (event.data.primary_db) updates.primaryDb = event.data.primary_db;
             const updated = updateSessionState(cached.messages, cached.messageMap, updates);
             if (updated) {
               nextCache.messages = updated.messages;
@@ -126,7 +140,7 @@ export const processStreamEvent = (
       const updates: Partial<ChatMessage> = {};
 
       if (event.data.node) {
-        let currentTrace: any[] = [];
+        let currentTrace: StepTrace[] = [];
 
         if (isActive) {
           const msg = messages.find((m) => m.role === 'assistant' && m.isStreaming);
@@ -140,7 +154,7 @@ export const processStreamEvent = (
         }
 
         const lastStep = currentTrace[currentTrace.length - 1];
-        let updatedTrace = [...currentTrace];
+        const updatedTrace = [...currentTrace];
 
         if (lastStep?.node === event.data.node) {
           updatedTrace[updatedTrace.length - 1] = {
@@ -158,6 +172,8 @@ export const processStreamEvent = (
       }
 
       if (event.data.generated_sql) updates.sql = event.data.generated_sql;
+      if (event.data.db_names) updates.dbNames = event.data.db_names;
+      if (event.data.primary_db) updates.primaryDb = event.data.primary_db;
       if (event.data.clarification_questions)
         updates.clarificationQuestions = event.data.clarification_questions;
       if (event.data.retrieval_summary) {
@@ -305,6 +321,9 @@ export const processStreamEvent = (
         isStreaming: false,
         sql: event.data.sql,
         validationPassed: event.data.validation_passed,
+        validationError: event.data.validation_error || event.data.error,
+        dbNames: event.data.db_names,
+        primaryDb: event.data.primary_db,
       };
       if (event.data.message_id) updates.serverId = event.data.message_id;
       if (event.data.thread_id) updates.threadId = event.data.thread_id;
@@ -322,14 +341,25 @@ export const processStreamEvent = (
       const newStatus =
         event.data.status === 'awaiting_clarify' || clarificationQuestions
           ? 'awaiting_clarify'
-          : 'completed';
+          : event.data.status === 'failed' || event.data.validation_passed === false
+            ? 'failed'
+            : 'completed';
+
+      if (newStatus === 'failed') {
+        updates.sql = undefined;
+        updates.validationPassed = false;
+      }
 
       if (isActive) {
         const msg = messages.find((m) => m.role === 'assistant' && m.isStreaming);
         if (!msg) {
-          return { isLoading: false, status: 'completed' };
+          return {
+            isLoading: false,
+            status: newStatus as QueryStatus,
+            error: updates.validationError ?? null,
+          };
         }
-        if (!updates.sql) updates.sql = msg.sql;
+        if (!updates.sql && newStatus === 'completed') updates.sql = msg.sql;
 
         const result = updateSessionState(messages, messageMap, updates);
         if (result) {
@@ -339,6 +369,7 @@ export const processStreamEvent = (
             threadId: event.data.thread_id ?? threadId ?? null,
             isLoading: false,
             status: newStatus as QueryStatus,
+            error: updates.validationError ?? null,
           };
         }
       } else {
@@ -347,7 +378,7 @@ export const processStreamEvent = (
           const msg = cached.messages.find(
             (m) => m.role === 'assistant' && m.isStreaming
           );
-          if (msg && !updates.sql) updates.sql = msg.sql;
+          if (msg && !updates.sql && newStatus === 'completed') updates.sql = msg.sql;
 
           const result = updateSessionState(
             cached.messages,

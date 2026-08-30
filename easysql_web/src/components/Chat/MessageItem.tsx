@@ -196,6 +196,8 @@ export function MessageItem({
                   }
                   chartPlan={message.chartPlan}
                   chartReasoning={message.chartReasoning}
+                  dbNames={message.dbNames}
+                  primaryDb={message.primaryDb}
                 />
               </div>
             )}

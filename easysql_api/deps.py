@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from easysql.config import Settings, get_settings
 from easysql_api.domain.repositories.session_repository import SessionRepository
-from easysql_api.infrastructure.db import get_sessionmaker
+from easysql_api.infrastructure.db_manager import get_control_plane_db_manager
 from easysql_api.infrastructure.persistence.config_repository import ConfigRepository
 from easysql_api.services.chart_service import ChartService, get_chart_service
 from easysql_api.services.config_service import ConfigService
@@ -36,7 +36,7 @@ def clear_session_repository() -> None:
 def get_config_service_dep() -> ConfigService:
     global _config_service
     if _config_service is None:
-        repository = ConfigRepository(get_sessionmaker())
+        repository = ConfigRepository(get_control_plane_db_manager())
         _config_service = ConfigService(repository=repository)
     return _config_service
 

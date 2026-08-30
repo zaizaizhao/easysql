@@ -5,6 +5,7 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from easysql_api.infrastructure.db_manager import ControlPlaneDatabaseManager
 from easysql_api.infrastructure.persistence.models import Base
 from easysql_api.infrastructure.persistence.session_repository import SqlAlchemySessionRepository
 
@@ -20,9 +21,9 @@ def _normalize_uri(uri: str) -> str:
 
 
 def test_session_repository_add_message_and_get():
-    uri = os.getenv("SESSION_POSTGRES_URI")
+    uri = os.getenv("POSTGRES_URI")
     if not uri:
-        pytest.skip("SESSION_POSTGRES_URI not set")
+        pytest.skip("POSTGRES_URI not set")
 
     async def _run() -> None:
         engine = create_async_engine(_normalize_uri(uri), pool_pre_ping=True)
@@ -30,7 +31,10 @@ def test_session_repository_add_message_and_get():
             await conn.run_sync(Base.metadata.create_all)
 
         sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
-        repo = SqlAlchemySessionRepository(sessionmaker)
+        db_manager = ControlPlaneDatabaseManager()
+        db_manager._engine = engine
+        db_manager._sessionmaker = sessionmaker
+        repo = SqlAlchemySessionRepository(db_manager)
 
         session_id = str(uuid.uuid4())
         session = await repo.create(session_id)
@@ -51,6 +55,6 @@ def test_session_repository_add_message_and_get():
         assert message.thread_id == session_id
 
         await repo.delete(session_id)
-        await engine.dispose()
+        await db_manager.dispose()
 
     asyncio.run(_run())

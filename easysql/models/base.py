@@ -1,14 +1,13 @@
 """
 Base model definitions for EasySql.
 
-Provides common base classes and mixins for all data models.
+Provides the common base class for all data models.
 """
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict
 
 
 class BaseModel(PydanticBaseModel):
@@ -35,20 +34,3 @@ class BaseModel(PydanticBaseModel):
     def to_json(self) -> str:
         """Convert model to JSON string."""
         return self.model_dump_json(exclude_none=True)
-
-
-class TimestampMixin(BaseModel):
-    """Mixin for models with timestamp tracking."""
-
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime | None = None
-
-
-class IdentifiableMixin(BaseModel):
-    """Mixin for models with unique identifiers."""
-
-    id: str = Field(..., description="Unique identifier")
-
-    def get_neo4j_id(self) -> str:
-        """Get ID suitable for Neo4j node identification."""
-        return self.id.replace(".", "_").replace("-", "_")
