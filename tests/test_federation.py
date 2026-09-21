@@ -439,3 +439,31 @@ def test_federation_status_reports_missing_extension_per_primary() -> None:
     assert status.status == "unavailable"
     assert status.reason == "extension_missing"
     assert all(database.reason == "extension_missing" for database in status.databases)
+
+
+def test_federation_status_accepts_one_primary_without_reverse_routes() -> None:
+    class PrimaryOnlyRegistry(StatusFakeRegistry):
+        def get_engine(self, config: DatabaseConfig) -> FakeEngine:
+            engine = super().get_engine(config)
+            self.connections[config.name].extension_installed = config.name == "emr"
+            return engine
+
+    registry = PrimaryOnlyRegistry()
+    probe = FederationStatusProbe(registry=registry)
+
+    status = probe.check(_settings(_db("emr"), _db("pms"), _db("rvs")), ["emr", "pms", "rvs"])
+
+    assert status.status == "ready"
+    assert status.reason == "ready"
+    primary = next(database for database in status.databases if database.name == "emr")
+    assert primary.status == "ready"
+    assert {route.target_db for route in primary.routes if route.status == "ready"} == {
+        "pms",
+        "rvs",
+    }
+    assert all(
+        database.reason == "extension_missing"
+        for database in status.databases
+        if database.name != "emr"
+    )
+    assert all(not connection.remote_databases for connection in registry.connections.values())

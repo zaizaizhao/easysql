@@ -86,6 +86,8 @@ const LLM_FIELD_DISPLAY_ORDER = [
   'max_sql_retries',
 ];
 
+const HISTORICAL_LLM_FIELDS = new Set(['query_mode', 'use_agent_mode', 'model_planning', 'max_sql_retries']);
+
 function sortByPreferredOrder(items: string[], preferred: string[]): string[] {
   const indexMap = new Map(preferred.map((value, index) => [value, index]));
   return [...items].sort((a, b) => {
@@ -166,8 +168,11 @@ export default function SettingsPage() {
     if (!editableConfig) {
       return [];
     }
-    return sortByPreferredOrder(Object.keys(editableConfig), CATEGORY_DISPLAY_ORDER);
-  }, [editableConfig]);
+    const categories = Object.keys(editableConfig).filter((category) =>
+      config?.query_backend !== 'adk' || category !== 'code_context',
+    );
+    return sortByPreferredOrder(categories, CATEGORY_DISPLAY_ORDER);
+  }, [editableConfig, config?.query_backend]);
 
   const getCategoryLabel = (category: string): string =>
     t(`settings.categories.${category}`, { defaultValue: category });
@@ -531,7 +536,9 @@ export default function SettingsPage() {
             items={categoryOrder.map((category) => {
               const fields = editableConfig?.[category] || {};
               const searchKeyword = categorySearch[category] || '';
-              const orderedEntries = getOrderedFieldEntries(category, fields);
+              const orderedEntries = getOrderedFieldEntries(category, fields).filter(([key]) =>
+                config?.query_backend !== 'adk' || category !== 'llm' || !HISTORICAL_LLM_FIELDS.has(key),
+              );
               const filteredEntries = orderedEntries.filter(([key]) =>
                 key.toLowerCase().includes(searchKeyword.toLowerCase()),
               );
@@ -726,8 +733,8 @@ export default function SettingsPage() {
       <Card className="settings-panel-card" title={t('settings.llmConfig')}>
         <Descriptions column={2} size="small">
           <Descriptions.Item label={t('settings.queryMode')}>
-            <Tag color={config?.llm.query_mode === 'plan' ? 'blue' : 'green'}>
-              {config?.llm.query_mode === 'plan'
+            <Tag color="blue">
+              {config?.query_backend === 'adk' ? 'ADK Agentic' : config?.llm.query_mode === 'plan'
                 ? t('settings.queryModePlan')
                 : t('settings.queryModeFast')}
             </Tag>

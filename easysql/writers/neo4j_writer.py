@@ -59,12 +59,23 @@ class Neo4jSchemaWriter:
                 stats["tables"] += 1
                 stats["columns"] += len(table.columns)
 
+            grouped_keys: dict[tuple[str, str, str], list[ForeignKeyMeta]] = {}
             for fk in db_meta.foreign_keys:
+                key = (
+                    fk.get_from_table_id(db_meta.name),
+                    fk.get_to_table_id(db_meta.name),
+                    fk.constraint_name,
+                )
+                grouped_keys.setdefault(key, []).append(fk)
+
+            for group in grouped_keys.values():
+                fk = group[0]
                 session.execute_write(
                     self._create_foreign_key_relationship,
                     db_meta.name,
                     fk,
                     self.project_namespace,
+                    [(item.from_column, item.to_column) for item in group],
                 )
                 stats["foreign_keys"] += 1
 
@@ -177,9 +188,11 @@ class Neo4jSchemaWriter:
         db_name: str,
         fk: ForeignKeyMeta,
         project_namespace: str,
+        column_pairs: list[tuple[str, str]] | None = None,
     ) -> None:
         from_table_id = fk.get_from_table_id(db_name)
         to_table_id = fk.get_to_table_id(db_name)
+        pairs = column_pairs or [(fk.from_column, fk.to_column)]
 
         tx.run(
             """
@@ -191,6 +204,8 @@ class Neo4jSchemaWriter:
             }]->(t2)
             SET r.fk_column = $fk_column,
                 r.pk_column = $pk_column,
+                r.from_columns = $from_columns,
+                r.to_columns = $to_columns,
                 r.from_schema = $from_schema,
                 r.to_schema = $to_schema,
                 r.on_delete = $on_delete,
@@ -203,6 +218,8 @@ class Neo4jSchemaWriter:
             project_namespace=project_namespace,
             fk_column=fk.from_column,
             pk_column=fk.to_column,
+            from_columns=[source for source, _ in pairs],
+            to_columns=[target for _, target in pairs],
             from_schema=fk.from_schema,
             to_schema=fk.to_schema,
             on_delete=fk.on_delete,

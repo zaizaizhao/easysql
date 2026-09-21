@@ -7,6 +7,7 @@ import {
   MenuUnfoldOutlined,
   PlusOutlined,
   StarOutlined,
+  BookOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore, useChatStore } from '@/stores';
@@ -25,6 +26,11 @@ export function Sidebar() {
   const { token } = theme.useToken();
 
   const menuItems = [
+    {
+      key: '/knowledge',
+      icon: <BookOutlined />,
+      label: t('nav.knowledge', '知识库'),
+    },
     {
       key: '/history',
       icon: <HistoryOutlined />,

@@ -14,6 +14,7 @@ import ChatPage from '@/pages/Chat';
 import HistoryPage from '@/pages/History';
 import SettingsPage from '@/pages/Settings';
 import FewShotPage from '@/pages/FewShot';
+import KnowledgePage from '@/pages/Knowledge';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,6 +61,7 @@ function AppContent() {
               <Route path="chat/:sessionId" element={<ChatPage />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="few-shot" element={<FewShotPage />} />
+              <Route path="knowledge" element={<KnowledgePage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>
           </Routes>

@@ -8,6 +8,7 @@ from sqlalchemy.pool import NullPool
 
 from alembic import context
 from easysql.config import get_settings
+from easysql_agentic.knowledge import tables as wiki_tables  # noqa: F401
 from easysql_api.infrastructure.persistence.models import Base
 
 config = context.config

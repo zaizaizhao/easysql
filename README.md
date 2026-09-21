@@ -22,6 +22,14 @@
 
 ![EasySQL 界面](docs/images/example_pic1.png)
 
+## 当前查询方案：独立 ADK Agent
+
+新的查询实现位于 [`easysql_agentic/`](easysql_agentic/README.md)。上传 Markdown 后由 LLM 增量整理成有原文引用的分层 Wiki；单个 Google ADK Agent 自主调用知识、Schema、示例和跨库关联工具，判断上下文是否充分，再提交支持多个 PostgreSQL dblink 的 SQL。
+
+默认使用 ADK，复用原有模型与数据库设置。升级时先执行 `alembic upgrade head`；API 可以用 `uvicorn easysql_agentic.app:app --port 8000` 启动。侧栏“知识库”提供上传、目录浏览、正文阅读和索引重试。原有 LangGraph 代码作为历史方案保留，可通过 `QUERY_BACKEND=langgraph` 启用。
+
+详细说明与验证命令见 [ADK Agent 文档](easysql_agentic/README.md)，可上传的示例见 [跨库知识 Markdown](examples/knowledge/multi-database-wiki.md)。
+
 ---
 
 ## 为什么做这个？
@@ -34,7 +42,7 @@
 EasySQL 的思路：
 1. 用 **Neo4j** 构建知识图谱，存储表结构、外键关系，实现关系推理
 2. 用 **Milvus** 做向量语义检索，深度理解业务意图
-3. 用 **LangGraph** 编排智能体：意图理解 → Schema 检索 → SQL 生成 → 验证修复
+3. 用独立的 **Google ADK Agent** 按需检索、判断上下文、生成并验证 SQL；LangGraph 编排保留为历史方案
 4. 支持 **DDD 领域建模**，让 AI 理解业务上下文
 5. **Few-Shot 学习** + 用户反馈闭环，越用越精准
 

@@ -57,6 +57,7 @@ async def create_query(
         message_id=result.get("message_id"),
         parent_message_id=result.get("parent_message_id"),
         thread_id=result.get("thread_id"),
+        stats=result.get("stats"),
     )
 
 
@@ -91,6 +92,7 @@ async def continue_query(
         message_id=result.get("message_id"),
         parent_message_id=result.get("parent_message_id"),
         thread_id=result.get("thread_id"),
+        stats=result.get("stats"),
     )
 
 

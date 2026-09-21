@@ -28,13 +28,21 @@ pymilvus>=2.3.0
 # Embeddings
 sentence-transformers>=2.2.0
 
-# LLM Framework & Providers
+# Current independent agent runtime
+google-adk[db]>=2.9.2,<3
+litellm>=1.102,<2
+sqlglot>=30.18,<31
+markdown-it-py>=3.0
+networkx>=3.0
+python-multipart>=0.0.18
+
+# Historical LangGraph runtime & visualization providers
 langgraph>=0.2.0
 langgraph-checkpoint-postgres>=2.0.0
 langchain>=0.3.0
 langchain-core>=0.3.0
 langchain-openai>=0.2.0
-langchain-google-genai>=2.0.0
+langchain-google-genai>=4.4.0
 langchain-mcp-adapters>=0.1.0
 # Optional:
 # langchain-anthropic>=0.2.0

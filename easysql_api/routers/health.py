@@ -24,6 +24,7 @@ class InfoResponse(BaseModel):
     name: str
     version: str
     query_mode: str
+    query_backend: str
     llm_provider: str
     llm_model: str
     databases_configured: int
@@ -54,6 +55,7 @@ async def get_info(
         name="EasySQL",
         version="0.1.0",
         query_mode=settings.llm.query_mode,
+        query_backend=settings.query_backend,
         llm_provider=settings.llm.get_provider(),
         llm_model=settings.llm.get_model(),
         databases_configured=len(settings.databases),

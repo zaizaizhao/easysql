@@ -39,6 +39,12 @@ dependencies = [
     "rich>=13.0.0",
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
+    "google-adk[db]>=2.9.2,<3",
+    "litellm>=1.102,<2",
+    "sqlglot>=30.18,<31",
+    "markdown-it-py>=3.0",
+    "networkx>=3.0",
+    "python-multipart>=0.0.18",
 ]
 
 [project.optional-dependencies]

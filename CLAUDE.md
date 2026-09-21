@@ -7,7 +7,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 EasySQL is an enterprise Text2SQL solution that handles databases with hundreds of tables. It uses:
 - **Neo4j** to store table relationships/foreign keys as a knowledge graph
 - **Milvus** for semantic vector search to find relevant tables
-- **LangGraph** to orchestrate SQL generation with validation and self-repair
+- **Google ADK** for the current independent Text2SQL agent and incremental Markdown wiki
+- **LangGraph** retained as the historical SQL workflow and existing visualization implementation
+
+### Current Agentic Runtime
+
+- Keep current agent code in `easysql_agentic/`; do not wrap its query loop in LangGraph.
+- `QUERY_BACKEND=adk` is the default. Reuse the existing model, database and budget settings.
+- Wiki ingestion uses ADK structured output, exact source quotes and atomic source-version replacement.
+- Load wiki directories, summaries and page bodies progressively through agent tools.
+- Reuse the shared PostgreSQL engine with ADK `DatabaseSessionService`; migrations manage wiki tables.
+- Multi-database SQL continues to use the shared PostgreSQL dblink executor; validate remote SQL as well as the outer query.
+- See `easysql_agentic/README.md` for startup and isolated PostgreSQL integration tests.
 
 ## System Requirements
 
@@ -273,7 +284,7 @@ tables = inspector.get_table_names()
 stmt = stmt.on_conflict_do_update(...)  # PostgreSQL-only!
 ```
 
-### LangGraph Modes
+### Historical LangGraph Modes
 
 1. **Fast Mode**: Direct SQL generation without HITL
 2. **Plan Mode**: Schema analysis with optional user clarification

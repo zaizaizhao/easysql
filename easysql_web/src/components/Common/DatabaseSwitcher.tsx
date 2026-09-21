@@ -108,7 +108,7 @@ export function DatabaseSwitcher() {
     const tooltip = ready ? (
       <div>
         <div>{t('database.dblinkReadyDescription')}</div>
-        {federationStatus?.databases.map((database) => (
+        {federationStatus?.databases.filter((database) => database.status === 'ready').map((database) => (
           <div key={database.name}>
             {database.name.toUpperCase()} · {database.routes.length} {t('database.routesReady')}
           </div>

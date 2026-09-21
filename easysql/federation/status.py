@@ -100,14 +100,13 @@ class FederationStatusProbe:
 
         scope = DatabaseScope.resolve(settings, db_names=normalized)
         database_statuses = [self._check_primary(scope, source) for source in scope.targets]
-        unavailable = next(
-            (item for item in database_statuses if item.status != "ready"),
-            None,
-        )
+        # A query executes on one primary; reverse routes from remote databases
+        # are not required when that primary can reach the entire selected scope.
+        ready = any(item.status == "ready" for item in database_statuses)
         return FederationStatus(
             mode="dblink",
-            status="ready" if unavailable is None else "unavailable",
-            reason="ready" if unavailable is None else unavailable.reason,
+            status="ready" if ready else "unavailable",
+            reason="ready" if ready else database_statuses[0].reason,
             db_names=normalized,
             databases=database_statuses,
         )

@@ -1406,12 +1406,16 @@ def reset_query_service_callbacks() -> None:
 
 
 def warm_query_service_graph() -> None:
+    if get_settings().query_backend == "adk":
+        return
     global _default_service
     if _default_service is not None:
         _ = _default_service.graph
 
 
 def warm_query_service_callbacks() -> None:
+    if get_settings().query_backend == "adk":
+        return
     global _default_service
     if _default_service is not None:
         _ = _default_service.callbacks

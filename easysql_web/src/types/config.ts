@@ -115,6 +115,7 @@ export interface CodeContextConfig {
 }
 
 export interface SystemConfig {
+  query_backend: 'adk' | 'langgraph';
   llm: LLMConfig;
   retrieval: RetrievalConfig;
   embedding: EmbeddingConfig;

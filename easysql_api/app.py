@@ -69,7 +69,9 @@ async def lifespan(app: FastAPI):
     if settings.langfuse.is_configured():
         logger.info("  LangFuse: Enabled")
 
-    if settings.checkpointer.is_postgres():
+    if settings.query_backend == "adk":
+        logger.info("  Query engine: Google ADK (shared PostgreSQL engine)")
+    elif settings.checkpointer.is_postgres():
         logger.info("  Checkpointer: PostgreSQL")
         setup_checkpointer()
     else:
@@ -87,6 +89,9 @@ async def lifespan(app: FastAPI):
     clear_config_service()
     reset_retrieval_runtime()
     get_data_plane_engine_registry().dispose_all()
+    from easysql_agentic.runtime import close_adk_sessions
+
+    await close_adk_sessions()
     await get_control_plane_db_manager().dispose()
 
     await close_checkpointer_pool()
@@ -117,6 +122,10 @@ def create_app() -> FastAPI:
     app.include_router(config_router, prefix="/api/v1", tags=["Config"])
     app.include_router(few_shot_router, prefix="/api/v1", tags=["Few-Shot"])
     app.include_router(agent_tools_router, prefix="/api/v1", tags=["Agent Tools"])
+
+    from easysql_agentic.api import router as wiki_router
+
+    app.include_router(wiki_router, prefix="/api/v1", tags=["Knowledge Wiki"])
 
     return app
 

@@ -6,6 +6,18 @@ import type { AgentStep } from '@/types';
 
 const { Text, Paragraph } = Typography;
 
+const contextToolLabels: Record<string, string> = {
+  describe_database_scope: '查看数据库范围', browse_wiki: '浏览知识目录',
+  list_wiki_pages: '查看知识摘要', search_knowledge: '检索业务知识',
+  read_wiki_page: '读取知识与原文依据', search_tables: '查找相关表',
+  search_columns: '查找相关字段', list_database_tables: '查看数据库表',
+  get_table_schema: '核对表结构', expand_related_tables: '扩展关联表',
+  find_join_paths: '查找跨库关联', search_sql_examples: '查找 SQL 示例',
+  check_dblink_routes: '检查跨库连接', assess_context: '检查上下文是否充分',
+  submit_final_sql: '验证并提交 SQL', ask_clarification: '请求澄清',
+  report_insufficient_context: '说明缺失的上下文',
+};
+
 interface AgentThinkingProps {
   thinkingContent?: string;
   agentSteps?: AgentStep[];
@@ -51,7 +63,7 @@ export function AgentThinking({ thinkingContent, agentSteps = [], isStreaming }:
         }}>
           <ToolOutlined style={{ color: token.colorPrimary }} />
           <Text type="secondary">{t('agent.callingTool')}: </Text>
-          <Text code>{step.tool}</Text>
+          <Text>{step.tool ? contextToolLabels[step.tool] ?? step.tool : ''}</Text>
           {step.inputPreview && (
             <Text type="secondary" ellipsis style={{ maxWidth: 300 }}>
               ({step.inputPreview})

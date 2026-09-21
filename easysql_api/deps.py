@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from easysql.config import Settings, get_settings
 from easysql_api.domain.repositories.session_repository import SessionRepository
 from easysql_api.infrastructure.db_manager import get_control_plane_db_manager
@@ -7,7 +9,6 @@ from easysql_api.infrastructure.persistence.config_repository import ConfigRepos
 from easysql_api.services.chart_service import ChartService, get_chart_service
 from easysql_api.services.config_service import ConfigService
 from easysql_api.services.execute_service import ExecuteService, get_execute_service
-from easysql_api.services.query_service import QueryService, get_query_service
 
 _session_repository: SessionRepository | None = None
 _config_service: ConfigService | None = None
@@ -46,8 +47,14 @@ def clear_config_service() -> None:
     _config_service = None
 
 
-def get_query_service_dep() -> QueryService:
+def get_query_service_dep() -> Any:
     repository = get_session_repository_dep()
+    if get_settings().query_backend == "adk":
+        from easysql_agentic.service import AdkQueryService
+
+        return AdkQueryService(repository)
+    from easysql_api.services.query_service import get_query_service
+
     return get_query_service(repository=repository)
 
 

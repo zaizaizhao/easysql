@@ -213,6 +213,15 @@ class Settings(BaseSettings):
         extra="allow",
     )
 
+    query_backend: str = Field(default="adk", description="adk (current) or langgraph (historical)")
+
+    @field_validator("query_backend")
+    @classmethod
+    def validate_query_backend(cls, value: str) -> str:
+        if value not in {"adk", "langgraph"}:
+            raise ValueError("QUERY_BACKEND must be adk or langgraph")
+        return value
+
     postgres_uri: str = Field(
         default=DEFAULT_POSTGRES_URI,
         description="PostgreSQL URI for EasySQL control-plane storage",

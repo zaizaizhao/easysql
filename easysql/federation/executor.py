@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -191,6 +192,7 @@ class FederatedSqlRequest:
     primary_db: str
     db_names: tuple[str, ...]
     timeout_seconds: int = 30
+    read_only: bool = False
 
 
 @dataclass
@@ -246,35 +248,41 @@ class FederatedSqlExecutor:
             with engine.connect() as connection:
                 connected_names: set[str] = set()
                 try:
-                    if primary.config.db_type == "postgresql":
-                        self._set_timeout(connection, request.timeout_seconds)
-                    if scope.is_federated and referenced_connections:
-                        for connection_name in sorted(referenced_connections):
-                            target = scope.target_for_connection(connection_name)
-                            if target is None or target.name == primary.name:
-                                raise ValueError(
-                                    f"No selected remote database maps to '{connection_name}'"
+                    # Agent submissions get a managed read-only transaction. Its rollback
+                    # happens before dblink cleanup, including after remote SQL errors.
+                    transaction = connection.begin() if request.read_only else nullcontext()
+                    with transaction:
+                        if request.read_only and primary.config.db_type != "sqlserver":
+                            connection.execute(text("SET TRANSACTION READ ONLY"))
+                        if primary.config.db_type == "postgresql":
+                            self._set_timeout(connection, request.timeout_seconds)
+                        if scope.is_federated and referenced_connections:
+                            for connection_name in sorted(referenced_connections):
+                                target = scope.target_for_connection(connection_name)
+                                if target is None or target.name == primary.name:
+                                    raise ValueError(
+                                        f"No selected remote database maps to '{connection_name}'"
+                                    )
+                                self._dblink_manager.connect(
+                                    connection,
+                                    source=primary,
+                                    target=target,
+                                    connection_name=connection_name,
+                                    statement_timeout_seconds=request.timeout_seconds,
                                 )
-                            self._dblink_manager.connect(
-                                connection,
-                                source=primary,
-                                target=target,
-                                connection_name=connection_name,
-                                statement_timeout_seconds=request.timeout_seconds,
-                            )
-                            connected_names.add(connection_name)
+                                connected_names.add(connection_name)
 
-                    sql = f"EXPLAIN {request.sql}" if explain else request.sql
-                    result = connection.execute(text(sql))
-                    if result.returns_rows:
-                        rows = [dict(row._mapping) for row in result]
-                        return FederatedExecutionResult(
-                            success=True,
-                            data=rows,
-                            columns=list(result.keys()),
-                            row_count=len(rows),
-                        )
-                    return FederatedExecutionResult(success=True, row_count=result.rowcount)
+                        sql = f"EXPLAIN {request.sql}" if explain else request.sql
+                        result = connection.execute(text(sql))
+                        if result.returns_rows:
+                            rows = [dict(row._mapping) for row in result]
+                            return FederatedExecutionResult(
+                                success=True,
+                                data=rows,
+                                columns=list(result.keys()),
+                                row_count=len(rows),
+                            )
+                        return FederatedExecutionResult(success=True, row_count=result.rowcount)
                 finally:
                     if connected_names:
                         self._dblink_manager.disconnect_many(connection, connected_names)

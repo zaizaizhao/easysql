@@ -73,6 +73,7 @@ class CodeContextConfigResponse(BaseModel):
 
 
 class ConfigResponse(BaseModel):
+    query_backend: str = "adk"
     llm: LLMConfigResponse
     retrieval: RetrievalConfigResponse
     embedding: EmbeddingConfigResponse
@@ -86,6 +87,7 @@ async def get_config(
     settings: Annotated[Settings, Depends(get_settings_dep)],
 ) -> ConfigResponse:
     return ConfigResponse(
+        query_backend=settings.query_backend,
         llm=LLMConfigResponse(
             query_mode=settings.llm.query_mode,
             provider=settings.llm.get_provider(),
